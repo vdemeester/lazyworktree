@@ -1,4 +1,4 @@
-# lazyworktree
+# lazyworktree - Lazy Git Worktree Manager
 
 A Textual-based TUI for managing Git worktrees efficiently. Visualize status, manage branches, and jump between worktrees with ease.
 
@@ -70,4 +70,6 @@ Now you can run `pm` to open the TUI, select a worktree, and upon pressing `Ente
 
 ## Configuration
 
-Worktrees are expected to be organized under `~/.local/share/worktrees/<repo_name>` by default, though the script attempts to resolve locations via `gh repo view`.
+Worktrees are expected to be organized under
+`~/.local/share/worktrees/<repo_name>` by default, though the script attempts
+to resolve locations via `gh repo view`.

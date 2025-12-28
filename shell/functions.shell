@@ -70,10 +70,11 @@ _worktree_jump() {
     _describe 'worktree' dirs
 }
 
-if [[ -d ~/git/myrepo ]]; then
-    pm() { worktree_jump ~/git/myrepo "$@" }
-    _pm() { _worktree_jump ~/git/myrepo }
-    compdef _pm pm
-fi
-
+# Adjust at your will
+# if [[ -d ~/git/myrepo ]]; then
+#     pm() { worktree_jump ~/git/myrepo "$@" }
+#     _pm() { _worktree_jump ~/git/myrepo }
+#     compdef _pm pm
+# fi
+#
 # vim: ft=zsh
