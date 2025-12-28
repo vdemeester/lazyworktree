@@ -1,0 +1,9 @@
+worktree_dir: ~/.local/share/worktrees
+sort_by_active: true
+auto_fetch_prs: false
+max_untracked_diffs: 10
+max_diff_chars: 200000
+init_commands:
+  - link_topsymlinks
+terminate_commands:
+  - echo "Cleaning up $WORKTREE_NAME"

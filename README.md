@@ -132,7 +132,7 @@ to resolve locations via `gh repo view`.
 ### Global Config (YAML)
 
 lazyworktree reads `~/.config/lazyworktree/config.yaml` (or `.yml`) for default
-settings. Example:
+settings. Example (also in [config.example.yaml](./config.example.yaml)):
 
 ```yaml
 worktree_dir: ~/.local/share/worktrees
