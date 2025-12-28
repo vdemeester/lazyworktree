@@ -1,4 +1,4 @@
-from textual import on, events
+from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, VerticalScroll
@@ -14,7 +14,6 @@ from textual.widgets import (
 from rich.panel import Panel
 from rich.text import Text
 from rich.syntax import Syntax
-from typing import Optional
 
 class ConfirmScreen(ModalScreen[bool]):
     CSS = """

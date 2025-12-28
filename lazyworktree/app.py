@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import subprocess
-import sys
 import webbrowser
 import shutil
 import re
@@ -39,7 +38,6 @@ from .screens import (
     ConfirmScreen,
     InputScreen,
     HelpScreen,
-    DiffScreen,
     CommitScreen,
     FocusableRichLog,
 )
@@ -336,7 +334,7 @@ class GitWtStatus(App):
                 return ""
             out = stdout.decode(errors="replace")
             return out.strip() if strip else out
-        except FileNotFoundError as exc:
+        except FileNotFoundError:
             command = args[0] if args else "command"
             self._notify_once(f"cmd_missing:{command}", f"Command not found: {command}")
             return ""
@@ -410,18 +408,21 @@ class GitWtStatus(App):
                 return WorktreeInfo(path=path, branch=branch, is_main=wt_data["is_main"], dirty=(untracked + modified + staged > 0), ahead=ahead, behind=behind, last_active=last_active, last_active_ts=last_active_ts, untracked=untracked, modified=modified, staged=staged)
         return await asyncio.gather(*(get_wt_info(wt) for wt in wts))
 
-    async def fetch_pr_data(self) -> None:
+    async def fetch_pr_data(self) -> bool:
         pr_raw = await self.run_git(["gh", "pr", "list", "--state", "all", "--json", "headRefName,state,number,title,url", "--limit", "100"])
+        if pr_raw == "":
+            return False
         pr_map = {}
-        if pr_raw:
-            try:
-                prs = json.loads(pr_raw)
-                for p in prs: pr_map[p["headRefName"]] = PRInfo(p["number"], p["state"], p["title"], p["url"])
-            except json.JSONDecodeError as exc:
-                self._notify_once("pr_json_decode", f"Failed to parse PR data: {exc}")
+        try:
+            prs = json.loads(pr_raw)
+            for p in prs: pr_map[p["headRefName"]] = PRInfo(p["number"], p["state"], p["title"], p["url"])
+        except json.JSONDecodeError as exc:
+            self._notify_once("pr_json_decode", f"Failed to parse PR data: {exc}")
+            return False
         for wt in self.worktrees:
             if wt.branch in pr_map: wt.pr = pr_map[wt.branch]
         self._pr_data_loaded = True
+        return True
 
     @work(exclusive=True)
     async def refresh_data(self) -> None:
@@ -623,9 +624,7 @@ class GitWtStatus(App):
         next_pane.focus(); self._set_focused_pane(next_pane)
 
     def action_fetch(self) -> None:
-        self.notify("Fetching all remotes...")
-        subprocess.run(["git", "fetch", "--all", "--quiet"])
-        self.refresh_data()
+        self.fetch_remotes_async()
 
     def action_fetch_prs(self) -> None:
         if self._pr_data_loaded: self.notify("PR data already loaded. Use 'r' to refresh.", severity="information"); return
@@ -635,11 +634,22 @@ class GitWtStatus(App):
     async def fetch_pr_data_async(self) -> None:
         self.notify("Fetching PR data from GitHub...")
         self.query_one(Header).loading = True
-        await self.fetch_pr_data()
+        success = await self.fetch_pr_data()
         self.update_table()
         self.query_one(Header).loading = False
         self.update_details_view()
-        self.notify("PR data fetched successfully!")
+        if success:
+            self.notify("PR data fetched successfully!")
+        else:
+            self.notify("Failed to fetch PR data", severity="error")
+
+    @work(exclusive=True)
+    async def fetch_remotes_async(self) -> None:
+        self.notify("Fetching all remotes...")
+        self.query_one(Header).loading = True
+        await self.run_git(["git", "fetch", "--all", "--quiet"], strip=False)
+        self.query_one(Header).loading = False
+        self.refresh_data()
 
     async def _get_main_worktree_path(self) -> str:
         try:
