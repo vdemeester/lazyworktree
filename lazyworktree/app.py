@@ -27,6 +27,7 @@ from rich.table import Table
 from rich.console import Group
 from rich.syntax import Syntax
 
+from .config import AppConfig, normalize_command_list
 from .models import WorktreeInfo, WORKTREE_DIR, LAST_SELECTED_FILENAME, CACHE_FILENAME
 from .git_service import GitService
 from .screens import (
@@ -145,7 +146,10 @@ class GitWtStatus(App):
     repo_name: str = ""
 
     def __init__(
-        self, initial_filter: str = "", git_service: Optional[GitService] = None
+        self,
+        initial_filter: str = "",
+        git_service: Optional[GitService] = None,
+        config: Optional[AppConfig] = None,
     ):
         super().__init__()
         self._initial_filter = initial_filter
@@ -154,6 +158,9 @@ class GitWtStatus(App):
         self._divergence_cache: dict = {}
         self._notified_errors: set[str] = set()
         self._git = git_service or GitService(self.notify, self._notify_once)
+        self._config = config or AppConfig()
+        self.sort_by_active = self._config.sort_by_active
+        self._auto_fetch_prs_done = False
 
     def _notify_once(self, key: str, message: str, severity: str = "error") -> None:
         if key in self._notified_errors:
@@ -415,7 +422,8 @@ class GitWtStatus(App):
 
     @work(exclusive=True)
     async def refresh_data(self) -> None:
-        self.query_one(Header).loading = True
+        header = self.query_one(Header)
+        header.loading = True
         self._pr_data_loaded = False
         self._cache = self._load_cache()
         self.worktrees = await self.get_worktrees()
@@ -430,9 +438,19 @@ class GitWtStatus(App):
             ]
         }
         self._save_cache(cache_data)
+        fetch_success: Optional[bool] = None
+        if self._config.auto_fetch_prs and not self._auto_fetch_prs_done:
+            self._auto_fetch_prs_done = True
+            self.notify("Fetching PR data from GitHub...")
+            fetch_success = await self.fetch_pr_data()
         self.update_table()
-        self.query_one(Header).loading = False
+        header.loading = False
         self.update_details_view()
+        if fetch_success is not None:
+            if fetch_success:
+                self.notify("PR data fetched successfully!")
+            else:
+                self.notify("Failed to fetch PR data", severity="error")
 
     def update_table(self):
         table = self.query_one("#worktree-table", DataTable)
@@ -884,22 +902,26 @@ class GitWtStatus(App):
                 if process.returncode != 0:
                     self.notify(f"Failed to create worktree {name}", severity="error")
                     return
+                init_commands = list(self._config.init_commands)
                 config_path = os.path.join(main_path, ".wt")
                 if os.path.exists(config_path):
                     try:
                         with open(config_path, "r") as f:
-                            config = yaml.safe_load(f)
-                        init_commands = config.get("init_commands", [])
-                        env = os.environ.copy()
-                        env["WORKTREE_BRANCH"] = name
-                        env["MAIN_WORKTREE_PATH"] = main_path
-                        env["WORKTREE_PATH"] = new_path
-                        env["WORKTREE_NAME"] = name
-                        await self._run_wt_commands(init_commands, new_path, env)
+                            config = yaml.safe_load(f) or {}
+                        init_commands.extend(
+                            normalize_command_list(config.get("init_commands"))
+                        )
                     except Exception as config_err:
                         self.notify(
                             f"Error loading .wt config: {config_err}", severity="error"
                         )
+                if init_commands:
+                    env = os.environ.copy()
+                    env["WORKTREE_BRANCH"] = name
+                    env["MAIN_WORKTREE_PATH"] = main_path
+                    env["WORKTREE_PATH"] = new_path
+                    env["WORKTREE_NAME"] = name
+                    await self._run_wt_commands(init_commands, new_path, env)
                 self.notify(f"Created worktree {name}")
                 self.refresh_data()
             except Exception as e:
@@ -945,8 +967,12 @@ class GitWtStatus(App):
         )
         untracked_patches: List[str] = []
         untracked_files = [f for f in untracked.splitlines() if f]
-        max_untracked_diffs = 10
-        if len(untracked_files) > max_untracked_diffs:
+        max_untracked_diffs = self._config.max_untracked_diffs
+        if max_untracked_diffs <= 0:
+            if untracked_files:
+                untracked_patches.append("# Note: Untracked diffs disabled\n")
+            untracked_files = []
+        elif len(untracked_files) > max_untracked_diffs:
             untracked_files = untracked_files[:max_untracked_diffs]
             untracked_patches.append(
                 f"# Note: Showing first {max_untracked_diffs} untracked files (total: {len(untracked.splitlines())})\n"
@@ -983,8 +1009,8 @@ class GitWtStatus(App):
         diff_text = "\n\n".join(parts).strip("\n")
         if not diff_text:
             return "", False
-        max_chars = 200_000
-        if len(diff_text) > max_chars:
+        max_chars = self._config.max_diff_chars
+        if max_chars > 0 and len(diff_text) > max_chars:
             diff_text = diff_text[:max_chars] + "\n\n# [truncated]"
         return await self._apply_delta(diff_text)
 
@@ -1026,8 +1052,8 @@ class GitWtStatus(App):
         diff_text = diff_raw.strip("\n")
         if not diff_text:
             return info, "", False
-        max_chars = 200_000
-        if len(diff_text) > max_chars:
+        max_chars = self._config.max_diff_chars
+        if max_chars > 0 and len(diff_text) > max_chars:
             diff_text = diff_text[:max_chars] + "\n\n# [truncated]"
         diff_text, use_delta = await self._apply_delta(diff_text)
         return info, diff_text, use_delta
@@ -1078,22 +1104,26 @@ class GitWtStatus(App):
             self.notify(f"Deleting {wt.branch}...")
             try:
                 main_path = await self._get_main_worktree_path()
+                terminate_commands = list(self._config.terminate_commands)
                 config_path = os.path.join(main_path, ".wt")
                 if os.path.exists(config_path):
                     try:
                         with open(config_path, "r") as f:
-                            config = yaml.safe_load(f)
-                        terminate_commands = config.get("terminate_commands", [])
-                        env = os.environ.copy()
-                        env["WORKTREE_BRANCH"] = wt.branch
-                        env["MAIN_WORKTREE_PATH"] = main_path
-                        env["WORKTREE_PATH"] = path
-                        env["WORKTREE_NAME"] = os.path.basename(path)
-                        await self._run_wt_commands(terminate_commands, main_path, env)
+                            config = yaml.safe_load(f) or {}
+                        terminate_commands.extend(
+                            normalize_command_list(config.get("terminate_commands"))
+                        )
                     except Exception as config_err:
                         self.notify(
                             f"Error loading .wt config: {config_err}", severity="error"
                         )
+                if terminate_commands:
+                    env = os.environ.copy()
+                    env["WORKTREE_BRANCH"] = wt.branch
+                    env["MAIN_WORKTREE_PATH"] = main_path
+                    env["WORKTREE_PATH"] = path
+                    env["WORKTREE_NAME"] = os.path.basename(path)
+                    await self._run_wt_commands(terminate_commands, main_path, env)
                 removed = await self._run_command_checked(
                     ["git", "worktree", "remove", "--force", path],
                     cwd=None,
@@ -1142,22 +1172,26 @@ class GitWtStatus(App):
             self.notify(f"Absorbing {wt.branch}...")
             try:
                 main_path = await self._get_main_worktree_path()
+                terminate_commands = list(self._config.terminate_commands)
                 config_path = os.path.join(main_path, ".wt")
                 if os.path.exists(config_path):
                     try:
                         with open(config_path, "r") as f:
-                            config = yaml.safe_load(f)
-                        terminate_commands = config.get("terminate_commands", [])
-                        env = os.environ.copy()
-                        env["WORKTREE_BRANCH"] = wt.branch
-                        env["MAIN_WORKTREE_PATH"] = main_path
-                        env["WORKTREE_PATH"] = path
-                        env["WORKTREE_NAME"] = os.path.basename(path)
-                        await self._run_wt_commands(terminate_commands, main_path, env)
+                            config = yaml.safe_load(f) or {}
+                        terminate_commands.extend(
+                            normalize_command_list(config.get("terminate_commands"))
+                        )
                     except Exception as config_err:
                         self.notify(
                             f"Error loading .wt config: {config_err}", severity="error"
                         )
+                if terminate_commands:
+                    env = os.environ.copy()
+                    env["WORKTREE_BRANCH"] = wt.branch
+                    env["MAIN_WORKTREE_PATH"] = main_path
+                    env["WORKTREE_PATH"] = path
+                    env["WORKTREE_NAME"] = os.path.basename(path)
+                    await self._run_wt_commands(terminate_commands, main_path, env)
                 main_branch = await self.get_main_branch()
                 checked_out = await self._run_command_checked(
                     ["git", "checkout", main_branch],

@@ -136,6 +136,10 @@ settings. Example:
 
 ```yaml
 worktree_dir: ~/.local/share/worktrees
+sort_by_active: true
+auto_fetch_prs: false
+max_untracked_diffs: 10
+max_diff_chars: 200000
 init_commands:
   - link_topsymlinks
 terminate_commands:
@@ -147,3 +151,6 @@ Notes:
 - `--worktree-dir` overrides `worktree_dir`.
 - `init_commands` and `terminate_commands` run before any repo-specific `.wt`
   commands (if present).
+- Set `sort_by_active` to `false` to sort by path.
+- Set `auto_fetch_prs` to `true` to fetch PR data on startup.
+- Use `max_untracked_diffs: 0` to hide untracked diffs; `max_diff_chars: 0` disables truncation.
