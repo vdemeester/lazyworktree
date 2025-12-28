@@ -2,16 +2,12 @@ import pytest
 
 from lazyworktree.app import GitWtStatus
 
-from tests.utils import FakeGit
+from tests.utils import FakeGit, make_git_service
 
 
 class FakeApp(GitWtStatus):
     def __init__(self, fake: FakeGit) -> None:
-        super().__init__()
-        self._fake = fake
-
-    async def run_git(self, args, cwd=None, ok_returncodes=(0,), strip=True) -> str:
-        return await self._fake(args, cwd=cwd, ok_returncodes=ok_returncodes, strip=strip)
+        super().__init__(git_service=make_git_service(fake))
 
     async def _apply_delta(self, diff_text: str) -> tuple[str, bool]:
         return diff_text, False
@@ -20,8 +16,14 @@ class FakeApp(GitWtStatus):
 @pytest.mark.asyncio
 async def test_build_diff_text_combines_sections_and_limits_untracked() -> None:
     fake = FakeGit()
-    fake.set(["git", "diff", "--cached", "--patch", "--no-color"], "staged diff\n", cwd="/repo/wt1")
-    fake.set(["git", "diff", "--patch", "--no-color"], "unstaged diff\n", cwd="/repo/wt1")
+    fake.set(
+        ["git", "diff", "--cached", "--patch", "--no-color"],
+        "staged diff\n",
+        cwd="/repo/wt1",
+    )
+    fake.set(
+        ["git", "diff", "--patch", "--no-color"], "unstaged diff\n", cwd="/repo/wt1"
+    )
     untracked_files = [f"file{i}.txt" for i in range(12)]
     fake.set(
         ["git", "ls-files", "--others", "--exclude-standard"],

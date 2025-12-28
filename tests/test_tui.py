@@ -33,7 +33,9 @@ async def test_tui_keyboard_flow(fake_repo, monkeypatch) -> None:
 
         start_row = table.cursor_row
         await pilot.press("j")
-        await wait_for(lambda: table.cursor_row is not None and table.cursor_row != start_row)
+        await wait_for(
+            lambda: table.cursor_row is not None and table.cursor_row != start_row
+        )
 
         await pilot.press("?")
         await wait_for(lambda: isinstance(app.screen, HelpScreen))
@@ -41,13 +43,17 @@ async def test_tui_keyboard_flow(fake_repo, monkeypatch) -> None:
         await wait_for(lambda: not isinstance(app.screen, HelpScreen))
 
         await pilot.press("/")
-        await wait_for(lambda: app.query_one("#filter-container").styles.display == "block")
+        await wait_for(
+            lambda: app.query_one("#filter-container").styles.display == "block"
+        )
         filter_input = app.query_one("#filter-input", Input)
         await wait_for(lambda: app.focused is filter_input)
         await pilot.press("f", "e", "a", "t", "u", "r", "e", "1")
         await wait_for(lambda: filter_input.value == "feature1")
         await pilot.press("enter")
-        await wait_for(lambda: app.query_one("#filter-container").styles.display == "none")
+        await wait_for(
+            lambda: app.query_one("#filter-container").styles.display == "none"
+        )
         await wait_for(lambda: getattr(app.focused, "id", None) == "worktree-table")
         assert table.row_count == 1
 

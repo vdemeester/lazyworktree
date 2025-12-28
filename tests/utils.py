@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Iterable, Callable
 import asyncio
+
+from lazyworktree.git_service import GitService
 
 
 class FakeGit:
@@ -26,6 +27,18 @@ class FakeGit:
         return out.strip() if strip else out
 
 
+def noop_notify(message: str, severity: str = "error") -> None:
+    return
+
+
+def noop_notify_once(key: str, message: str, severity: str = "error") -> None:
+    return
+
+
+def make_git_service(fake: FakeGit) -> GitService:
+    return GitService(noop_notify, noop_notify_once, runner=fake)
+
+
 async def wait_for_workers(app) -> None:
     while True:
         workers = list(app.workers)
@@ -38,7 +51,9 @@ async def wait_for_workers(app) -> None:
                 raise
 
 
-async def wait_for(predicate: Callable[[], bool], *, timeout: float = 1.0, interval: float = 0.01) -> None:
+async def wait_for(
+    predicate: Callable[[], bool], *, timeout: float = 1.0, interval: float = 0.01
+) -> None:
     loop = asyncio.get_running_loop()
     start = loop.time()
     while True:

@@ -2,16 +2,7 @@ import pytest
 
 from lazyworktree.app import GitWtStatus
 
-from tests.utils import FakeGit
-
-
-class FakeApp(GitWtStatus):
-    def __init__(self, fake: FakeGit) -> None:
-        super().__init__()
-        self._fake = fake
-
-    async def run_git(self, args, cwd=None, ok_returncodes=(0,), strip=True) -> str:
-        return await self._fake(args, cwd=cwd, ok_returncodes=ok_returncodes, strip=strip)
+from tests.utils import FakeGit, make_git_service
 
 
 @pytest.mark.asyncio
@@ -64,7 +55,7 @@ async def test_get_worktrees_parses_porcelain_and_status() -> None:
         cwd="/repo/feature2",
     )
 
-    app = FakeApp(fake)
+    app = GitWtStatus(git_service=make_git_service(fake))
     worktrees = await app.get_worktrees()
 
     assert [wt.branch for wt in worktrees] == ["main", "feature1", "feature2"]

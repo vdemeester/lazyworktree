@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 from typing import Optional
 
+
 @dataclass
 class PRInfo:
     number: int
     state: str
     title: str
     url: str
+
 
 @dataclass
 class WorktreeInfo:
@@ -23,6 +25,7 @@ class WorktreeInfo:
     modified: int = 0
     staged: int = 0
     divergence: str = ""
+
 
 WORKTREE_DIR = "~/.local/share/worktrees"
 LAST_SELECTED_FILENAME = ".last-selected"

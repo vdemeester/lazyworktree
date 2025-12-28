@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.syntax import Syntax
 
+
 class ConfirmScreen(ModalScreen[bool]):
     CSS = """
     ConfirmScreen {
@@ -39,20 +40,25 @@ class ConfirmScreen(ModalScreen[bool]):
         width: 100%;
     }
     """
+
     def __init__(self, message: str):
         super().__init__()
         self.message = message
+
     def compose(self) -> ComposeResult:
         with Container(id="dialog"):
             yield Label(self.message, id="question")
             yield Button("Cancel", variant="primary", id="cancel")
             yield Button("Confirm", variant="error", id="confirm")
+
     @on(Button.Pressed, "#cancel")
     def cancel(self):
         self.dismiss(False)
+
     @on(Button.Pressed, "#confirm")
     def confirm(self):
         self.dismiss(True)
+
 
 class InputScreen(ModalScreen[str]):
     CSS = """
@@ -70,20 +76,25 @@ class InputScreen(ModalScreen[str]):
         margin-bottom: 1;
     }
     """
+
     def __init__(self, prompt: str, placeholder: str = ""):
         super().__init__()
         self.prompt = prompt
         self.placeholder = placeholder
+
     def compose(self) -> ComposeResult:
         with Container(id="dialog"):
             yield Label(self.prompt)
             yield Input(placeholder=self.placeholder)
+
     @on(Input.Submitted)
     def submit(self, event: Input.Submitted):
         self.dismiss(event.value)
+
     def on_key(self, event):
         if event.key == "escape":
             self.dismiss(None)
+
 
 class HelpScreen(ModalScreen):
     CSS = """
@@ -99,6 +110,7 @@ class HelpScreen(ModalScreen):
     }
     """
     BINDINGS = [("escape", "dismiss", "Close")]
+
     def compose(self) -> ComposeResult:
         help_text = """
 # Git Worktree Status Help
@@ -143,9 +155,11 @@ Press `Ctrl+/` to open the command palette and search for any action.
         with Container(id="help-container"):
             yield Markdown(help_text)
             yield Button("Close", variant="primary", id="close")
+
     @on(Button.Pressed, "#close")
     def action_dismiss(self):
         self.dismiss()
+
 
 class DiffScreen(ModalScreen[None]):
     CSS = """
@@ -181,30 +195,52 @@ class DiffScreen(ModalScreen[None]):
         Binding("g", "scroll_top", "Top", show=False, priority=True),
         Binding("G", "scroll_bottom", "Bottom", show=False, priority=True),
     ]
+
     def __init__(self, title: str, diff_text: str, use_delta: bool = False):
         super().__init__()
         self._title = title
         self._diff_text = diff_text
         self._use_delta = use_delta
+
     def compose(self) -> ComposeResult:
         with Container(id="dialog"):
             with VerticalScroll(id="content"):
                 yield Static(id="diff-content")
+
     def on_mount(self) -> None:
         if self._use_delta:
             text = Text.from_ansi(self._diff_text)
             renderable = Panel(text, title=f"[bold blue]{self._title}[/]", expand=True)
         else:
-            renderable = Panel(Syntax(self._diff_text, "diff", word_wrap=True), title=f"[bold blue]{self._title}[/]", expand=True)
+            renderable = Panel(
+                Syntax(self._diff_text, "diff", word_wrap=True),
+                title=f"[bold blue]{self._title}[/]",
+                expand=True,
+            )
         self.query_one("#diff-content", Static).update(renderable)
         self.query_one("#content", VerticalScroll).focus()
-    def action_close(self) -> None: self.dismiss(None)
-    def action_scroll_down(self) -> None: self.query_one("#content", VerticalScroll).scroll_down(animate=False)
-    def action_scroll_up(self) -> None: self.query_one("#content", VerticalScroll).scroll_up(animate=False)
-    def action_page_down(self) -> None: self.query_one("#content", VerticalScroll).scroll_page_down(animate=False)
-    def action_page_up(self) -> None: self.query_one("#content", VerticalScroll).scroll_page_up(animate=False)
-    def action_scroll_top(self) -> None: self.query_one("#content", VerticalScroll).scroll_home(animate=False)
-    def action_scroll_bottom(self) -> None: self.query_one("#content", VerticalScroll).scroll_end(animate=False)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_up(animate=False)
+
+    def action_page_down(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_page_down(animate=False)
+
+    def action_page_up(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_page_up(animate=False)
+
+    def action_scroll_top(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_home(animate=False)
+
+    def action_scroll_bottom(self) -> None:
+        self.query_one("#content", VerticalScroll).scroll_end(animate=False)
+
 
 class CommitScreen(ModalScreen[None]):
     CSS = """
@@ -244,40 +280,61 @@ class CommitScreen(ModalScreen[None]):
         Binding("g", "scroll_top", "Top", show=False),
         Binding("G", "scroll_bottom", "Bottom", show=False),
     ]
+
     def __init__(self, header_panel, diff_renderable):
         super().__init__()
         self._header_panel = header_panel
         self._diff_renderable = diff_renderable
         self._header_collapsed = False
+
     def compose(self) -> ComposeResult:
         with Container(id="dialog"):
             yield Static(id="header")
             with CommitDiffScroll(id="diff"):
                 yield Static(id="diff-content")
+
     def on_mount(self) -> None:
         self.query_one("#header", Static).update(self._header_panel)
         self.query_one("#diff-content", Static).update(self._diff_renderable)
         self.query_one("#diff", VerticalScroll).focus()
         self._set_header_collapsed(False)
+
     def _set_header_collapsed(self, collapsed: bool) -> None:
         if collapsed == self._header_collapsed:
             return
         header = self.query_one("#header", Static)
         header.styles.display = "none" if collapsed else "block"
         self._header_collapsed = collapsed
-    def action_close(self) -> None: self.dismiss(None)
-    def action_scroll_down(self) -> None: self.query_one("#diff", VerticalScroll).scroll_down(animate=False)
-    def action_scroll_up(self) -> None: self.query_one("#diff", VerticalScroll).scroll_up(animate=False)
-    def action_page_down(self) -> None: self.query_one("#diff", VerticalScroll).scroll_page_down(animate=False)
-    def action_page_up(self) -> None: self.query_one("#diff", VerticalScroll).scroll_page_up(animate=False)
-    def action_scroll_top(self) -> None: self.query_one("#diff", VerticalScroll).scroll_home(animate=False)
-    def action_scroll_bottom(self) -> None: self.query_one("#diff", VerticalScroll).scroll_end(animate=False)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_up(animate=False)
+
+    def action_page_down(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_page_down(animate=False)
+
+    def action_page_up(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_page_up(animate=False)
+
+    def action_scroll_top(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_home(animate=False)
+
+    def action_scroll_bottom(self) -> None:
+        self.query_one("#diff", VerticalScroll).scroll_end(animate=False)
+
 
 class FocusableRichLog(RichLog):
     can_focus = True
 
+
 class CommitDiffScroll(VerticalScroll):
     can_focus = True
+
     def on_key(self, event) -> None:
         key = event.key
         if key in {"j", "down"}:
@@ -308,6 +365,7 @@ class CommitDiffScroll(VerticalScroll):
             self.scroll_end(animate=False)
             self._sync_header()
             event.stop()
+
     def _sync_header(self) -> None:
         screen = getattr(self, "screen", None)
         if screen and hasattr(screen, "_set_header_collapsed"):
