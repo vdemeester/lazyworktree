@@ -16,8 +16,7 @@ A Textual-based TUI for managing Git worktrees efficiently. Visualize status, ma
 
 # Screenshots
 
-<img width="1752" height="1071" alt="image" src="https://github.com/user-attachments/assets/b1143b79-dec3-4c72-be69-f88c49f6d160" />
-<img width="1734" height="1077" alt="image" src="https://github.com/user-attachments/assets/047cba26-7886-436c-a782-0530f8efe12e" />
+<img width="3835" height="2107" alt="image" src="https://github.com/user-attachments/assets/17ac93bf-6247-496c-981d-7156b8186b33" />
 
 ## Prerequisites
 
