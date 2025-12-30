@@ -26,4 +26,6 @@ jobs:
           uv sync
           export PATH="$PATH:$(pwd)/.venv/bin"
           uv add pre-commit
+      - name: Run Pre-commit
+        run: |
           .venv/bin/pre-commit run -a
