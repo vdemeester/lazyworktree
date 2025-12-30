@@ -277,11 +277,10 @@ func NewHelpScreen(maxWidth, maxHeight int) *HelpScreen {
 **Navigation**
 - j / Down: Move cursor down
 - k / Up: Move cursor up
-- 1: Focus Worktree pane
-- 2: Focus Info/Diff pane
-- 3: Focus Log pane
+- 1 / 2 / 3: Focus Worktree / Info / Log pane
+- [ / ]: Previous / Next pane
+- Tab: Next pane (cycle)
 - Enter: Jump to selected worktree (exit and cd)
-- Tab: Cycle focus (table → status → log)
 
 **Diff/Status Pane Navigation (when focused)**
 - j/k: Line up/down
@@ -301,6 +300,7 @@ func NewHelpScreen(maxWidth, maxHeight int) *HelpScreen {
 - D: Delete selected worktree
 - A: Absorb worktree into main (merge + delete)
 - X: Prune merged PR worktrees
+- Ctrl+p: Command Palette
 - f: Fetch all remotes
 - p: Fetch PR status from GitHub
 - r: Refresh list
@@ -322,7 +322,8 @@ Press p to fetch PR information from GitHub.
 **Help Navigation**
 - / to search, Enter to apply, Esc to clear
 - q / Esc to close help
-- Up/Down/Page keys to scroll when not searching`
+- j / k: Scroll up / down
+- Ctrl+d / Ctrl+u: Scroll half page down / up`
 
 	width := 80
 	height := 30
@@ -363,7 +364,7 @@ func NewCommandPaletteScreen(items []paletteItem) *CommandPaletteScreen {
 	ti.CharLimit = 100
 	ti.Prompt = "> "
 	ti.Focus()
-	ti.Width = 58 // fits inside 60 width box with padding
+	ti.Width = 78 // fits inside 80 width box with padding
 
 	screen := &CommandPaletteScreen{
 		items:        items,
@@ -438,6 +439,24 @@ func (s *HelpScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, cmd
 	}
 
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+d", " ":
+			s.viewport.HalfPageDown()
+			return s, nil
+		case "ctrl+u":
+			s.viewport.HalfPageUp()
+			return s, nil
+		case "j", "down":
+			s.viewport.ScrollDown(1)
+			return s, nil
+		case "k", "up":
+			s.viewport.ScrollUp(1)
+			return s, nil
+		}
+	}
+
 	s.viewport, cmd = s.viewport.Update(msg)
 	return s, cmd
 }
@@ -445,7 +464,7 @@ func (s *HelpScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Update handles updates for the command palette
 func (s *CommandPaletteScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	maxVisible := 8
+	maxVisible := 12
 
 	switch m := msg.(type) {
 	case tea.KeyMsg:
@@ -659,8 +678,8 @@ func (s *HelpScreen) View() string {
 
 // View renders the command palette
 func (s *CommandPaletteScreen) View() string {
-	width := 60
-	maxVisible := 8
+	width := 80
+	maxVisible := 12
 
 	// Styles
 	boxStyle := lipgloss.NewStyle().
@@ -720,11 +739,11 @@ func (s *CommandPaletteScreen) View() string {
 		desc := it.description
 
 		// Pad label to align descriptions somewhat
-		labelPad := 25
+		labelPad := 35
 		if len(label) > labelPad {
 			label = label[:labelPad-1] + "…"
 		}
-		paddedLabel := fmt.Sprintf("%-25s", label)
+		paddedLabel := fmt.Sprintf("%-35s", label)
 
 		var line string
 		if i == s.cursor {
