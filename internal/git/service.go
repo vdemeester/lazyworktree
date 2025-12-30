@@ -78,6 +78,11 @@ func (s *Service) ApplyDelta(diff string) string {
 	return string(output)
 }
 
+// UseDelta returns whether delta is available
+func (s *Service) UseDelta() bool {
+	return s.useDelta
+}
+
 // acquireSemaphore acquires a semaphore token
 func (s *Service) acquireSemaphore() {
 	<-s.semaphore

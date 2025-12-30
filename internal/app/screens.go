@@ -275,6 +275,8 @@ func NewHelpScreen(maxWidth, maxHeight int) *HelpScreen {
 - c: Create new worktree
 - d: Manually refresh diff (diffs auto-show when worktree is dirty)
 - D: Delete selected worktree
+- A: Absorb worktree into main (merge + delete)
+- X: Prune merged PR worktrees
 - f: Fetch all remotes
 - p: Fetch PR status from GitHub
 - r: Refresh list
@@ -291,7 +293,12 @@ func NewHelpScreen(maxWidth, maxHeight int) *HelpScreen {
 
 **Performance Note**
 PR data is not fetched by default for speed.
-Press p to fetch PR information from GitHub.`
+Press p to fetch PR information from GitHub.
+
+**Help Navigation**
+- / to search, Enter to apply, Esc to clear
+- q / Esc to close help
+- Up/Down/Page keys to scroll when not searching`
 
 	width := 80
 	height := 30

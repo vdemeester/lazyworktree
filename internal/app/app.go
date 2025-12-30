@@ -96,6 +96,8 @@ type AppModel struct {
 	helpScreen    *HelpScreen
 	inputScreen   *InputScreen
 	inputSubmit   func(string) (tea.Cmd, bool)
+	commitScreen  *CommitScreen
+	welcomeScreen *WelcomeScreen
 	showingFilter bool
 	focusedPane   int // 0=table, 1=status, 2=log
 	windowWidth   int
@@ -122,6 +124,9 @@ type AppModel struct {
 	// Confirm callbacks
 	confirmAction  func() tea.Cmd
 	confirmMessage string
+
+	// Log cache for commit detail viewer
+	logEntries []commitLogEntry
 
 	// Exit
 	selectedPath string
@@ -427,6 +432,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "m":
 			return m, m.showRenameWorktree()
 
+		case "A":
+			return m, m.showAbsorbWorktree()
+
 		case "X":
 			return m, m.showPruneMerged()
 
@@ -469,6 +477,16 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.worktrees = msg.worktrees
 		m.updateTable()
 		m.saveCache()
+		if len(m.worktrees) == 0 {
+			cwd, _ := os.Getwd()
+			m.welcomeScreen = NewWelcomeScreen(cwd, m.getWorktreeDir())
+			m.currentScreen = screenWelcome
+			return m, nil
+		}
+		if m.currentScreen == screenWelcome {
+			m.currentScreen = screenNone
+			m.welcomeScreen = nil
+		}
 		if m.config.AutoFetchPRs && !m.prDataLoaded {
 			return m, m.fetchPRData()
 		}
@@ -497,6 +515,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rows = append(rows, table.Row{entry.sha, entry.message})
 		}
 		m.logTable.SetRows(rows)
+		m.logEntries = msg.log
 		return m, nil
 
 	case debouncedDetailsMsg:
@@ -689,6 +708,7 @@ func (m *AppModel) updateDetailsView() tea.Cmd {
 				})
 			}
 		}
+		m.logEntries = logEntries
 
 		// Build status content with automatic diff if dirty
 		statusContent := m.buildStatusContent(statusRaw)
@@ -959,6 +979,40 @@ func (m *AppModel) showPruneMerged() tea.Cmd {
 	return nil
 }
 
+// showAbsorbWorktree merges selected branch into main and removes the worktree
+func (m *AppModel) showAbsorbWorktree() tea.Cmd {
+	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
+		return nil
+	}
+	wt := m.filteredWts[m.selectedIndex]
+	if wt.IsMain {
+		m.statusContent = "Cannot absorb the main worktree."
+		return nil
+	}
+
+	mainBranch := m.git.GetMainBranch(m.ctx)
+	m.confirmMessage = fmt.Sprintf("Absorb worktree into %s?\n\nPath: %s\nBranch: %s -> %s", mainBranch, wt.Path, wt.Branch, mainBranch)
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			ok := m.git.RunCommandChecked(m.ctx, []string{"git", "-C", wt.Path, "checkout", mainBranch}, "", fmt.Sprintf("Failed to checkout %s", mainBranch))
+			if ok {
+				_ = m.git.RunCommandChecked(m.ctx, []string{"git", "-C", wt.Path, "merge", "--no-edit", wt.Branch}, "", fmt.Sprintf("Failed to merge %s into %s", wt.Branch, mainBranch))
+			}
+
+			m.git.RunCommandChecked(m.ctx, []string{"git", "worktree", "remove", "--force", wt.Path}, "", fmt.Sprintf("Failed to remove worktree %s", wt.Path))
+			m.git.RunCommandChecked(m.ctx, []string{"git", "branch", "-D", wt.Branch}, "", fmt.Sprintf("Failed to delete branch %s", wt.Branch))
+
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return worktreesLoadedMsg{
+				worktrees: worktrees,
+				err:       err,
+			}
+		}
+	}
+	m.currentScreen = screenConfirm
+	return nil
+}
+
 func (m *AppModel) deleteWorktreeCmd(wt *models.WorktreeInfo) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
@@ -1006,8 +1060,29 @@ func (m *AppModel) openPR() tea.Cmd {
 }
 
 func (m *AppModel) openCommitView() tea.Cmd {
-	// Open commit detail view
-	return nil
+	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
+		return nil
+	}
+	if len(m.logEntries) == 0 {
+		return nil
+	}
+
+	cursor := m.logTable.Cursor()
+	if cursor < 0 || cursor >= len(m.logEntries) {
+		return nil
+	}
+	entry := m.logEntries[cursor]
+	wt := m.filteredWts[m.selectedIndex]
+
+	return func() tea.Msg {
+		header := m.git.RunGit(m.ctx, []string{"git", "show", "--quiet", "--pretty=fuller", entry.sha}, wt.Path, []int{0}, false, false)
+		diff := m.git.RunGit(m.ctx, []string{"git", "show", "--patch", entry.sha}, wt.Path, []int{0}, false, false)
+		diff = m.git.ApplyDelta(diff)
+
+		m.currentScreen = screenCommit
+		m.commitScreen = NewCommitScreen(header, diff, m.git.UseDelta())
+		return nil
+	}
 }
 
 func (m *AppModel) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1055,6 +1130,32 @@ func (m *AppModel) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmMessage = ""
 			return m, nil
 		}
+	case screenWelcome:
+		switch msg.String() {
+		case "r", "R":
+			m.currentScreen = screenNone
+			m.welcomeScreen = nil
+			return m, m.refreshWorktrees()
+		case "q", "Q", "esc":
+			m.quitting = true
+			return m, tea.Quit
+		}
+	case screenCommit:
+		if m.commitScreen == nil {
+			m.currentScreen = screenNone
+			return m, nil
+		}
+		switch msg.String() {
+		case "q", "esc":
+			m.commitScreen = nil
+			m.currentScreen = screenNone
+			return m, nil
+		}
+		cs, cmd := m.commitScreen.Update(msg)
+		if updated, ok := cs.(*CommitScreen); ok {
+			m.commitScreen = updated
+		}
+		return m, cmd
 	case screenInput:
 		if m.inputScreen == nil {
 			m.currentScreen = screenNone
@@ -1094,6 +1195,11 @@ func (m *AppModel) renderScreen() string {
 		}
 		m.helpScreen.SetSize(m.windowWidth, m.windowHeight)
 		return m.helpScreen.View()
+	case screenCommit:
+		if m.commitScreen == nil {
+			m.commitScreen = NewCommitScreen("", "", m.git.UseDelta())
+		}
+		return m.commitScreen.View()
 	case screenConfirm:
 		msg := m.confirmMessage
 		if msg == "" && m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
@@ -1102,6 +1208,12 @@ func (m *AppModel) renderScreen() string {
 		}
 		confirmScreen := NewConfirmScreen(msg)
 		return confirmScreen.View()
+	case screenWelcome:
+		if m.welcomeScreen == nil {
+			cwd, _ := os.Getwd()
+			m.welcomeScreen = NewWelcomeScreen(cwd, m.getWorktreeDir())
+		}
+		return m.welcomeScreen.View()
 	case screenInput:
 		if m.inputScreen != nil {
 			content := m.inputScreen.View()

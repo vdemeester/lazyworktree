@@ -15,6 +15,8 @@ The Go port has a **solid architectural foundation** with proper separation of c
 - ✅ Rename worktree implemented with modal validation (non-main guard, conflict checks)
 - ✅ Three-part diff with delta highlighting and auto-diff when dirty
 - ✅ Debounced detail view updates plus vim-style navigation and adaptive layout tuning
+- ✅ Create/Delete/Prune implemented (basic flows; `.wt`/TOFU/env commands still outstanding)
+- ✅ Absorb worktree, Welcome screen trigger, Commit detail viewer wired (no `.wt`/TOFU yet)
 
 ---
 
@@ -28,7 +30,7 @@ The Go port has a **solid architectural foundation** with proper separation of c
 - [x] 2.3 Enhanced Diff View - Three-part diff (Medium complexity) ✅
 
 **Deferred (require Priority 1 infrastructure):**
-- 2.2 Absorb Worktree (needs `.wt` files + TOFU integration)
+- 2.2 Absorb Worktree (needs `.wt` files + TOFU integration for commands)
 - 2.1 Command Palette (complex, nice-to-have)
 
 **Implementation Summary:**
@@ -69,19 +71,19 @@ The Go port has a **solid architectural foundation** with proper separation of c
 - Refresh worktree list after creation
 
 **Dependencies:**
-- InputScreen with callback support
+- InputScreen with callback support ✅ basic two-step input implemented
 - TOFU security integration
 - Command execution with environment variables
 - Repository command loading (`.wt` file)
 
-**Files to Modify:**
-- `internal/app/app.go`: Implement `showCreateWorktree()` at lines 737-740
-- `internal/app/screens.go`: Enhance InputScreen if needed (currently around lines 155-205)
+**Files Modified:**
+- `internal/app/app.go`: `showCreateWorktree()` implemented with two-step prompts (branch + base)
+- `internal/app/screens.go`: InputScreen reused (no schema changes)
 
 ---
 
 ### 1.2 Delete Worktree Command
-**Status:** Partially stubbed at `internal/app/app.go:742-752`
+**Status:** Implemented (confirmation + delete routine) at `internal/app/app.go:744-802`
 **Python Reference:** `lazyworktree/app.py:1390-1419`, `app.py:1346-1388`
 **Complexity:** High
 
@@ -101,9 +103,9 @@ The Go port has a **solid architectural foundation** with proper separation of c
 - Command execution with environment variables
 - Repository command loading (`.wt` file)
 
-**Files to Modify:**
-- `internal/app/app.go`: Implement full delete workflow (lines 742-752)
-- Add helper function for delete routine similar to Python's `_delete_worktree_routine()`
+**Files Modified:**
+- `internal/app/app.go`: Delete workflow implemented (confirmation + routine)
+- Delete helper routine added (`deleteWorktreeCmd`)
 
 ---
 
@@ -130,7 +132,7 @@ The Go port has a **solid architectural foundation** with proper separation of c
 ---
 
 ### 1.4 Prune Merged Worktrees Command
-**Status:** Stubbed at `internal/app/app.go:824-827`
+**Status:** Implemented (confirmation + batch delete) at `internal/app/app.go:824-873`
 **Python Reference:** `lazyworktree/app.py:1421-1453`
 **Complexity:** Medium
 
@@ -177,29 +179,28 @@ The Go port has a **solid architectural foundation** with proper separation of c
 ---
 
 ### 2.2 Absorb Worktree Command
-**Status:** Not implemented
+**Status:** Implemented (basic flow; no `.wt`/TOFU commands yet)
 **Python Reference:** `lazyworktree/app.py:1455-1534`
 **Complexity:** High
 
 **Requirements:**
-- Check selected worktree is not main
-- Show confirmation dialog
-- Run terminate commands with TOFU
-- Checkout main branch in worktree: `git checkout main`
-- Merge current branch into main: `git merge --no-edit <branch>`
-- Remove worktree: `git worktree remove --force <path>`
-- Delete branch: `git branch -D <branch>`
-- Handle merge conflicts gracefully
-- Refresh worktree list
+- Check selected worktree is not main ✅
+- Show confirmation dialog ✅
+- Run terminate commands with TOFU (pending)
+- Checkout main branch in worktree: `git checkout main` ✅
+- Merge current branch into main: `git merge --no-edit <branch>` (best-effort) ✅
+- Remove worktree: `git worktree remove --force <path>` ✅
+- Delete branch: `git branch -D <branch>` ✅
+- Handle merge conflicts gracefully (pending better handling)
+- Refresh worktree list ✅
 
 **Dependencies:**
 - ConfirmScreen (already exists)
 - TOFU security integration
 - Delete worktree routine (from 1.2)
 
-**Files to Modify:**
-- `internal/app/app.go`: Add new action method `showAbsorbWorktree()`
-- Update key bindings to include absorb command
+**Files Modified:**
+- `internal/app/app.go`: Added `showAbsorbWorktree()` and keybinding (`A`)
 
 ---
 
@@ -313,13 +314,13 @@ The Go port has a **solid architectural foundation** with proper separation of c
 ---
 
 ### 3.3 Welcome Screen Workflow
-**Status:** Screen exists but not integrated
+**Status:** Integrated
 **Python Reference:** `lazyworktree/app.py:573-620`
 **Complexity:** Low
 
 **Current Status:**
 - WelcomeScreen exists at `internal/app/screens.go:417-480`
-- Not shown when no worktrees found
+- Shown when worktree list is empty; retry (r) refreshes, q/esc quits
 
 **Requirements:**
 - Show welcome screen when worktree list is empty
@@ -333,13 +334,13 @@ The Go port has a **solid architectural foundation** with proper separation of c
 ---
 
 ### 3.4 Commit Detail Viewer
-**Status:** Basic viewer exists but not integrated
+**Status:** Integrated
 **Python Reference:** `lazyworktree/app.py:1235-1269`, `app.py:1572-1609`
 **Complexity:** Medium
 
 **Current Status:**
 - CommitScreen exists at `internal/app/screens.go:498-551`
-- Not triggered when selecting commit in log pane
+- Triggered on Enter in log pane; shows `git show` output with delta if available
 
 **Requirements:**
 - Press Enter in log pane to open commit detail
@@ -348,8 +349,8 @@ The Go port has a **solid architectural foundation** with proper separation of c
 - Scrollable content with vim-style navigation
 - Header collapses on scroll (optional enhancement)
 
-**Files to Modify:**
-- `internal/app/app.go`: Add commit selection handling at lines 359-369
+**Files Modified:**
+- `internal/app/app.go`: Added commit selection handling at lines 359-369 and commit viewer logic
 
 ---
 
@@ -416,13 +417,13 @@ The Go port has a **solid architectural foundation** with proper separation of c
 
 ### Phase 1: Core Mutations (Weeks 1-2)
 - [ ] Implement `.wt` file loading and TOFU integration
-- [ ] Implement Create Worktree (1.1)
-- [ ] Implement Delete Worktree (1.2)
+- [x] Implement Create Worktree (1.1) — basic flow without `.wt`/TOFU
+- [x] Implement Delete Worktree (1.2) — basic flow without `.wt`/TOFU
 - [x] Implement Rename Worktree (1.3)
 
 ### Phase 2: Advanced Operations (Weeks 3-4)
-- [ ] Implement Prune Merged (1.4)
-- [ ] Implement Absorb Worktree (2.2)
+- [x] Implement Prune Merged (1.4)
+- [x] Implement Absorb Worktree (2.2) — basic, TOFU/.wt commands pending
 - [x] Enhance Diff View (2.3)
 - [x] Add Delta Integration (2.4)
 
@@ -471,22 +472,22 @@ The Go port has a **solid architectural foundation** with proper separation of c
 ## File-by-File Migration Checklist
 
 ### `internal/app/app.go`
-- [ ] Implement `showCreateWorktree()` (lines 737-740)
-- [ ] Complete `showDeleteWorktree()` (lines 742-752)
+- [x] Implement `showCreateWorktree()` (lines 737-782)
+- [x] Complete `showDeleteWorktree()` (lines 744-802)
 - [x] Implement `showRenameWorktree()` (lines 773-822)
-- [ ] Implement `showPruneMerged()` (lines 824-827)
-- [ ] Add `showAbsorbWorktree()` method
+- [x] Implement `showPruneMerged()` (lines 824-873)
+- [x] Add `showAbsorbWorktree()` method (lines 875-907)
 - [x] Enhance `showDiff()` with three-part diff + delta piping (lines 755-770)
 - [x] Add debounce logic for detail updates (see `debouncedUpdateDetailsView` around lines 691-708)
-- [ ] Integrate commit detail viewer (trigger at lines 359-369; `openCommitView()` stub at 856-859)
+- [x] Integrate commit detail viewer (trigger at lines 359-369; `openCommitView()` implemented)
 - [ ] Add command palette keybinding
-- [ ] Add welcome screen trigger
+- [x] Add welcome screen trigger
 
 ### `internal/app/screens.go`
 - [ ] Enhance InputScreen with validation callback support (error display exists; multi-step callback still manual)
 - [ ] Add CommandPaletteScreen
 - [ ] Add DiffScreen (full-screen viewer)
-- [ ] Integrate CommitScreen (implemented at lines 498-551 but unused)
+- [x] Integrate CommitScreen (implemented at lines 498-551 and used)
 
 ### `internal/config/config.go`
 - [ ] Add `.wt` file loading
@@ -577,17 +578,17 @@ The Go implementation will achieve feature parity when:
 | PR Integration | ✅ | ✅ | Complete | - |
 | Status View | ✅ | ✅ | Complete | - |
 | Log View | ✅ | ✅ | Complete | - |
-| Create Worktree | ✅ | ❌ | Stubbed | P1 |
-| Delete Worktree | ✅ | ❌ | Stubbed | P1 |
+| Create Worktree | ✅ | ⚠️ | Basic (no `.wt`/TOFU) | P1 |
+| Delete Worktree | ✅ | ⚠️ | Basic (no `.wt`/TOFU) | P1 |
 | Rename Worktree | ✅ | ✅ | Complete | P1 |
-| Prune Merged | ✅ | ❌ | Stubbed | P1 |
-| Absorb Worktree | ✅ | ❌ | Missing | P2 |
+| Prune Merged | ✅ | ✅ | Complete | P1 |
+| Absorb Worktree | ✅ | ⚠️ | Basic (no `.wt`/TOFU) | P2 |
 | Diff View (Basic) | ✅ | ✅ | Complete | - |
 | Diff View (Full) | ✅ | ❌ | Missing | P2 |
 | Delta Integration | ✅ | ✅ | Complete | P2 |
 | Command Palette | ✅ | ❌ | Missing | P2 |
-| Commit Details | ✅ | ⚠️ | Not integrated | P3 |
-| Welcome Screen | ✅ | ⚠️ | Not integrated | P3 |
+| Commit Details | ✅ | ✅ | Complete | P3 |
+| Welcome Screen | ✅ | ✅ | Complete | P3 |
 | .wt Execution | ✅ | ❌ | Missing | P1 |
 | TOFU Security | ✅ | ⚠️ | Not integrated | P1 |
 | link_topsymlinks | ✅ | ❌ | Missing | P3 |
