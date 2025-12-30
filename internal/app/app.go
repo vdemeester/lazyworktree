@@ -42,6 +42,12 @@ type (
 	debouncedDetailsMsg struct {
 		selectedIndex int
 	}
+	pruneResultMsg struct {
+		worktrees []*models.WorktreeInfo
+		err       error
+		pruned    int
+		failed    int
+	}
 )
 
 type commitLogEntry struct {
@@ -112,6 +118,10 @@ type AppModel struct {
 	// Debouncing
 	detailUpdateCancel  context.CancelFunc
 	pendingDetailsIndex int
+
+	// Confirm callbacks
+	confirmAction  func() tea.Cmd
+	confirmMessage string
 
 	// Exit
 	selectedPath string
@@ -502,6 +512,19 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusContent = fmt.Sprintf("Error: %v", msg.err)
 		}
 		return m, nil
+
+	case pruneResultMsg:
+		if msg.err == nil && msg.worktrees != nil {
+			m.worktrees = msg.worktrees
+			m.updateTable()
+			m.saveCache()
+		}
+		summary := fmt.Sprintf("Pruned %d merged worktrees", msg.pruned)
+		if msg.failed > 0 {
+			summary = fmt.Sprintf("%s (%d failed)", summary, msg.failed)
+		}
+		m.statusContent = summary
+		return m, nil
 	}
 
 	return m, tea.Batch(cmds...)
@@ -733,8 +756,68 @@ func (m *AppModel) fetchRemotes() tea.Cmd {
 }
 
 func (m *AppModel) showCreateWorktree() tea.Cmd {
-	// This would show an input screen - simplified for now
-	return nil
+	defaultBase := m.git.GetMainBranch(m.ctx)
+
+	// Stage 1: branch name
+	m.inputScreen = NewInputScreen("Create worktree: branch name", "feature/my-branch", "")
+	m.inputSubmit = func(value string) (tea.Cmd, bool) {
+		newBranch := strings.TrimSpace(value)
+		if newBranch == "" {
+			m.inputScreen.errorMsg = "Branch name cannot be empty."
+			return nil, false
+		}
+
+		// Prevent duplicates
+		for _, wt := range m.worktrees {
+			if wt.Branch == newBranch {
+				m.inputScreen.errorMsg = fmt.Sprintf("Branch %q already exists.", newBranch)
+				return nil, false
+			}
+		}
+
+		targetPath := filepath.Join(m.getWorktreeDir(), newBranch)
+		if _, err := os.Stat(targetPath); err == nil {
+			m.inputScreen.errorMsg = fmt.Sprintf("Path already exists: %s", targetPath)
+			return nil, false
+		}
+
+		// Stage 2: base branch prompt
+		m.inputScreen = NewInputScreen(fmt.Sprintf("Base branch for %q", newBranch), defaultBase, defaultBase)
+		m.inputSubmit = func(baseVal string) (tea.Cmd, bool) {
+			baseBranch := strings.TrimSpace(baseVal)
+			if baseBranch == "" {
+				m.inputScreen.errorMsg = "Base branch cannot be empty."
+				return nil, false
+			}
+
+			m.inputScreen.errorMsg = ""
+			return func() tea.Msg {
+				if err := os.MkdirAll(m.getWorktreeDir(), 0o755); err != nil {
+					return errMsg{err: fmt.Errorf("failed to create worktree directory: %w", err)}
+				}
+
+				ok := m.git.RunCommandChecked(
+					m.ctx,
+					[]string{"git", "worktree", "add", "-b", newBranch, targetPath, baseBranch},
+					"",
+					fmt.Sprintf("Failed to create worktree %s", newBranch),
+				)
+				if !ok {
+					return errMsg{err: fmt.Errorf("failed to create worktree %s", newBranch)}
+				}
+
+				worktrees, err := m.git.GetWorktrees(m.ctx)
+				return worktreesLoadedMsg{
+					worktrees: worktrees,
+					err:       err,
+				}
+			}, true
+		}
+
+		return textinput.Blink, false
+	}
+	m.currentScreen = screenInput
+	return textinput.Blink
 }
 
 func (m *AppModel) showDeleteWorktree() tea.Cmd {
@@ -746,7 +829,8 @@ func (m *AppModel) showDeleteWorktree() tea.Cmd {
 		return nil
 	}
 	m.currentScreen = screenConfirm
-	// Store action to perform
+	m.confirmAction = m.deleteWorktreeCmd(wt)
+	m.confirmMessage = fmt.Sprintf("Delete worktree?\n\nPath: %s\nBranch: %s", wt.Path, wt.Branch)
 	return nil
 }
 
@@ -820,8 +904,74 @@ func (m *AppModel) showRenameWorktree() tea.Cmd {
 }
 
 func (m *AppModel) showPruneMerged() tea.Cmd {
-	// Show confirmation for pruning merged worktrees
+	merged := []*models.WorktreeInfo{}
+	for _, wt := range m.worktrees {
+		if wt.IsMain {
+			continue
+		}
+		if wt.PR != nil && strings.EqualFold(wt.PR.State, "MERGED") {
+			merged = append(merged, wt)
+		}
+	}
+
+	if len(merged) == 0 {
+		m.statusContent = "No merged PR worktrees to prune."
+		return nil
+	}
+
+	// Build confirmation message (truncate if long)
+	lines := []string{}
+	limit := len(merged)
+	if limit > 10 {
+		limit = 10
+	}
+	for i := 0; i < limit; i++ {
+		lines = append(lines, fmt.Sprintf("- %s (%s)", merged[i].Path, merged[i].Branch))
+	}
+	if len(merged) > limit {
+		lines = append(lines, fmt.Sprintf("...and %d more", len(merged)-limit))
+	}
+
+	m.confirmMessage = "Prune merged PR worktrees?\n\n" + strings.Join(lines, "\n")
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			pruned := 0
+			failed := 0
+			for _, wt := range merged {
+				ok1 := m.git.RunCommandChecked(m.ctx, []string{"git", "worktree", "remove", "--force", wt.Path}, "", fmt.Sprintf("Failed to remove worktree %s", wt.Path))
+				ok2 := m.git.RunCommandChecked(m.ctx, []string{"git", "branch", "-D", wt.Branch}, "", fmt.Sprintf("Failed to delete branch %s", wt.Branch))
+				if ok1 && ok2 {
+					pruned++
+				} else {
+					failed++
+				}
+			}
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return pruneResultMsg{
+				worktrees: worktrees,
+				err:       err,
+				pruned:    pruned,
+				failed:    failed,
+			}
+		}
+	}
+	m.currentScreen = screenConfirm
 	return nil
+}
+
+func (m *AppModel) deleteWorktreeCmd(wt *models.WorktreeInfo) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			m.git.RunCommandChecked(m.ctx, []string{"git", "worktree", "remove", "--force", wt.Path}, "", fmt.Sprintf("Failed to remove worktree %s", wt.Path))
+			m.git.RunCommandChecked(m.ctx, []string{"git", "branch", "-D", wt.Branch}, "", fmt.Sprintf("Failed to delete branch %s", wt.Branch))
+
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return worktreesLoadedMsg{
+				worktrees: worktrees,
+				err:       err,
+			}
+		}
+	}
 }
 
 func (m *AppModel) openLazyGit() tea.Cmd {
@@ -887,11 +1037,22 @@ func (m *AppModel) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case screenConfirm:
 		if msg.String() == "y" || msg.String() == "enter" {
-			// Perform delete
+			// Perform confirmed action (delete, prune, etc.)
+			var cmd tea.Cmd
+			if m.confirmAction != nil {
+				cmd = m.confirmAction()
+			}
 			m.currentScreen = screenNone
-			return m, m.refreshWorktrees()
+			m.confirmAction = nil
+			m.confirmMessage = ""
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
 		} else if msg.String() == "n" || msg.String() == "esc" {
 			m.currentScreen = screenNone
+			m.confirmAction = nil
+			m.confirmMessage = ""
 			return m, nil
 		}
 	case screenInput:
@@ -934,11 +1095,13 @@ func (m *AppModel) renderScreen() string {
 		m.helpScreen.SetSize(m.windowWidth, m.windowHeight)
 		return m.helpScreen.View()
 	case screenConfirm:
-		if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
+		msg := m.confirmMessage
+		if msg == "" && m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
 			wt := m.filteredWts[m.selectedIndex]
-			confirmScreen := NewConfirmScreen(fmt.Sprintf("Delete worktree?\n\nPath: %s\nBranch: %s", wt.Path, wt.Branch))
-			return confirmScreen.View()
+			msg = fmt.Sprintf("Delete worktree?\n\nPath: %s\nBranch: %s", wt.Path, wt.Branch)
 		}
+		confirmScreen := NewConfirmScreen(msg)
+		return confirmScreen.View()
 	case screenInput:
 		if m.inputScreen != nil {
 			content := m.inputScreen.View()
