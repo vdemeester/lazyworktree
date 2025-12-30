@@ -18,6 +18,8 @@ jobs:
       - uses: alexellis/arkade-get@master
         with:
           golangci-lint: latest
+      - name: Set up Gofumpt
+        uses: luisnquin/setup-gofumpt@v2
       - name: Install dependencies
         run: |
           pip install -U uv
