@@ -26,6 +26,16 @@ The Go port has a **solid architectural foundation** with proper separation of c
 
 **Status:** Feature parity ~95% complete. Focus now on remaining edge cases and test coverage.
 
+**Latest Updates (PR Info Display Fix):**
+- ✅ Fixed info panel PR display to match Python version:
+  - White styled PR number (`#123`)
+  - Colored state in brackets (green=OPEN, magenta=MERGED, red=CLOSED)
+  - Blue underlined URL on separate line
+  - Colored divergence arrows (cyan ↑, red ↓)
+- ✅ Fixed info panel not refreshing after PR data loads (added `updateDetailsView()` call in `prDataLoadedMsg` handler)
+- ✅ Added dynamic "o Open PR" hint in footer (only shown when current worktree has PR info)
+- ⚠️ Table PR column uses plain text (bubbles table doesn't support ANSI styling in cells, unlike Python's Textual/Rich)
+
 **P1/P2 Complete:**
 - [x] 1.1 Create Worktree Command ✅
 - [x] 1.2 Delete Worktree Command ✅
@@ -61,7 +71,7 @@ The Go port has a **solid architectural foundation** with proper separation of c
 7. ✅ Adaptive layout: Right pane expands to ~80% when focused for better diff/log viewing
 
 **Files Modified:**
-- `internal/app/app.go` - Added debouncing, delta usage, three-part diff integration, auto-diff display, improved status formatting, viewport navigation
+- `internal/app/app.go` - Added debouncing, delta usage, three-part diff integration, auto-diff display, improved status formatting, viewport navigation, PR info display fixes (buildInfoContent with styled PR/URL/divergence, prDataLoadedMsg refresh, dynamic footer hint)
 - `internal/app/screens.go` - Updated help text with new navigation keys
 - `internal/git/service.go` - Added delta detection/application, BuildThreePartDiff()
 
@@ -482,6 +492,7 @@ The Go port has a **solid architectural foundation** with proper separation of c
 3. **Environment Variable Expansion**: Python's `os.path.expanduser()` → Go's `os.ExpandEnv()` or `filepath.Join(os.Getenv("HOME"), ...)`
 4. **YAML Parsing**: Python's type coercion is more forgiving; Go needs explicit handling
 5. **Command Execution**: Python's `asyncio.create_subprocess_exec` → Go's `exec.CommandContext` (already done)
+6. **Table Cell Styling**: Python's Textual/Rich supports markup in table cells (`[white]#123[/]`); bubbles table doesn't handle ANSI escape codes in cells (causes garbled output). Workaround: use plain text in table cells, styled content in viewport/info panels only.
 
 ---
 

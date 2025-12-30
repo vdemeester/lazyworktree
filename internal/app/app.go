@@ -2045,8 +2045,8 @@ func (m *AppModel) buildInfoContent(wt *models.WorktreeInfo) string {
 	}
 	if wt.Divergence != "" {
 		// Colorize arrows to match Python: cyan ↑, red ↓
-		cyanStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))  // cyan
-		redStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))   // red
+		cyanStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan
+		redStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // red
 		coloredDiv := strings.ReplaceAll(wt.Divergence, "↑", cyanStyle.Render("↑"))
 		coloredDiv = strings.ReplaceAll(coloredDiv, "↓", redStyle.Render("↓"))
 		infoLines = append(infoLines, fmt.Sprintf("%s %s", labelStyle.Render("Divergence:"), coloredDiv))
