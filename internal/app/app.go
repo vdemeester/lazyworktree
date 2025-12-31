@@ -35,6 +35,8 @@ const (
 	errBranchEmpty           = "Branch name cannot be empty."
 	errNoWorktreeSelected    = "No worktree selected."
 	customCommandPlaceholder = "Custom command"
+
+	detailsCacheTTL = 2 * time.Second
 )
 
 type (
@@ -59,6 +61,11 @@ type (
 	}
 	cachedWorktreesMsg struct {
 		worktrees []*models.WorktreeInfo
+	}
+	detailsCacheEntry struct {
+		statusRaw string
+		logRaw    string
+		fetchedAt time.Time
 	}
 	pruneResultMsg struct {
 		worktrees []*models.WorktreeInfo
@@ -151,6 +158,7 @@ type Model struct {
 	sortByActive      bool
 	prDataLoaded      bool
 	repoKey           string
+	repoKeyOnce       sync.Once
 	currentScreen     screenType
 	helpScreen        *HelpScreen
 	trustScreen       *TrustScreen
@@ -175,6 +183,7 @@ type Model struct {
 	divergenceCache map[string]string
 	notifiedErrors  map[string]bool
 	ciCache         map[string]*ciCacheEntry // branch -> CI checks cache
+	detailsCache    map[string]*detailsCacheEntry
 	worktreesLoaded bool
 
 	// Services
@@ -320,6 +329,7 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 		divergenceCache: make(map[string]string),
 		notifiedErrors:  make(map[string]bool),
 		ciCache:         make(map[string]*ciCacheEntry),
+		detailsCache:    make(map[string]*detailsCacheEntry),
 		trustManager:    trustManager,
 		ctx:             ctx,
 		cancel:          cancel,
@@ -616,8 +626,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			return m, nil
 		}
-		m.ensureRepoConfig()
 		m.worktrees = msg.worktrees
+		m.detailsCache = make(map[string]*detailsCacheEntry)
+		m.ensureRepoConfig()
 		m.updateTable()
 		m.saveCache()
 		if len(m.worktrees) == 0 {
@@ -1142,9 +1153,7 @@ func (m *Model) updateDetailsView() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		// Get status (using porcelain format for reliable machine parsing)
-		statusRaw := m.git.RunGit(m.ctx, []string{"git", "status", "--porcelain=v2"}, wt.Path, []int{0}, true, false)
-		logRaw := m.git.RunGit(m.ctx, []string{"git", "log", "-20", "--pretty=format:%h%x09%s"}, wt.Path, []int{0}, true, false)
+		statusRaw, logRaw := m.getCachedDetails(wt)
 
 		// Parse log
 		logEntries := []commitLogEntry{}
@@ -1157,16 +1166,7 @@ func (m *Model) updateDetailsView() tea.Cmd {
 				})
 			}
 		}
-		// Build status content with automatic diff if dirty
 		statusContent := m.buildStatusContent(statusRaw)
-		if wt.Dirty {
-			// Automatically show diff when there are changes
-			diff := m.git.BuildThreePartDiff(m.ctx, wt.Path, m.config)
-			diff = m.git.ApplyDelta(m.ctx, diff)
-			if diff != "" {
-				statusContent = statusContent + "\n\n" + diff
-			}
-		}
 
 		return statusUpdatedMsg{
 			info:   m.buildInfoContent(wt),
@@ -2399,8 +2399,47 @@ func (m *Model) getRepoKey() string {
 	if m.repoKey != "" {
 		return m.repoKey
 	}
-	m.repoKey = m.git.ResolveRepoName(m.ctx)
+	m.repoKeyOnce.Do(func() {
+		m.repoKey = m.git.ResolveRepoName(m.ctx)
+	})
 	return m.repoKey
+}
+
+func (m *Model) getCachedDetails(wt *models.WorktreeInfo) (string, string) {
+	if wt == nil || strings.TrimSpace(wt.Path) == "" {
+		return "", ""
+	}
+
+	cacheKey := wt.Path
+	if cached, ok := m.detailsCache[cacheKey]; ok {
+		if time.Since(cached.fetchedAt) < detailsCacheTTL {
+			return cached.statusRaw, cached.logRaw
+		}
+	}
+
+	// Get status (using porcelain format for reliable machine parsing)
+	statusRaw := m.git.RunGit(m.ctx, []string{"git", "status", "--porcelain=v2"}, wt.Path, []int{0}, true, false)
+	logRaw := m.git.RunGit(m.ctx, []string{"git", "log", "-20", "--pretty=format:%h%x09%s"}, wt.Path, []int{0}, true, false)
+
+	m.detailsCache[cacheKey] = &detailsCacheEntry{
+		statusRaw: statusRaw,
+		logRaw:    logRaw,
+		fetchedAt: time.Now(),
+	}
+
+	return statusRaw, logRaw
+}
+
+func (m *Model) getMainWorktreePath() string {
+	for _, wt := range m.worktrees {
+		if wt.IsMain {
+			return wt.Path
+		}
+	}
+	if len(m.worktrees) > 0 {
+		return m.worktrees[0].Path
+	}
+	return ""
 }
 
 func (m *Model) getWorktreeDir() string {
@@ -2559,7 +2598,10 @@ func (m *Model) ensureRepoConfig() {
 	if m.repoConfig != nil || m.repoConfigPath != "" {
 		return
 	}
-	mainPath := m.git.GetMainWorktreePath(m.ctx)
+	mainPath := m.getMainWorktreePath()
+	if mainPath == "" {
+		mainPath = m.git.GetMainWorktreePath(m.ctx)
+	}
 	repoCfg, cfgPath, err := config.LoadRepoConfig(mainPath)
 	if err != nil {
 		m.statusContent = fmt.Sprintf("Failed to load .wt: %v", err)
