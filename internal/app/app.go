@@ -1923,19 +1923,16 @@ func (m *Model) executeCustomCommand(key string) tea.Cmd {
 	}
 
 	var c *exec.Cmd
+	var cmdStr string
 	if customCmd.Wait {
 		// Wrap command with a pause prompt when wait is true
-		wrapper := fmt.Sprintf("%s; echo ''; echo 'Press any key to continue...'; read -n 1", customCmd.Command)
-		// #nosec G204 -- command comes from user's own config file
-		c = exec.Command("bash", "-c", wrapper)
+		cmdStr = fmt.Sprintf("%s; echo ''; echo 'Press any key to continue...'; read -n 1", customCmd.Command)
 	} else {
-		parts := strings.Fields(customCmd.Command)
-		if len(parts) == 0 {
-			return nil
-		}
-		// #nosec G204 -- command comes from user's own config file
-		c = exec.Command(parts[0], parts[1:]...)
+		cmdStr = customCmd.Command
 	}
+	// Always run via shell to support pipes, redirects, and shell features
+	// #nosec G204 -- command comes from user's own config file
+	c = exec.Command("bash", "-c", cmdStr)
 
 	c.Dir = wt.Path
 	c.Env = envVars
