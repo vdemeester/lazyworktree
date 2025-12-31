@@ -319,6 +319,10 @@ CI status is fetched lazily (only for the selected worktree) and cached for 30 s
 - **Background Updates**: As soon as the UI is visible, a background task refreshes the data from Git and updates the cache automatically.
 - **Welcome Screen**: If no worktrees are detected (e.g., during first-time use or in an unconfigured directory), a welcome screen guides you through the setup.
 
+## Trivia
+
+This used to be a python textual application, but the startup-time was too slow and I have decided to move it to a go [charmbracelet bubble](https://github.com/charmbracelet/bubbles) based TUI. You can still see or try if you want the old python interface here https://github.com/chmouel/lazyworktree/tree/python
+
 ## Copyright
 
 [Apache-2.0](./LICENSE)
