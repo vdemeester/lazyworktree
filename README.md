@@ -178,16 +178,15 @@ custom_commands:
     command: zsh
     description: Open shell
     show_help: true
-  t:
+  t: # Run tests and wait for keypress
     command: make test
     description: Run tests
     show_help: false
     wait: true
-  l:
-    command: ls -la
-    description: List files
+  a: # Open CLaude CLI in the selected workspace in a new kitty tab
+    command: "kitten @ launch --type tab --cwd $WORKTREE_PATH -- claude"
+    description: Open Claude
     show_help: true
-    wait: true
 ```
 
 ### Field Reference
