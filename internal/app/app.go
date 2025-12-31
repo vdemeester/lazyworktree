@@ -192,7 +192,6 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 		{Title: "Status", Width: 8},
 		{Title: "±", Width: 10},
 		{Title: "Last Active", Width: 20},
-		{Title: "PR", Width: 15},
 	}
 
 	t := table.New(
@@ -556,6 +555,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.prDataLoaded = true
+			// Update columns before rows to include the PR column
+			m.updateTableColumns(m.worktreeTable.Width())
 			m.updateTable()
 			return m, m.updateDetailsView()
 		}
@@ -926,23 +927,35 @@ func (m *Model) updateTable() {
 			}
 		}
 
-		prStr := "-"
-		if wt.PR != nil {
-			stateLetter := wt.PR.State
-			if stateLetter != "" {
-				stateLetter = stateLetter[:1]
-			}
-			// bubbles table doesn't handle ANSI styling in cells, use plain text
-			prStr = fmt.Sprintf("#%d %s", wt.PR.Number, stateLetter)
-		}
-
-		rows = append(rows, table.Row{
+		row := table.Row{
 			name,
 			status,
 			abStr,
 			wt.LastActive,
-			prStr,
-		})
+		}
+
+		// Only include PR column if PR data has been loaded
+		if m.prDataLoaded {
+			prStr := "-"
+			if wt.PR != nil {
+				// Use Unicode symbols to indicate PR state
+				var stateSymbol string
+				switch wt.PR.State {
+				case "OPEN":
+					stateSymbol = "●"
+				case "MERGED":
+					stateSymbol = "◆"
+				case "CLOSED":
+					stateSymbol = "✕"
+				default:
+					stateSymbol = "?"
+				}
+				prStr = fmt.Sprintf("#%d %s", wt.PR.Number, stateSymbol)
+			}
+			row = append(row, prStr)
+		}
+
+		rows = append(rows, row)
 	}
 
 	m.worktreeTable.SetRows(rows)
@@ -2369,19 +2382,27 @@ func (m *Model) buildStatusContent(statusRaw string) string {
 }
 
 func (m *Model) updateTableColumns(totalWidth int) {
-	worktree := maxInt(12, totalWidth-44)
 	status := 6
 	ab := 7
-	pr := 12
 	last := 15
+
+	// Only include PR column width if PR data has been loaded
+	pr := 0
+	if m.prDataLoaded {
+		pr = 12
+	}
+
+	worktree := maxInt(12, totalWidth-status-ab-last-pr-4)
 	excess := worktree + status + ab + pr + last - totalWidth
 	for excess > 0 && last > 10 {
 		last--
 		excess--
 	}
-	for excess > 0 && pr > 8 {
-		pr--
-		excess--
+	if m.prDataLoaded {
+		for excess > 0 && pr > 8 {
+			pr--
+			excess--
+		}
 	}
 	for excess > 0 && worktree > 12 {
 		worktree--
@@ -2399,13 +2420,18 @@ func (m *Model) updateTableColumns(totalWidth int) {
 		worktree = maxInt(6, worktree-excess)
 	}
 
-	m.worktreeTable.SetColumns([]table.Column{
+	columns := []table.Column{
 		{Title: "Worktree", Width: worktree},
 		{Title: "Status", Width: status},
 		{Title: "±", Width: ab},
 		{Title: "Last Active", Width: last},
-		{Title: "PR", Width: pr},
-	})
+	}
+
+	if m.prDataLoaded {
+		columns = append(columns, table.Column{Title: "PR", Width: pr})
+	}
+
+	m.worktreeTable.SetColumns(columns)
 }
 
 func (m *Model) updateLogColumns(totalWidth int) {
