@@ -1341,6 +1341,7 @@ func (s *CommitScreen) setViewportContent() {
 
 func (s *CommitScreen) buildBody() string {
 	parts := []string{}
+	parts = append(parts, s.renderHeader())
 	if strings.TrimSpace(s.stat) != "" {
 		parts = append(parts, s.stat)
 	}
@@ -1377,8 +1378,6 @@ func (s *CommitScreen) renderHeader() string {
 
 	header := strings.Join(lines, "\n")
 	return lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(colorBorderDim).
 		Padding(0, 1).
 		Render(header)
 }
@@ -1387,14 +1386,11 @@ func (s *CommitScreen) renderHeader() string {
 func (s *CommitScreen) View() string {
 	width := maxInt(100, s.viewport.Width)
 
-	header := s.renderHeader()
-	content := lipgloss.JoinVertical(lipgloss.Left, header, s.viewport.View())
-
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(colorBorder).
 		Padding(0, 1).
 		Width(width)
 
-	return boxStyle.Render(content)
+	return boxStyle.Render(s.viewport.View())
 }
