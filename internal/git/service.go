@@ -214,7 +214,7 @@ func (s *Service) releaseSemaphore() {
 }
 
 // RunGit executes a git command and optionally trims its output.
-func (s *Service) RunGit(ctx context.Context, args []string, cwd string, okReturncodes []int, strip bool, silent bool) string {
+func (s *Service) RunGit(ctx context.Context, args []string, cwd string, okReturncodes []int, strip, silent bool) string {
 	command := strings.Join(args, " ")
 	if command == "" {
 		command = "<empty>"
@@ -283,7 +283,7 @@ func (s *Service) RunGit(ctx context.Context, args []string, cwd string, okRetur
 }
 
 // RunCommandChecked runs the provided git command and reports failures via notify callbacks.
-func (s *Service) RunCommandChecked(ctx context.Context, args []string, cwd string, errorPrefix string) bool {
+func (s *Service) RunCommandChecked(ctx context.Context, args []string, cwd, errorPrefix string) bool {
 	command := strings.Join(args, " ")
 	if command == "" {
 		command = "<empty>"

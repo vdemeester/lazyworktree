@@ -13,6 +13,8 @@ import (
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
+const randomSHA = "abc123"
+
 func TestFilterPaletteItemsEmptyQueryReturnsAll(t *testing.T) {
 	items := []paletteItem{
 		{id: "create", label: "Create worktree", description: "Add a new worktree"},
@@ -327,11 +329,10 @@ func TestParseCommitMetaComplete(t *testing.T) {
 
 func TestParseCommitMetaMinimal(t *testing.T) {
 	// Test with minimal commit metadata (only SHA)
-	raw := "abc123"
-
+	raw := randomSHA
 	meta := parseCommitMeta(raw)
 
-	if meta.sha != "abc123" {
+	if meta.sha != raw {
 		t.Errorf("Expected SHA 'abc123', got %q", meta.sha)
 	}
 	if meta.author != "" {
@@ -357,7 +358,7 @@ func TestParseCommitMetaNoBody(t *testing.T) {
 
 	meta := parseCommitMeta(raw)
 
-	if meta.sha != "abc123" {
+	if meta.sha != randomSHA {
 		t.Errorf("Expected SHA 'abc123', got %q", meta.sha)
 	}
 	if meta.author != "John Doe" {

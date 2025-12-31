@@ -693,7 +693,7 @@ func TestExpandPath(t *testing.T) {
 			cleanup: func() {},
 			validate: func(t *testing.T, result string) {
 				home, _ := os.UserHomeDir()
-				assert.Equal(t, filepath.Join(home, "test/path"), result)
+				assert.Equal(t, filepath.Join(home, "test", "path"), result)
 			},
 		},
 		{

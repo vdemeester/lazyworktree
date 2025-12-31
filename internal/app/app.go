@@ -869,7 +869,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if targetPane == 0 && len(m.filteredWts) > 0 {
 			// Calculate which row was clicked in the worktree table
 			// Account for pane border and title
-			relativeY := mouseY - leftY - 4 // 4 = border + title + header + header_border
+			relativeY := mouseY - leftY - 4
 			if relativeY >= 0 && relativeY < len(m.filteredWts) {
 				// Create a key message to move cursor
 				for i := 0; i < len(m.filteredWts); i++ {
@@ -1005,7 +1005,7 @@ func (m *Model) View() string {
 	return baseView
 }
 
-func (m *Model) overlayPopup(base string, popup string, marginTop int) string {
+func (m *Model) overlayPopup(base, popup string, marginTop int) string {
 	if base == "" || popup == "" {
 		return base
 	}

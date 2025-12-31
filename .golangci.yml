@@ -38,3 +38,8 @@ linters:
       disabled-checks:
         - whyNoLint
         - wrapperFunc
+        - hugeParam
+        - unnamedResult
+        - evalOrder
+        - appendCombine
+        - nestingReduce

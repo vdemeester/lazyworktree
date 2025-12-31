@@ -93,13 +93,13 @@ func TestSymlinkPath(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify symlink exists
-		dstFile := filepath.Join(worktreeDir, "nested/dir/test.txt")
+		dstFile := filepath.Join(worktreeDir, "nested", "dir", "test.txt")
 		linkTarget, err := os.Readlink(dstFile)
 		require.NoError(t, err)
 		assert.Equal(t, srcFile, linkTarget)
 
 		// Verify parent directory was created
-		dstDir := filepath.Join(worktreeDir, "nested/dir")
+		dstDir := filepath.Join(worktreeDir, "nested", "dir")
 		info, err := os.Stat(dstDir)
 		require.NoError(t, err)
 		assert.True(t, info.IsDir())
