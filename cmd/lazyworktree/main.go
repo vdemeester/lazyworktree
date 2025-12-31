@@ -59,7 +59,7 @@ func main() {
 	}
 
 	model := app.NewModel(cfg, initialFilter)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	_, err = p.Run()
 	model.Close()

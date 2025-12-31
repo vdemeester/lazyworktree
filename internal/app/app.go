@@ -282,6 +282,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setWindowSize(msg.Width, msg.Height)
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.KeyMsg:
 		if m.currentScreen != screenNone {
 			return m.handleScreenKey(msg)
@@ -624,6 +627,120 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commitScreen = NewCommitScreen(msg.meta, msg.stat, msg.diff, m.git.UseDelta())
 		m.currentScreen = screenCommit
 		return m, nil
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+// handleMouse processes mouse events for scrolling and clicking
+func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Skip mouse handling when on a modal screen
+	if m.currentScreen != screenNone {
+		return m, nil
+	}
+
+	var cmds []tea.Cmd
+	layout := m.computeLayout()
+
+	// Calculate pane boundaries (accounting for header and filter)
+	headerOffset := 1
+	if m.showingFilter {
+		headerOffset = 2
+	}
+
+	// Left pane boundaries (worktree table)
+	leftX := 0
+	leftY := headerOffset
+	leftMaxX := layout.leftWidth
+	leftMaxY := headerOffset + layout.bodyHeight
+
+	// Right top pane boundaries (info/diff viewport)
+	rightX := layout.leftWidth + layout.gapX
+	rightTopY := headerOffset
+	rightTopMaxX := rightX + layout.rightWidth
+	rightTopMaxY := headerOffset + layout.rightTopHeight
+
+	// Right bottom pane boundaries (log table)
+	rightBottomY := headerOffset + layout.rightTopHeight + layout.gapY
+	rightBottomMaxY := headerOffset + layout.bodyHeight
+
+	// Determine which pane the mouse is in
+	mouseX := msg.X
+	mouseY := msg.Y
+
+	targetPane := -1
+	switch {
+	case mouseX >= leftX && mouseX < leftMaxX && mouseY >= leftY && mouseY < leftMaxY:
+		targetPane = 0 // Worktree table
+	case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightTopY && mouseY < rightTopMaxY:
+		targetPane = 1 // Info/Diff viewport
+	case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightBottomY && mouseY < rightBottomMaxY:
+		targetPane = 2 // Log table
+	}
+
+	switch {
+	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
+		// Click to focus pane and select item
+		if targetPane >= 0 && targetPane != m.focusedPane {
+			m.focusedPane = targetPane
+			switch m.focusedPane {
+			case 0:
+				m.worktreeTable.Focus()
+			case 2:
+				m.logTable.Focus()
+			}
+		}
+
+		// Handle clicks within the pane to select items
+		if targetPane == 0 && len(m.filteredWts) > 0 {
+			// Calculate which row was clicked in the worktree table
+			// Account for pane border and title
+			relativeY := mouseY - leftY - 3 // 3 = border + title + header
+			if relativeY >= 0 && relativeY < len(m.filteredWts) {
+				// Create a key message to move cursor
+				for i := 0; i < len(m.filteredWts); i++ {
+					if i == relativeY {
+						m.worktreeTable.SetCursor(i)
+						cmds = append(cmds, m.debouncedUpdateDetailsView())
+						break
+					}
+				}
+			}
+		} else if targetPane == 2 && len(m.logEntries) > 0 {
+			// Calculate which row was clicked in the log table
+			relativeY := mouseY - rightBottomY - 3
+			if relativeY >= 0 && relativeY < len(m.logEntries) {
+				m.logTable.SetCursor(relativeY)
+			}
+		}
+
+	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonWheelUp:
+		switch targetPane {
+		case 0:
+			// Scroll worktree table up
+			m.worktreeTable, _ = m.worktreeTable.Update(tea.KeyMsg{Type: tea.KeyUp})
+			cmds = append(cmds, m.debouncedUpdateDetailsView())
+		case 1:
+			// Scroll viewport up
+			m.statusViewport.ScrollUp(3)
+		case 2:
+			// Scroll log table up
+			m.logTable, _ = m.logTable.Update(tea.KeyMsg{Type: tea.KeyUp})
+		}
+
+	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonWheelDown:
+		switch targetPane {
+		case 0:
+			// Scroll worktree table down
+			m.worktreeTable, _ = m.worktreeTable.Update(tea.KeyMsg{Type: tea.KeyDown})
+			cmds = append(cmds, m.debouncedUpdateDetailsView())
+		case 1:
+			// Scroll viewport down
+			m.statusViewport.ScrollDown(3)
+		case 2:
+			// Scroll log table down
+			m.logTable, _ = m.logTable.Update(tea.KeyMsg{Type: tea.KeyDown})
+		}
 	}
 
 	return m, tea.Batch(cmds...)

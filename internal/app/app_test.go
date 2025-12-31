@@ -3,6 +3,9 @@ package app
 import (
 	"reflect"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/chmouel/lazyworktree/internal/config"
 )
 
 func TestFilterPaletteItemsEmptyQueryReturnsAll(t *testing.T) {
@@ -40,5 +43,40 @@ func TestFilterPaletteItemsPrefersLabelMatches(t *testing.T) {
 func TestFuzzyScoreLowerMissingChars(t *testing.T) {
 	if _, ok := fuzzyScoreLower("zz", "create worktree"); ok {
 		t.Fatalf("expected fuzzy match to fail")
+	}
+}
+
+func TestHandleMouseDoesNotPanic(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: "/tmp/test",
+	}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	// Test mouse wheel events
+	mouseMsg := tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonWheelUp,
+		X:      10,
+		Y:      5,
+	}
+
+	result, _ := m.handleMouse(mouseMsg)
+	if result == nil {
+		t.Fatal("handleMouse returned nil model")
+	}
+
+	// Test mouse click
+	mouseMsg = tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      10,
+		Y:      5,
+	}
+
+	result, _ = m.handleMouse(mouseMsg)
+	if result == nil {
+		t.Fatal("handleMouse returned nil model")
 	}
 }

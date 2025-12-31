@@ -15,6 +15,7 @@ A Bubble Tea-based TUI for managing Git worktrees efficiently. Visualize status,
 - **Repo Automation**: `.wt` init/terminate commands with TOFU security.
 - **LazyGit Integration**: Launch `lazygit` directly for the selected worktree.
 - **Shell Integration**: Jump (cd) directly to selected worktrees upon exit.
+- **Mouse Support**: Full mouse support for scrolling and clicking to select items and focus panes.
 
 ## Screenshots
 
@@ -165,6 +166,14 @@ You can configure this behavior in `config.yaml` via the `trust_mode` setting:
 | `f`, `/` | Filter worktrees |
 | `s` | Toggle sort (Name/Last Active) |
 | `?` | Show help |
+
+### Mouse Controls
+
+- **Click**: Select and focus panes or items
+- **Scroll Wheel**: Scroll through lists and content
+  - Worktree table (left pane)
+  - Info/Diff viewer (right top pane)
+  - Log table (right bottom pane)
 
 ## Configuration
 
