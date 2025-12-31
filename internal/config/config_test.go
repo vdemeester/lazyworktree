@@ -22,6 +22,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Empty(t, cfg.InitCommands)
 	assert.Empty(t, cfg.TerminateCommands)
 	assert.Empty(t, cfg.DebugLog)
+	assert.NotNil(t, cfg.CustomCommands)
+	assert.Empty(t, cfg.CustomCommands)
 }
 
 func TestNormalizeCommandList(t *testing.T) {
@@ -647,6 +649,273 @@ func TestExpandPath(t *testing.T) {
 			result, err := expandPath(tt.input)
 			require.NoError(t, err)
 			tt.validate(t, result)
+		})
+	}
+}
+
+func TestParseCustomCommands(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    map[string]interface{}
+		expected map[string]*CustomCommand
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: map[string]*CustomCommand{},
+		},
+		{
+			name:     "empty map",
+			input:    map[string]interface{}{},
+			expected: map[string]*CustomCommand{},
+		},
+		{
+			name: "single command with all fields",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command":     "nvim",
+						"description": "Open editor",
+						"show_help":   true,
+						"wait":        true,
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"e": {
+					Command:     "nvim",
+					Description: "Open editor",
+					ShowHelp:    true,
+					Wait:        true,
+				},
+			},
+		},
+		{
+			name: "multiple commands",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command":     "nvim",
+						"description": "Open editor",
+						"show_help":   true,
+					},
+					"s": map[string]interface{}{
+						"command":     "zsh",
+						"description": "Open shell",
+						"show_help":   false,
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"e": {
+					Command:     "nvim",
+					Description: "Open editor",
+					ShowHelp:    true,
+					Wait:        false,
+				},
+				"s": {
+					Command:     "zsh",
+					Description: "Open shell",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+			},
+		},
+		{
+			name: "command with spaces trimmed",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"t": map[string]interface{}{
+						"command":     "  make test  ",
+						"description": "  Run tests  ",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"t": {
+					Command:     "make test",
+					Description: "Run tests",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+			},
+		},
+		{
+			name: "empty command is skipped",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command":     "",
+						"description": "Empty command",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{},
+		},
+		{
+			name: "command with only whitespace is skipped",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command":     "   ",
+						"description": "Whitespace command",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{},
+		},
+		{
+			name: "invalid type for custom_commands is ignored",
+			input: map[string]interface{}{
+				"custom_commands": "not a map",
+			},
+			expected: map[string]*CustomCommand{},
+		},
+		{
+			name: "invalid type for command entry is skipped",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": "not a map",
+					"s": map[string]interface{}{
+						"command": "zsh",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"s": {
+					Command:     "zsh",
+					Description: "",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+			},
+		},
+		{
+			name: "boolean coercion for show_help",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"a": map[string]interface{}{
+						"command":   "cmd1",
+						"show_help": "yes",
+					},
+					"b": map[string]interface{}{
+						"command":   "cmd2",
+						"show_help": "no",
+					},
+					"c": map[string]interface{}{
+						"command":   "cmd3",
+						"show_help": 1,
+					},
+					"d": map[string]interface{}{
+						"command":   "cmd4",
+						"show_help": 0,
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"a": {Command: "cmd1", ShowHelp: true, Wait: false},
+				"b": {Command: "cmd2", ShowHelp: false, Wait: false},
+				"c": {Command: "cmd3", ShowHelp: true, Wait: false},
+				"d": {Command: "cmd4", ShowHelp: false, Wait: false},
+			},
+		},
+		{
+			name: "boolean coercion for wait",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"a": map[string]interface{}{
+						"command": "cmd1",
+						"wait":    "true",
+					},
+					"b": map[string]interface{}{
+						"command": "cmd2",
+						"wait":    "false",
+					},
+					"c": map[string]interface{}{
+						"command": "cmd3",
+						"wait":    1,
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"a": {Command: "cmd1", Wait: true},
+				"b": {Command: "cmd2", Wait: false},
+				"c": {Command: "cmd3", Wait: true},
+			},
+		},
+		{
+			name: "missing fields use defaults",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command": "nvim",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"e": {
+					Command:     "nvim",
+					Description: "",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseCustomCommands(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseConfig_CustomCommands(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    map[string]interface{}
+		validate func(t *testing.T, cfg *AppConfig)
+	}{
+		{
+			name: "custom commands in full config",
+			input: map[string]interface{}{
+				"worktree_dir":   "/tmp/worktrees",
+				"sort_by_active": true,
+				"custom_commands": map[string]interface{}{
+					"e": map[string]interface{}{
+						"command":     "nvim",
+						"description": "Open editor",
+						"show_help":   true,
+						"wait":        false,
+					},
+				},
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Equal(t, "/tmp/worktrees", cfg.WorktreeDir)
+				assert.True(t, cfg.SortByActive)
+				require.Len(t, cfg.CustomCommands, 1)
+				assert.Equal(t, "nvim", cfg.CustomCommands["e"].Command)
+				assert.Equal(t, "Open editor", cfg.CustomCommands["e"].Description)
+				assert.True(t, cfg.CustomCommands["e"].ShowHelp)
+				assert.False(t, cfg.CustomCommands["e"].Wait)
+			},
+		},
+		{
+			name: "no custom commands",
+			input: map[string]interface{}{
+				"worktree_dir": "/tmp/worktrees",
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Empty(t, cfg.CustomCommands)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := parseConfig(tt.input)
+			tt.validate(t, cfg)
 		})
 	}
 }

@@ -158,6 +158,58 @@ You can configure this behavior in `config.yaml` via the `trust_mode` setting:
   - Ensures a `tmp/` directory exists in the new worktree.
   - Automatically runs `direnv allow` if a `.envrc` file is present.
 
+## Custom Commands
+
+You can define custom keybindings in your `~/.config/lazyworktree/config.yaml` to execute commands in the selected worktree. Custom commands are executed interactively (the TUI suspends, just like when launching `lazygit`).
+
+### Configuration Format
+
+Add a `custom_commands` section to your config:
+
+```yaml
+custom_commands:
+  e:
+    command: nvim
+    description: Open editor
+    show_help: true
+  s:
+    command: zsh
+    description: Open shell
+    show_help: true
+  t:
+    command: make test
+    description: Run tests
+    show_help: false
+    wait: true
+  l:
+    command: ls -la
+    description: List files
+    show_help: true
+    wait: true
+```
+
+### Field Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `command` | string | **required** | The command to execute |
+| `description` | string | `""` | Description shown in help screen |
+| `show_help` | bool | `false` | Whether to show this command in the help screen (`?`) |
+| `wait` | bool | `false` | Wait for key press after command completes (useful for quick commands like `ls` or `make test`) |
+
+### Environment Variables
+
+Custom commands have access to the same environment variables as init/terminate commands:
+
+- `WORKTREE_BRANCH`: Name of the git branch
+- `MAIN_WORKTREE_PATH`: Path to the main repository
+- `WORKTREE_PATH`: Path to the selected worktree
+- `WORKTREE_NAME`: Name of the worktree (directory name)
+
+### Key Precedence
+
+**Custom commands take precedence over built-in keys.** If you define a custom command with key `s`, it will override the built-in sort toggle. This allows you to fully customize your workflow.
+
 ## Key Bindings
 
 | Key | Action |
@@ -210,6 +262,12 @@ init_commands:
   - link_topsymlinks
 terminate_commands:
   - echo "Cleaning up $WORKTREE_NAME"
+custom_commands:
+  e:
+    command: nvim
+    description: Open editor
+    show_help: true
+    wait: false
 ```
 
 Notes:

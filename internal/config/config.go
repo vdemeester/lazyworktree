@@ -12,6 +12,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CustomCommand represents a user-defined command binding.
+type CustomCommand struct {
+	Command     string
+	Description string
+	ShowHelp    bool
+	Wait        bool
+}
+
 // AppConfig defines the global lazyworktree configuration options.
 type AppConfig struct {
 	WorktreeDir       string
@@ -23,6 +31,7 @@ type AppConfig struct {
 	MaxDiffChars      int
 	TrustMode         string
 	DebugLog          string
+	CustomCommands    map[string]*CustomCommand
 }
 
 // RepoConfig represents repository-scoped commands from .wt
@@ -40,6 +49,7 @@ func DefaultConfig() *AppConfig {
 		MaxUntrackedDiffs: 10,
 		MaxDiffChars:      200000,
 		TrustMode:         "tofu",
+		CustomCommands:    make(map[string]*CustomCommand),
 	}
 }
 
@@ -116,6 +126,39 @@ func coerceInt(value interface{}, defaultVal int) int {
 	return defaultVal
 }
 
+func parseCustomCommands(data map[string]interface{}) map[string]*CustomCommand {
+	commands := make(map[string]*CustomCommand)
+
+	raw, ok := data["custom_commands"].(map[string]interface{})
+	if !ok {
+		return commands
+	}
+
+	for key, val := range raw {
+		cmdMap, ok := val.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		cmd := &CustomCommand{}
+		if cmdStr, ok := cmdMap["command"].(string); ok {
+			cmd.Command = strings.TrimSpace(cmdStr)
+		}
+		if descStr, ok := cmdMap["description"].(string); ok {
+			cmd.Description = strings.TrimSpace(descStr)
+		}
+		cmd.ShowHelp = coerceBool(cmdMap["show_help"], false)
+		cmd.Wait = coerceBool(cmdMap["wait"], false)
+
+		// Only add if command is not empty
+		if cmd.Command != "" {
+			commands[key] = cmd
+		}
+	}
+
+	return commands
+}
+
 func parseConfig(data map[string]interface{}) *AppConfig {
 	cfg := DefaultConfig()
 
@@ -153,6 +196,8 @@ func parseConfig(data map[string]interface{}) *AppConfig {
 	if cfg.MaxDiffChars < 0 {
 		cfg.MaxDiffChars = 0
 	}
+
+	cfg.CustomCommands = parseCustomCommands(data)
 
 	return cfg
 }

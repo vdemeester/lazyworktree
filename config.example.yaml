@@ -12,3 +12,33 @@ init_commands:
   - link_topsymlinks
 terminate_commands:
   - echo "Cleaning up $WORKTREE_NAME"
+
+# Custom keybindings to run commands in the selected worktree
+# Commands are executed interactively (TUI suspends, like lazygit)
+# Custom commands take precedence over built-in keys (e.g., 's' will override sort toggle)
+# Environment variables available: WORKTREE_PATH, WORKTREE_BRANCH, WORKTREE_NAME, MAIN_WORKTREE_PATH
+#
+# Fields:
+#   command: The command to execute (required)
+#   description: Description shown in help screen (optional)
+#   show_help: Show in help screen (default: false)
+#   wait: Wait for key press after command completes (default: false, useful for quick commands like ls or make test)
+custom_commands:
+  e:
+    command: nvim
+    description: Open editor
+    show_help: true
+  s:
+    command: zsh
+    description: Open shell
+    show_help: true
+  t:
+    command: make test
+    description: Run tests
+    show_help: false
+    wait: true
+  l:
+    command: ls -la
+    description: List files
+    show_help: true
+    wait: true

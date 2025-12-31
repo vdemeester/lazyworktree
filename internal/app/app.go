@@ -318,6 +318,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Check for custom commands first - allows users to override built-in keys
+		if _, ok := m.config.CustomCommands[msg.String()]; ok {
+			return m, m.executeCustomCommand(msg.String())
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.selectedPath != "" {
@@ -502,7 +507,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "?":
 			m.currentScreen = screenHelp
-			m.helpScreen = NewHelpScreen(m.windowWidth, m.windowHeight)
+			m.helpScreen = NewHelpScreen(m.windowWidth, m.windowHeight, m.config.CustomCommands)
 			return m, nil
 
 		case "g":
@@ -1494,6 +1499,51 @@ func (m *Model) openLazyGit() tea.Cmd {
 	})
 }
 
+func (m *Model) executeCustomCommand(key string) tea.Cmd {
+	customCmd, ok := m.config.CustomCommands[key]
+	if !ok || customCmd == nil {
+		return nil
+	}
+
+	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
+		return nil
+	}
+
+	wt := m.filteredWts[m.selectedIndex]
+
+	// Set environment variables
+	env := m.buildCommandEnv(wt.Branch, wt.Path)
+	envVars := os.Environ()
+	for k, v := range env {
+		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	var c *exec.Cmd
+	if customCmd.Wait {
+		// Wrap command with a pause prompt when wait is true
+		wrapper := fmt.Sprintf("%s; echo ''; echo 'Press any key to continue...'; read -n 1", customCmd.Command)
+		// #nosec G204 -- command comes from user's own config file
+		c = exec.Command("bash", "-c", wrapper)
+	} else {
+		parts := strings.Fields(customCmd.Command)
+		if len(parts) == 0 {
+			return nil
+		}
+		// #nosec G204 -- command comes from user's own config file
+		c = exec.Command(parts[0], parts[1:]...)
+	}
+
+	c.Dir = wt.Path
+	c.Env = envVars
+
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return refreshCompleteMsg{}
+	})
+}
+
 func (m *Model) openPR() tea.Cmd {
 	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
 		return nil
@@ -1613,7 +1663,7 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.currentScreen {
 	case screenHelp:
 		if m.helpScreen == nil {
-			m.helpScreen = NewHelpScreen(m.windowWidth, m.windowHeight)
+			m.helpScreen = NewHelpScreen(m.windowWidth, m.windowHeight, m.config.CustomCommands)
 		}
 		if msg.String() == "q" || msg.String() == keyEsc {
 			// If currently searching, esc clears search; otherwise close help

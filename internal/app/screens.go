@@ -2,12 +2,14 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/chmouel/lazyworktree/internal/config"
 )
 
 type screenType int
@@ -319,7 +321,7 @@ func (s *InputScreen) View() string {
 }
 
 // NewHelpScreen initializes help content with the available screen size.
-func NewHelpScreen(maxWidth, maxHeight int) *HelpScreen {
+func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.CustomCommand) *HelpScreen {
 	helpText := `# Git Worktree Status Help
 
 **Navigation**
@@ -372,6 +374,21 @@ Press p to fetch PR information from GitHub.
 - q / Esc to close help
 - j / k: Scroll up / down
 - Ctrl+d / Ctrl+u: Scroll half page down / up`
+
+	// Append custom commands section if any exist with show_help=true
+	if len(customCommands) > 0 {
+		var customKeys []string
+		for key, cmd := range customCommands {
+			if cmd != nil && cmd.ShowHelp {
+				customKeys = append(customKeys, fmt.Sprintf("- %s: %s", key, cmd.Description))
+			}
+		}
+
+		if len(customKeys) > 0 {
+			sort.Strings(customKeys)
+			helpText += "\n\n**Custom Commands**\n" + strings.Join(customKeys, "\n")
+		}
+	}
 
 	width := 80
 	height := 30
