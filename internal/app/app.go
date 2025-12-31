@@ -1444,8 +1444,19 @@ func (m *Model) openPR() tea.Cmd {
 			return errMsg{err: err}
 		}
 
-		// #nosec G204 -- the URL is sanitized and only executed directly as a single argument
-		if err := exec.Command("xdg-open", prURL).Start(); err != nil {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			// #nosec G204 -- the URL is sanitized and only executed directly as a single argument
+			cmd = exec.Command("open", prURL)
+		case "windows":
+			// #nosec G204 -- the URL is sanitized and only executed directly as a single argument
+			cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", prURL)
+		default:
+			// #nosec G204 -- the URL is sanitized and only executed directly as a single argument
+			cmd = exec.Command("xdg-open", prURL)
+		}
+		if err := cmd.Start(); err != nil {
 			return errMsg{err: err}
 		}
 		return nil
