@@ -9,3 +9,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           target: semver:major
+      - uses: ahmadnassri/action-dependabot-auto-merge@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          target: semver:major
+          botName: chmouel
