@@ -1800,7 +1800,15 @@ func (m *Model) showAbsorbWorktree() tea.Cmd {
 	}
 
 	mainBranch := m.git.GetMainBranch(m.ctx)
-	mainPath := m.getMainWorktreePath()
+
+	// Find the main worktree explicitly (don't use fallback)
+	var mainPath string
+	for _, w := range m.worktrees {
+		if w.IsMain {
+			mainPath = w.Path
+			break
+		}
+	}
 	if mainPath == "" {
 		m.statusContent = "Cannot find main worktree."
 		return nil

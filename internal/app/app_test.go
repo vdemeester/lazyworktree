@@ -377,3 +377,106 @@ func TestParseCommitMetaNoBody(t *testing.T) {
 		t.Errorf("Expected empty body, got %v", meta.body)
 	}
 }
+
+func TestShowAbsorbWorktreeNoSelection(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.selectedIndex = -1 // No selection
+
+	cmd := m.showAbsorbWorktree()
+	if cmd != nil {
+		t.Error("Expected nil command when no worktree is selected")
+	}
+}
+
+func TestShowAbsorbWorktreeOnMainWorktree(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+
+	// Set up main worktree
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: "/path/to/main", Branch: "main", IsMain: true},
+	}
+	m.filteredWts = m.worktrees
+	m.selectedIndex = 0
+
+	cmd := m.showAbsorbWorktree()
+	if cmd != nil {
+		t.Error("Expected nil command when trying to absorb main worktree")
+	}
+	if m.statusContent != "Cannot absorb the main worktree." {
+		t.Errorf("Expected error message about main worktree, got %q", m.statusContent)
+	}
+}
+
+func TestShowAbsorbWorktreeCreatesConfirmScreen(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+
+	// Set up main and feature worktrees
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: "/path/to/main", Branch: "main", IsMain: true},
+		{Path: "/path/to/feature", Branch: "feature-branch", IsMain: false},
+	}
+	m.filteredWts = m.worktrees
+	m.selectedIndex = 1 // Select feature worktree
+
+	cmd := m.showAbsorbWorktree()
+	if cmd != nil {
+		t.Error("Expected nil command from showAbsorbWorktree")
+	}
+
+	// Verify confirm screen was created
+	if m.confirmScreen == nil {
+		t.Fatal("Expected confirm screen to be created")
+	}
+
+	// Verify confirm action was set
+	if m.confirmAction == nil {
+		t.Fatal("Expected confirm action to be set")
+	}
+
+	// Verify current screen is set to confirm
+	if m.currentScreen != screenConfirm {
+		t.Errorf("Expected currentScreen to be screenConfirm, got %v", m.currentScreen)
+	}
+
+	// Verify the confirm message contains the correct information
+	if m.confirmScreen.message == "" {
+		t.Error("Expected confirm screen message to be set")
+	}
+	if !strings.Contains(m.confirmScreen.message, "Absorb worktree into main") {
+		t.Errorf("Expected confirm message to mention 'Absorb worktree into main', got %q", m.confirmScreen.message)
+	}
+	if !strings.Contains(m.confirmScreen.message, "feature-branch") {
+		t.Errorf("Expected confirm message to mention 'feature-branch', got %q", m.confirmScreen.message)
+	}
+}
+
+func TestShowAbsorbWorktreeNoMainWorktree(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+
+	// Set up only a feature worktree (no main)
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: "/path/to/feature", Branch: "feature-branch", IsMain: false},
+	}
+	m.filteredWts = m.worktrees
+	m.selectedIndex = 0
+
+	cmd := m.showAbsorbWorktree()
+	if cmd != nil {
+		t.Error("Expected nil command when no main worktree exists")
+	}
+	if m.statusContent != "Cannot find main worktree." {
+		t.Errorf("Expected error message about missing main worktree, got %q", m.statusContent)
+	}
+}
