@@ -18,6 +18,11 @@ terminate_commands:
 # Custom commands take precedence over built-in keys (e.g., 's' will override sort toggle)
 # Environment variables available: WORKTREE_PATH, WORKTREE_BRANCH, WORKTREE_NAME, MAIN_WORKTREE_PATH
 #
+# Supported key formats:
+#   - Single keys: e, s, t, l
+#   - Modifier combinations: "ctrl+e", "alt+t", "ctrl+shift+s"
+#   - Special keys: enter, esc, tab, space
+#
 # Fields:
 #   command: The command to execute (required)
 #   description: Description shown in help screen (optional)
@@ -40,5 +45,10 @@ custom_commands:
   l:
     command: ls -la
     description: List files
+    show_help: true
+    wait: true
+  "ctrl+t":
+    command: git status
+    description: Git status
     show_help: true
     wait: true

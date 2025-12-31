@@ -861,6 +861,44 @@ func TestParseCustomCommands(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "modifier keys (ctrl, alt, etc.)",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"ctrl+e": map[string]interface{}{
+						"command":     "nvim",
+						"description": "Open with Ctrl+E",
+					},
+					"alt+t": map[string]interface{}{
+						"command":     "make test",
+						"description": "Test with Alt+T",
+					},
+					"ctrl+shift+s": map[string]interface{}{
+						"command": "git status",
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"ctrl+e": {
+					Command:     "nvim",
+					Description: "Open with Ctrl+E",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+				"alt+t": {
+					Command:     "make test",
+					Description: "Test with Alt+T",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+				"ctrl+shift+s": {
+					Command:     "git status",
+					Description: "",
+					ShowHelp:    false,
+					Wait:        false,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

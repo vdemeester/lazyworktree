@@ -206,6 +206,26 @@ Custom commands have access to the same environment variables as init/terminate 
 - `WORKTREE_PATH`: Path to the selected worktree
 - `WORKTREE_NAME`: Name of the worktree (directory name)
 
+### Supported Key Formats
+
+Custom commands support the same key formats as built-in keybindings:
+
+- **Single keys**: `e`, `s`, `t`, `l`, etc.
+- **Modifier combinations**: `ctrl+e`, `ctrl+t`, `alt+s`, etc.
+- **Special keys**: `enter`, `esc`, `tab`, `space`, etc.
+
+**Examples:**
+```yaml
+custom_commands:
+  "ctrl+e":
+    command: nvim
+    description: Open editor with Ctrl+E
+  "alt+t":
+    command: make test
+    description: Run tests with Alt+T
+    wait: true
+```
+
 ### Key Precedence
 
 **Custom commands take precedence over built-in keys.** If you define a custom command with key `s`, it will override the built-in sort toggle. This allows you to fully customize your workflow.
