@@ -1,0 +1,91 @@
+builds:
+  - env:
+      - CGO_ENABLED=0
+    main: ./cmd/lazyworktree
+    binary: lazyworktree
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -w
+      - -s
+archives:
+  - name_template: >-
+      {{ .Binary }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+brews:
+  - name: lazyworktree
+    repository:
+      owner: chmouel
+      name: lazyworktree
+    directory: Formula
+    homepage: "https://github.com/chmouel/lazyworktree"
+    description: "lazyworktree - A TUI tool to manage git worktrees"
+    install: |
+      bin.install "lazyworktree" => "lazyworktree"
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+release:
+  prerelease: "false"
+
+nfpms:
+  - file_name_template: >-
+      lazyworktree-
+      {{- .Version}}_{{.Os}}-
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    homepage: https://github.com/chmouel/lazyworktree
+    description: "lazyworktree - A TUI tool to manage git worktrees"
+    maintainer: Chmouel Boudjnah <chmouel@chmouel.com>
+    license: Apache 2.0
+    formats:
+      - apk
+      - deb
+      - rpm
+    bindir: /usr/bin
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^Brew formula update"
+      - Merge pull request
+      - Merge branch
+      - go mod tidy
+      - Update README.md
+
+universal_binaries:
+  - replace: true
+    name_template: "lazyworktree-{{ .Version }}-universal-{{ .Os }}"
+
+aurs:
+  - name: lazyworktree-bin
+    homepage: "https://github.com/chmouel/lazyworktree"
+    description: "lazyworktree - A TUI tool to manage git worktrees"
+    maintainers:
+      - "Chmouel Boudjnah <chmouel@chmouel.com>"
+    license: Apache 2.0
+    private_key: "{{ .Env.AUR_PRIVATE_KEY }}"
+    git_url: ssh://aur@aur.archlinux.org/lazyworktree-bin.git
+    package: |-
+      # bin
+      install -Dm755 "./lazyworktree" "${pkgdir}/usr/bin/lazyworktree"
+
+      # license
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/lazyworktree/LICENSE"
