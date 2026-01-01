@@ -290,6 +290,54 @@ func TestShowCommandPaletteIncludesCustomCommands(t *testing.T) {
 	}
 }
 
+func TestShowCommandPaletteIncludesTmuxCommands(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		CustomCommands: map[string]*config.CustomCommand{
+			"t": {
+				Description: "Open tmux",
+				ShowHelp:    true,
+				Tmux: &config.TmuxCommand{
+					SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
+					Attach:      true,
+					OnExists:    "switch",
+					Windows: []config.TmuxWindow{
+						{Name: "shell"},
+					},
+				},
+			},
+		},
+	}
+	m := NewModel(cfg, "")
+	m.setWindowSize(120, 40)
+
+	cmd := m.showCommandPalette()
+	if cmd == nil {
+		t.Fatal("showCommandPalette returned nil command")
+	}
+	if m.paletteScreen == nil {
+		t.Fatal("paletteScreen should be initialized")
+	}
+
+	items := m.paletteScreen.items
+	found := false
+	for _, item := range items {
+		if item.id == "t" {
+			found = true
+			if item.label != "Open tmux (t)" {
+				t.Errorf("Expected label 'Open tmux (t)', got %q", item.label)
+			}
+			if item.description != tmuxSessionLabel {
+				t.Errorf("Expected description %q, got %q", tmuxSessionLabel, item.description)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("tmux command item not found in command palette")
+	}
+}
+
 func TestRenderFooterIncludesCustomHelpHints(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),
@@ -307,6 +355,46 @@ func TestRenderFooterIncludesCustomHelpHints(t *testing.T) {
 
 	if !strings.Contains(footer, "Run tests") {
 		t.Fatalf("expected footer to include custom command label, got %q", footer)
+	}
+}
+
+func TestTmuxSessionReadyAttachesDirectly(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.setWindowSize(120, 40)
+
+	updated, cmd := m.Update(tmuxSessionReadyMsg{sessionName: "wt_test", attach: true, insideTmux: false})
+	model := updated.(*Model)
+	if model.currentScreen != screenNone {
+		t.Fatalf("expected no screen change, got %v", model.currentScreen)
+	}
+	if cmd == nil {
+		t.Fatal("expected attach command to be returned")
+	}
+}
+
+func TestTmuxSessionReadyShowsInfoWhenNotAttaching(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.setWindowSize(120, 40)
+
+	updated, cmd := m.Update(tmuxSessionReadyMsg{sessionName: "wt_test", attach: false, insideTmux: false})
+	model := updated.(*Model)
+	if model.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", model.currentScreen)
+	}
+	if model.infoScreen == nil {
+		t.Fatal("expected info screen to be created")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command when not attaching")
+	}
+	if !strings.Contains(model.infoScreen.message, "tmux attach-session -t 'wt_test'") {
+		t.Errorf("expected attach message, got %q", model.infoScreen.message)
 	}
 }
 
@@ -537,5 +625,363 @@ func TestShowAbsorbWorktreeNoMainWorktree(t *testing.T) {
 	}
 	if m.statusContent != "Cannot find main worktree." {
 		t.Errorf("Expected error message about missing main worktree, got %q", m.statusContent)
+	}
+}
+
+func TestExpandWithEnv(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		env      map[string]string
+		expected string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			env:      map[string]string{"FOO": "bar"},
+			expected: "",
+		},
+		{
+			name:     "no variables",
+			input:    "plain text",
+			env:      map[string]string{},
+			expected: "plain text",
+		},
+		{
+			name:     "single variable",
+			input:    "$FOO",
+			env:      map[string]string{"FOO": "bar"},
+			expected: "bar",
+		},
+		{
+			name:     "variable with braces",
+			input:    "${FOO}",
+			env:      map[string]string{"FOO": "bar"},
+			expected: "bar",
+		},
+		{
+			name:     "multiple variables",
+			input:    "$FOO-$BAR",
+			env:      map[string]string{"FOO": "hello", "BAR": "world"},
+			expected: "hello-world",
+		},
+		{
+			name:     "REPO_NAME and WORKTREE_NAME",
+			input:    "${REPO_NAME}_wt_$WORKTREE_NAME",
+			env:      map[string]string{"REPO_NAME": "myrepo", "WORKTREE_NAME": "feature"},
+			expected: "myrepo_wt_feature",
+		},
+		{
+			name:     "missing variable uses system env",
+			input:    "$HOME",
+			env:      map[string]string{},
+			expected: os.Getenv("HOME"),
+		},
+		{
+			name:     "undefined variable becomes empty",
+			input:    "$UNDEFINED_VAR",
+			env:      map[string]string{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := expandWithEnv(tt.input, tt.env)
+			if result != tt.expected {
+				t.Errorf("expandWithEnv(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveTmuxWindows(t *testing.T) {
+	tests := []struct {
+		name        string
+		windows     []config.TmuxWindow
+		env         map[string]string
+		defaultCwd  string
+		expectOk    bool
+		expectCount int
+	}{
+		{
+			name:        "empty windows returns false",
+			windows:     []config.TmuxWindow{},
+			env:         map[string]string{},
+			defaultCwd:  "/default",
+			expectOk:    false,
+			expectCount: 0,
+		},
+		{
+			name: "single window with name",
+			windows: []config.TmuxWindow{
+				{Name: "shell", Command: "", Cwd: ""},
+			},
+			env:         map[string]string{},
+			defaultCwd:  "/default",
+			expectOk:    true,
+			expectCount: 1,
+		},
+		{
+			name: "window with env vars in name",
+			windows: []config.TmuxWindow{
+				{Name: "$WORKTREE_NAME", Command: "", Cwd: ""},
+			},
+			env:         map[string]string{"WORKTREE_NAME": "feature"},
+			defaultCwd:  "/default",
+			expectOk:    true,
+			expectCount: 1,
+		},
+		{
+			name: "empty name gets auto-generated",
+			windows: []config.TmuxWindow{
+				{Name: "", Command: "", Cwd: ""},
+			},
+			env:         map[string]string{},
+			defaultCwd:  "/default",
+			expectOk:    true,
+			expectCount: 1,
+		},
+		{
+			name: "empty cwd uses default",
+			windows: []config.TmuxWindow{
+				{Name: "shell", Command: "", Cwd: ""},
+			},
+			env:         map[string]string{},
+			defaultCwd:  "/my/path",
+			expectOk:    true,
+			expectCount: 1,
+		},
+		{
+			name: "multiple windows",
+			windows: []config.TmuxWindow{
+				{Name: "shell", Command: "", Cwd: ""},
+				{Name: "editor", Command: "vim", Cwd: "/custom"},
+			},
+			env:         map[string]string{},
+			defaultCwd:  "/default",
+			expectOk:    true,
+			expectCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved, ok := resolveTmuxWindows(tt.windows, tt.env, tt.defaultCwd)
+			if ok != tt.expectOk {
+				t.Errorf("resolveTmuxWindows ok = %v, want %v", ok, tt.expectOk)
+			}
+			if len(resolved) != tt.expectCount {
+				t.Errorf("resolveTmuxWindows count = %d, want %d", len(resolved), tt.expectCount)
+			}
+
+			if tt.expectOk && len(tt.windows) > 0 {
+				// Check first window specifically
+				w := resolved[0]
+				if tt.windows[0].Name == "" && w.Name != "window-1" {
+					t.Errorf("expected auto-generated name 'window-1', got %q", w.Name)
+				}
+				if tt.windows[0].Cwd == "" && w.Cwd != tt.defaultCwd {
+					t.Errorf("expected default cwd %q, got %q", tt.defaultCwd, w.Cwd)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildTmuxWindowCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		env      map[string]string
+		expected string
+	}{
+		{
+			name:     "empty command uses default shell",
+			command:  "",
+			env:      map[string]string{},
+			expected: "exec ${SHELL:-bash}",
+		},
+		{
+			name:     "simple command",
+			command:  "vim",
+			env:      map[string]string{},
+			expected: "vim",
+		},
+		{
+			name:     "command with env vars",
+			command:  "lazygit",
+			env:      map[string]string{"FOO": "bar"},
+			expected: "export FOO=bar; lazygit",
+		},
+		{
+			name:     "whitespace-only command uses default shell",
+			command:  "   ",
+			env:      map[string]string{},
+			expected: "exec ${SHELL:-bash}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildTmuxWindowCommand(tt.command, tt.env)
+			if !strings.Contains(result, tt.command) && tt.command != "" && strings.TrimSpace(tt.command) != "" {
+				t.Errorf("buildTmuxWindowCommand(%q) = %q, should contain command", tt.command, result)
+			}
+			if tt.command == "" || strings.TrimSpace(tt.command) == "" {
+				if !strings.Contains(result, "exec ${SHELL:-bash}") {
+					t.Errorf("buildTmuxWindowCommand(%q) = %q, should contain default shell", tt.command, result)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildTmuxScript(t *testing.T) {
+	tests := []struct {
+		name        string
+		sessionName string
+		tmuxCfg     *config.TmuxCommand
+		windows     []resolvedTmuxWindow
+		env         map[string]string
+		checkScript func(t *testing.T, script string)
+	}{
+		{
+			name:        "empty windows returns empty script",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "switch",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{},
+			env:     map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if script != "" {
+					t.Errorf("expected empty script for empty windows, got %q", script)
+				}
+			},
+		},
+		{
+			name:        "single window script",
+			sessionName: "myrepo_wt_feature",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "switch",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+			},
+			env: map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "session='myrepo_wt_feature'") {
+					t.Error("script should contain session name")
+				}
+				if !strings.Contains(script, "tmux new-session") {
+					t.Error("script should create new session")
+				}
+				if !strings.Contains(script, "-n 'shell'") {
+					t.Error("script should create window named 'shell'")
+				}
+			},
+		},
+		{
+			name:        "on_exists kill mode",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "kill",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+			},
+			env: map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "tmux kill-session") {
+					t.Error("script should kill existing session in kill mode")
+				}
+			},
+		},
+		{
+			name:        "on_exists new mode",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "new",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+			},
+			env: map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "while tmux has-session") {
+					t.Error("script should check for incremented session names in new mode")
+				}
+			},
+		},
+		{
+			name:        "multiple windows",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "switch",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+				{Name: "editor", Command: "vim", Cwd: "/path"},
+			},
+			env: map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "tmux new-window") {
+					t.Error("script should create additional windows")
+				}
+				if !strings.Contains(script, "-n 'editor'") {
+					t.Error("script should create window named 'editor'")
+				}
+			},
+		},
+		{
+			name:        "attach inside tmux",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "switch",
+				Attach:   true,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+			},
+			env: map[string]string{},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "tmux switch-client") {
+					t.Error("script should switch client when inside tmux")
+				}
+			},
+		},
+		{
+			name:        "env vars in script",
+			sessionName: "test",
+			tmuxCfg: &config.TmuxCommand{
+				OnExists: "switch",
+				Attach:   false,
+			},
+			windows: []resolvedTmuxWindow{
+				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
+			},
+			env: map[string]string{"REPO_NAME": "myrepo", "WORKTREE_NAME": "feature"},
+			checkScript: func(t *testing.T, script string) {
+				if !strings.Contains(script, "tmux set-environment") {
+					t.Error("script should set environment variables")
+				}
+				if !strings.Contains(script, "REPO_NAME") || !strings.Contains(script, "WORKTREE_NAME") {
+					t.Error("script should include REPO_NAME and WORKTREE_NAME env vars")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script := buildTmuxScript(tt.sessionName, tt.tmuxCfg, tt.windows, tt.env)
+			tt.checkScript(t, script)
+		})
 	}
 }

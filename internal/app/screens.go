@@ -19,6 +19,7 @@ type screenType int
 const (
 	screenNone screenType = iota
 	screenConfirm
+	screenInfo
 	screenInput
 	screenHelp
 	screenTrust
@@ -44,6 +45,13 @@ type ConfirmScreen struct {
 	result         chan bool
 	selectedButton int // 0 = Confirm, 1 = Cancel
 	thm            *theme.Theme
+}
+
+// InfoScreen displays a modal message with an OK button.
+type InfoScreen struct {
+	message string
+	result  chan bool
+	thm     *theme.Theme
 }
 
 // InputScreen provides a prompt along with a text input and inline validation.
@@ -165,8 +173,22 @@ func NewConfirmScreen(message string, thm *theme.Theme) *ConfirmScreen {
 	}
 }
 
+// NewInfoScreen creates an informational modal with an OK button.
+func NewInfoScreen(message string, thm *theme.Theme) *InfoScreen {
+	return &InfoScreen{
+		message: message,
+		result:  make(chan bool, 1),
+		thm:     thm,
+	}
+}
+
 // Init implements the tea.Model Init stage for ConfirmScreen.
 func (s *ConfirmScreen) Init() tea.Cmd {
+	return nil
+}
+
+// Init implements the tea.Model Init stage for InfoScreen.
+func (s *InfoScreen) Init() tea.Cmd {
 	return nil
 }
 
@@ -197,6 +219,20 @@ func (s *ConfirmScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, tea.Quit
 	case keyEsc, keyQ, keyCtrlC:
 		s.result <- false
+		return s, tea.Quit
+	}
+	return s, nil
+}
+
+// Update processes keyboard events for the info dialog.
+func (s *InfoScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return s, nil
+	}
+	switch keyMsg.String() {
+	case keyEnter, keyEsc, keyQ, keyCtrlC:
+		s.result <- true
 		return s, tea.Quit
 	}
 	return s, nil
@@ -259,6 +295,40 @@ func (s *ConfirmScreen) View() string {
 		messageStyle.Render(s.message),
 		confirmButton,
 		cancelButton,
+	)
+
+	return boxStyle.Render(content)
+}
+
+// View renders the informational UI box with a single OK button.
+func (s *InfoScreen) View() string {
+	width := 60
+	height := 11
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(s.thm.Border).
+		Padding(1, 2).
+		Width(width).
+		Height(height)
+
+	messageStyle := lipgloss.NewStyle().
+		Width(width-4).
+		Height(height-6).
+		Align(lipgloss.Center, lipgloss.Center).
+		Foreground(s.thm.TextFg)
+
+	okStyle := lipgloss.NewStyle().
+		Width(width-6).
+		Align(lipgloss.Center).
+		Padding(0, 1).
+		Foreground(lipgloss.Color("#000000")).
+		Background(s.thm.Accent).
+		Bold(true)
+
+	content := fmt.Sprintf("%s\n\n%s",
+		messageStyle.Render(s.message),
+		okStyle.Render("[OK]"),
 	)
 
 	return boxStyle.Render(content)

@@ -38,6 +38,7 @@ const (
 	errBranchEmpty           = "Branch name cannot be empty."
 	errNoWorktreeSelected    = "No worktree selected."
 	customCommandPlaceholder = "Custom command"
+	tmuxSessionLabel         = "tmux session"
 
 	detailsCacheTTL  = 2 * time.Second
 	debounceDelay    = 200 * time.Millisecond
@@ -65,6 +66,11 @@ type (
 	fetchRemotesCompleteMsg struct{}
 	debouncedDetailsMsg     struct {
 		selectedIndex int
+	}
+	tmuxSessionReadyMsg struct {
+		sessionName string
+		attach      bool
+		insideTmux  bool
 	}
 	cachedWorktreesMsg struct {
 		worktrees []*models.WorktreeInfo
@@ -201,6 +207,8 @@ type Model struct {
 	// Confirm screen
 	confirmScreen *ConfirmScreen
 	confirmAction func() tea.Cmd
+	infoScreen    *InfoScreen
+	infoAction    tea.Cmd
 
 	// Trust / repo commands
 	repoConfig      *config.RepoConfig
@@ -437,6 +445,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusContent = fmt.Sprintf("Error: %v", msg.err)
 		}
+		return m, nil
+
+	case tmuxSessionReadyMsg:
+		if msg.attach {
+			return m, m.attachTmuxSessionCmd(msg.sessionName, msg.insideTmux)
+		}
+		message := buildTmuxInfoMessage(msg.sessionName, msg.insideTmux)
+		m.infoScreen = NewInfoScreen(message, m.theme)
+		m.currentScreen = screenInfo
 		return m, nil
 
 	case fetchRemotesCompleteMsg:
@@ -870,6 +887,8 @@ func screenName(screen screenType) string {
 		return "none"
 	case screenConfirm:
 		return "confirm"
+	case screenInfo:
+		return "info"
 	case screenInput:
 		return "input"
 	case screenHelp:
@@ -1096,6 +1115,10 @@ func (m *Model) View() string {
 	case screenConfirm:
 		if m.confirmScreen != nil {
 			return m.overlayPopup(baseView, m.confirmScreen.View(), 5)
+		}
+	case screenInfo:
+		if m.infoScreen != nil {
+			return m.overlayPopup(baseView, m.infoScreen.View(), 5)
 		}
 	case screenInput:
 		if m.inputScreen != nil {
@@ -1928,8 +1951,10 @@ func (m *Model) customPaletteItems() []paletteItem {
 		}
 		label := m.customCommandLabel(cmd, key)
 		description := customCommandPlaceholder
-		if cmd.Description != "" {
+		if cmd.Command != "" {
 			description = cmd.Command
+		} else if cmd.Tmux != nil {
+			description = tmuxSessionLabel
 		}
 		items = append(items, paletteItem{
 			id:          key,
@@ -1948,7 +1973,10 @@ func (m *Model) customCommandKeys() []string {
 
 	keys := make([]string, 0, len(m.config.CustomCommands))
 	for key, cmd := range m.config.CustomCommands {
-		if cmd == nil || strings.TrimSpace(cmd.Command) == "" {
+		if cmd == nil {
+			continue
+		}
+		if strings.TrimSpace(cmd.Command) == "" && cmd.Tmux == nil {
 			continue
 		}
 		keys = append(keys, key)
@@ -1963,6 +1991,9 @@ func (m *Model) customCommandLabel(cmd *config.CustomCommand, key string) string
 		label = strings.TrimSpace(cmd.Description)
 		if label == "" {
 			label = strings.TrimSpace(cmd.Command)
+			if label == "" && cmd.Tmux != nil {
+				label = tmuxSessionLabel
+			}
 		}
 	}
 	if label == "" {
@@ -2019,6 +2050,10 @@ func (m *Model) executeCustomCommand(key string) tea.Cmd {
 
 	wt := m.filteredWts[m.selectedIndex]
 
+	if customCmd.Tmux != nil {
+		return m.openTmuxSession(customCmd.Tmux, wt)
+	}
+
 	// Set environment variables
 	env := m.buildCommandEnv(wt.Branch, wt.Path)
 	envVars := os.Environ()
@@ -2046,6 +2081,63 @@ func (m *Model) executeCustomCommand(key string) tea.Cmd {
 			return errMsg{err: err}
 		}
 		return refreshCompleteMsg{}
+	})
+}
+
+func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.WorktreeInfo) tea.Cmd {
+	if tmuxCfg == nil {
+		return nil
+	}
+
+	env := m.buildCommandEnv(wt.Branch, wt.Path)
+	insideTmux := os.Getenv("TMUX") != ""
+	sessionName := expandWithEnv(tmuxCfg.SessionName, env)
+	if strings.TrimSpace(sessionName) == "" {
+		sessionName = fmt.Sprintf("wt:%s", filepath.Base(wt.Path))
+	}
+
+	resolved, ok := resolveTmuxWindows(tmuxCfg.Windows, env, wt.Path)
+	if !ok {
+		return func() tea.Msg {
+			return errMsg{err: fmt.Errorf("failed to resolve tmux windows")}
+		}
+	}
+
+	sessionFile, err := os.CreateTemp("", "lazyworktree-tmux-")
+	if err != nil {
+		return func() tea.Msg {
+			return errMsg{err: err}
+		}
+	}
+	sessionPath := sessionFile.Name()
+	if closeErr := sessionFile.Close(); closeErr != nil {
+		return func() tea.Msg {
+			return errMsg{err: closeErr}
+		}
+	}
+
+	scriptCfg := *tmuxCfg
+	scriptCfg.Attach = false
+	env["LW_TMUX_SESSION_FILE"] = sessionPath
+	script := buildTmuxScript(sessionName, &scriptCfg, resolved, env)
+	// #nosec G204 -- command is built from user-configured tmux session settings.
+	c := exec.Command("bash", "-lc", script)
+	c.Dir = wt.Path
+	c.Env = append(os.Environ(), envMapToList(env)...)
+
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		defer func() {
+			_ = os.Remove(sessionPath)
+		}()
+		if err != nil {
+			return errMsg{err: err}
+		}
+		finalSession := readTmuxSessionFile(sessionPath, sessionName)
+		return tmuxSessionReadyMsg{
+			sessionName: finalSession,
+			attach:      tmuxCfg.Attach,
+			insideTmux:  insideTmux,
+		}
 	})
 }
 
@@ -2303,6 +2395,23 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+	case screenInfo:
+		if m.infoScreen != nil {
+			_, cmd := m.infoScreen.Update(msg)
+			select {
+			case <-m.infoScreen.result:
+				action := m.infoAction
+				m.infoScreen = nil
+				m.infoAction = nil
+				m.currentScreen = screenNone
+				if action != nil {
+					return m, action
+				}
+				return m, nil
+			default:
+				return m, cmd
+			}
+		}
 	case screenWelcome:
 		keyStr := msg.String()
 		switch {
@@ -2430,6 +2539,10 @@ func (m *Model) renderScreen() string {
 	case screenConfirm:
 		if m.confirmScreen != nil {
 			return m.confirmScreen.View()
+		}
+	case screenInfo:
+		if m.infoScreen != nil {
+			return m.infoScreen.View()
 		}
 	case screenTrust:
 		if m.trustScreen == nil {
@@ -2640,7 +2753,191 @@ func (m *Model) buildCommandEnv(branch, wtPath string) map[string]string {
 		"MAIN_WORKTREE_PATH": m.git.GetMainWorktreePath(m.ctx),
 		"WORKTREE_PATH":      wtPath,
 		"WORKTREE_NAME":      filepath.Base(wtPath),
+		"REPO_NAME":          m.repoKey,
 	}
+}
+
+type resolvedTmuxWindow struct {
+	Name    string
+	Command string
+	Cwd     string
+}
+
+func expandWithEnv(input string, env map[string]string) string {
+	if input == "" {
+		return ""
+	}
+	return os.Expand(input, func(key string) string {
+		if val, ok := env[key]; ok {
+			return val
+		}
+		return os.Getenv(key)
+	})
+}
+
+func envMapToList(env map[string]string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(env))
+	for key, val := range env {
+		out = append(out, fmt.Sprintf("%s=%s", key, val))
+	}
+	return out
+}
+
+func resolveTmuxWindows(windows []config.TmuxWindow, env map[string]string, defaultCwd string) ([]resolvedTmuxWindow, bool) {
+	if len(windows) == 0 {
+		return nil, false
+	}
+	resolved := make([]resolvedTmuxWindow, 0, len(windows))
+	for i, window := range windows {
+		name := strings.TrimSpace(expandWithEnv(window.Name, env))
+		if name == "" {
+			name = fmt.Sprintf("window-%d", i+1)
+		}
+		cwd := strings.TrimSpace(expandWithEnv(window.Cwd, env))
+		if cwd == "" {
+			cwd = defaultCwd
+		}
+		command := strings.TrimSpace(window.Command)
+		command = buildTmuxWindowCommand(command, env)
+		resolved = append(resolved, resolvedTmuxWindow{
+			Name:    name,
+			Command: command,
+			Cwd:     cwd,
+		})
+	}
+	return resolved, true
+}
+
+func buildTmuxWindowCommand(command string, env map[string]string) string {
+	prefix := exportEnvCommand(env)
+	if prefix != "" {
+		prefix += " "
+	}
+	if strings.TrimSpace(command) == "" {
+		return prefix + "exec ${SHELL:-bash}"
+	}
+	return prefix + command
+}
+
+func exportEnvCommand(env map[string]string) string {
+	if len(env) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("export %s=%s;", key, shellQuote(env[key])))
+	}
+	return strings.Join(parts, " ")
+}
+
+func buildTmuxScript(sessionName string, tmuxCfg *config.TmuxCommand, windows []resolvedTmuxWindow, env map[string]string) string {
+	onExists := strings.ToLower(strings.TrimSpace(tmuxCfg.OnExists))
+	switch onExists {
+	case "attach", "kill", "new", "switch":
+	default:
+		onExists = "switch"
+	}
+
+	var b strings.Builder
+	b.WriteString("set -e\n")
+	b.WriteString(fmt.Sprintf("session=%s\n", shellQuote(sessionName)))
+	b.WriteString("base_session=$session\n")
+	b.WriteString("if tmux has-session -t \"$session\" 2>/dev/null; then\n")
+	switch onExists {
+	case "kill":
+		b.WriteString("  tmux kill-session -t \"$session\"\n")
+	case "new":
+		b.WriteString("  i=2\n")
+		b.WriteString("  while tmux has-session -t \"${base_session}-$i\" 2>/dev/null; do i=$((i+1)); done\n")
+		b.WriteString("  session=\"${base_session}-$i\"\n")
+	default:
+		b.WriteString("  :\n")
+	}
+	b.WriteString("fi\n")
+	b.WriteString("if ! tmux has-session -t \"$session\" 2>/dev/null; then\n")
+	if len(windows) == 0 {
+		return ""
+	}
+	first := windows[0]
+	b.WriteString(fmt.Sprintf("  tmux new-session -d -s \"$session\" -n %s -c %s -- bash -lc %s\n",
+		shellQuote(first.Name), shellQuote(first.Cwd), shellQuote(first.Command)))
+
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		b.WriteString(fmt.Sprintf("  tmux set-environment -t \"$session\" %s %s\n", shellQuote(key), shellQuote(env[key])))
+	}
+
+	for _, window := range windows[1:] {
+		b.WriteString(fmt.Sprintf("  tmux new-window -t \"$session\" -n %s -c %s -- bash -lc %s\n",
+			shellQuote(window.Name), shellQuote(window.Cwd), shellQuote(window.Command)))
+	}
+	b.WriteString("fi\n")
+	b.WriteString("if [ -n \"${LW_TMUX_SESSION_FILE:-}\" ]; then printf '%s' \"$session\" > \"$LW_TMUX_SESSION_FILE\"; fi\n")
+
+	if tmuxCfg.Attach {
+		if onExists == "attach" {
+			b.WriteString("tmux attach -t \"$session\" || true\n")
+		} else {
+			b.WriteString("if [ -n \"$TMUX\" ]; then tmux switch-client -t \"$session\" || true; else tmux attach -t \"$session\" || true; fi\n")
+		}
+	}
+	return b.String()
+}
+
+func buildTmuxInfoMessage(sessionName string, insideTmux bool) string {
+	quoted := shellQuote(sessionName)
+	if insideTmux {
+		return fmt.Sprintf("tmux session ready.\n\nSwitch with:\n\n  tmux switch-client -t %s", quoted)
+	}
+	return fmt.Sprintf("tmux session ready.\n\nAttach with:\n\n  tmux attach-session -t %s", quoted)
+}
+
+func (m *Model) attachTmuxSessionCmd(sessionName string, insideTmux bool) tea.Cmd {
+	args := []string{"attach-session", "-t", sessionName}
+	if insideTmux {
+		args = []string{"switch-client", "-t", sessionName}
+	}
+	// #nosec G204 -- tmux session name comes from user configuration.
+	c := exec.Command("tmux", args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return refreshCompleteMsg{}
+	})
+}
+
+func readTmuxSessionFile(path, fallback string) string {
+	// #nosec G304 -- file path is created by the current process.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func shellQuote(input string) string {
+	if input == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(input, "'", "'\"'\"'") + "'"
 }
 
 func (m *Model) collectInitCommands() []string {

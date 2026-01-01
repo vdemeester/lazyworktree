@@ -165,6 +165,9 @@ You can configure this behavior in `config.yaml` via the `trust_mode` setting:
 
 You can define custom keybindings in your `~/.config/lazyworktree/config.yaml` to execute commands in the selected worktree. Custom commands are executed interactively (the TUI suspends, just like when launching `lazygit`) and show up in the command palette.
 
+By default, `t` opens a tmux session with a single `shell` window. You can override it by defining `custom_commands.t`.
+When `attach` is true, lazyworktree attaches to the session immediately. When `attach` is false, it shows an info modal with instructions to attach manually.
+
 ### Configuration Format
 
 Add a `custom_commands` section to your config:
@@ -188,6 +191,20 @@ custom_commands:
     command: "kitten @ launch --type tab --cwd $WORKTREE_PATH -- claude"
     description: Open Claude
     show_help: true
+  t: # Open a tmux session with multiple windows
+    description: Open tmux
+    show_help: true
+    tmux:
+      session_name: "${REPO_NAME}_wt_$WORKTREE_NAME"
+      attach: true
+      on_exists: switch
+      windows:
+        - name: claude
+          command: claude
+        - name: shell
+          command: zsh
+        - name: lazygit
+          command: lazygit
 ```
 
 ### Field Reference
@@ -198,6 +215,26 @@ custom_commands:
 | `description` | string | `""` | Description shown in the help screen and command palette |
 | `show_help` | bool | `false` | Whether to show this command in the help screen (`?`) and footer hints |
 | `wait` | bool | `false` | Wait for key press after command completes (useful for quick commands like `ls` or `make test`) |
+| `tmux` | object | `null` | Configure a tmux session instead of executing a single command |
+
+#### tmux fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `session_name` | string | `${REPO_NAME}_wt_$WORKTREE_NAME` | tmux session name (supports env vars) |
+| `attach` | bool | `true` | If true, attach/switch immediately; if false, show info modal with attach instructions |
+| `on_exists` | string | `switch` | Behavior if session exists: `switch`, `attach`, `kill`, `new` |
+| `windows` | list | `[ { name: "shell" } ]` | Window definitions for the session |
+
+If `windows` is omitted or empty, lazyworktree creates a single `shell` window.
+
+#### tmux window fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | `window-N` | Window name (supports env vars) |
+| `command` | string | `""` | Command to run in the window (empty uses your default shell) |
+| `cwd` | string | `$WORKTREE_PATH` | Working directory for the window (supports env vars) |
 
 ### Environment Variables
 
@@ -207,6 +244,7 @@ Custom commands have access to the same environment variables as init/terminate 
 - `MAIN_WORKTREE_PATH`: Path to the main repository
 - `WORKTREE_PATH`: Path to the selected worktree
 - `WORKTREE_NAME`: Name of the worktree (directory name)
+- `REPO_NAME`: Name of the repository (from GitHub/GitLab)
 
 ### Supported Key Formats
 
@@ -345,7 +383,6 @@ theme: dracula  # or any listed above
 ```
 
 ## CI Status Display
-
 
 When viewing a worktree with an associated PR/MR, lazyworktree automatically fetches and displays CI check statuses in the info pane:
 

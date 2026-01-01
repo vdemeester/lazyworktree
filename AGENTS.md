@@ -20,4 +20,4 @@ Read the README if you really need to know what this project do.
 - Always Run `make sanity` which will run golangci-lint, gofumpt, and go test.
 - Add tests for any new functionality.
 - Add README.md updates for any user-facing changes. Do not sound like
-it is written by a braindead overenthusiastic robot.
+it is written by a brain-dead overenthusiastic robot.

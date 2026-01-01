@@ -80,3 +80,17 @@ custom_commands:
     description: Git status
     show_help: true
     wait: true
+  "T":
+    description: Open tmux session
+    show_help: true
+    tmux:
+      session_name: "${REPO_NAME}_wt_$WORKTREE_NAME"
+      attach: true
+      on_exists: "switch"
+      windows:
+        - name: claude
+          command: claude
+        - name: shell
+          command: zsh
+        - name: lazygit
+          command: lazygit

@@ -18,6 +18,22 @@ type CustomCommand struct {
 	Description string
 	ShowHelp    bool
 	Wait        bool
+	Tmux        *TmuxCommand
+}
+
+// TmuxCommand represents a configured tmux session layout.
+type TmuxCommand struct {
+	SessionName string
+	Attach      bool
+	OnExists    string
+	Windows     []TmuxWindow
+}
+
+// TmuxWindow represents a tmux window configuration.
+type TmuxWindow struct {
+	Name    string
+	Command string
+	Cwd     string
 }
 
 // AppConfig defines the global lazyworktree configuration options.
@@ -56,7 +72,20 @@ func DefaultConfig() *AppConfig {
 		DeltaPath:         "delta",
 		TrustMode:         "tofu",
 		Theme:             "dracula",
-		CustomCommands:    make(map[string]*CustomCommand),
+		CustomCommands: map[string]*CustomCommand{
+			"t": {
+				Description: "Open tmux",
+				ShowHelp:    true,
+				Tmux: &TmuxCommand{
+					SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
+					Attach:      true,
+					OnExists:    "switch",
+					Windows: []TmuxWindow{
+						{Name: "shell"},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -162,6 +191,63 @@ func coerceInt(value any, defaultVal int) int {
 	return defaultVal
 }
 
+func parseTmuxCommand(data map[string]any) *TmuxCommand {
+	tmux := &TmuxCommand{
+		SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
+		Attach:      true,
+		OnExists:    "switch",
+	}
+
+	if sessionName, ok := data["session_name"].(string); ok {
+		sessionName = strings.TrimSpace(sessionName)
+		if sessionName != "" {
+			tmux.SessionName = sessionName
+		}
+	}
+
+	if onExists, ok := data["on_exists"].(string); ok {
+		onExists = strings.ToLower(strings.TrimSpace(onExists))
+		switch onExists {
+		case "switch", "attach", "kill", "new":
+			tmux.OnExists = onExists
+		}
+	}
+
+	tmux.Attach = coerceBool(data["attach"], true)
+
+	var windows []TmuxWindow
+	if rawWindows, ok := data["windows"].([]any); ok {
+		windows = make([]TmuxWindow, 0, len(rawWindows))
+		for _, item := range rawWindows {
+			windowMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			window := TmuxWindow{}
+			if name, ok := windowMap["name"].(string); ok {
+				window.Name = strings.TrimSpace(name)
+			}
+			if cmd, ok := windowMap["command"].(string); ok {
+				window.Command = strings.TrimSpace(cmd)
+			}
+			if cwd, ok := windowMap["cwd"].(string); ok {
+				window.Cwd = strings.TrimSpace(cwd)
+			}
+			if window.Name == "" && window.Command == "" && window.Cwd == "" {
+				continue
+			}
+			windows = append(windows, window)
+		}
+	}
+
+	if len(windows) == 0 {
+		windows = []TmuxWindow{{Name: "shell"}}
+	}
+
+	tmux.Windows = windows
+	return tmux
+}
+
 func parseCustomCommands(data map[string]any) map[string]*CustomCommand {
 	commands := make(map[string]*CustomCommand)
 
@@ -185,9 +271,12 @@ func parseCustomCommands(data map[string]any) map[string]*CustomCommand {
 		}
 		cmd.ShowHelp = coerceBool(cmdMap["show_help"], false)
 		cmd.Wait = coerceBool(cmdMap["wait"], false)
+		if tmuxRaw, ok := cmdMap["tmux"].(map[string]any); ok {
+			cmd.Tmux = parseTmuxCommand(tmuxRaw)
+		}
 
-		// Only add if command is not empty
-		if cmd.Command != "" {
+		// Only add if command is not empty or tmux config is present
+		if cmd.Command != "" || cmd.Tmux != nil {
 			commands[key] = cmd
 		}
 	}
@@ -269,7 +358,12 @@ func parseConfig(data map[string]any) *AppConfig {
 		cfg.MaxDiffChars = 0
 	}
 
-	cfg.CustomCommands = parseCustomCommands(data)
+	if _, ok := data["custom_commands"]; ok {
+		customCommands := parseCustomCommands(data)
+		for key, cmd := range customCommands {
+			cfg.CustomCommands[key] = cmd
+		}
+	}
 
 	return cfg
 }

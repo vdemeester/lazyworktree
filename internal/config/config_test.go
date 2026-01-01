@@ -25,7 +25,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Empty(t, cfg.TerminateCommands)
 	assert.Empty(t, cfg.DebugLog)
 	assert.NotNil(t, cfg.CustomCommands)
-	assert.Empty(t, cfg.CustomCommands)
+	require.Contains(t, cfg.CustomCommands, "t")
+	assert.Equal(t, "Open tmux", cfg.CustomCommands["t"].Description)
 	assert.Empty(t, cfg.BranchNameScript)
 }
 
@@ -1039,6 +1040,78 @@ func TestParseCustomCommands(t *testing.T) {
 			expected: map[string]*CustomCommand{},
 		},
 		{
+			name: "tmux command with windows",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"x": map[string]interface{}{
+						"description": "Open tmux",
+						"show_help":   true,
+						"tmux": map[string]interface{}{
+							"session_name": "${REPO_NAME}_wt_$WORKTREE_NAME",
+							"attach":       false,
+							"on_exists":    "kill",
+							"windows": []interface{}{
+								map[string]interface{}{
+									"name":    "shell",
+									"command": "zsh",
+									"cwd":     "$WORKTREE_PATH",
+								},
+								map[string]interface{}{
+									"name":    "git",
+									"command": "lazygit",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"x": {
+					Command:     "",
+					Description: "Open tmux",
+					ShowHelp:    true,
+					Wait:        false,
+					Tmux: &TmuxCommand{
+						SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
+						Attach:      false,
+						OnExists:    "kill",
+						Windows: []TmuxWindow{
+							{Name: "shell", Command: "zsh", Cwd: "$WORKTREE_PATH"},
+							{Name: "git", Command: "lazygit", Cwd: ""},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "tmux without windows defaults to shell window",
+			input: map[string]interface{}{
+				"custom_commands": map[string]interface{}{
+					"x": map[string]interface{}{
+						"tmux": map[string]interface{}{
+							"session_name": "${REPO_NAME}_wt_$WORKTREE_NAME",
+						},
+					},
+				},
+			},
+			expected: map[string]*CustomCommand{
+				"x": {
+					Command:     "",
+					Description: "",
+					ShowHelp:    false,
+					Wait:        false,
+					Tmux: &TmuxCommand{
+						SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
+						Attach:      true,
+						OnExists:    "switch",
+						Windows: []TmuxWindow{
+							{Name: "shell", Command: "", Cwd: ""},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "invalid type for custom_commands is ignored",
 			input: map[string]interface{}{
 				"custom_commands": "not a map",
@@ -1206,11 +1279,12 @@ func TestParseConfig_CustomCommands(t *testing.T) {
 			validate: func(t *testing.T, cfg *AppConfig) {
 				assert.Equal(t, "/tmp/worktrees", cfg.WorktreeDir)
 				assert.True(t, cfg.SortByActive)
-				require.Len(t, cfg.CustomCommands, 1)
+				require.Len(t, cfg.CustomCommands, 2)
 				assert.Equal(t, "nvim", cfg.CustomCommands["e"].Command)
 				assert.Equal(t, "Open editor", cfg.CustomCommands["e"].Description)
 				assert.True(t, cfg.CustomCommands["e"].ShowHelp)
 				assert.False(t, cfg.CustomCommands["e"].Wait)
+				require.Contains(t, cfg.CustomCommands, "t")
 			},
 		},
 		{
@@ -1219,7 +1293,8 @@ func TestParseConfig_CustomCommands(t *testing.T) {
 				"worktree_dir": "/tmp/worktrees",
 			},
 			validate: func(t *testing.T, cfg *AppConfig) {
-				assert.Empty(t, cfg.CustomCommands)
+				require.Contains(t, cfg.CustomCommands, "t")
+				assert.Equal(t, "Open tmux", cfg.CustomCommands["t"].Description)
 			},
 		},
 	}
