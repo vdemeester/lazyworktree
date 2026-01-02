@@ -427,14 +427,6 @@ branch_name_script: "aichat -m gemini:gemini-2.5-flash-lite 'Generate a short gi
 - Should the script fail or return empty output, the default name (`{current-branch}-changes`) is employed
 - The script operates under a 30-second timeout to prevent hanging
 
-## Performance Optimisation
-
-`lazyworktree` is designed for optimal responsiveness:
-
-- **Caching**: Worktree metadata is cached in `.worktree-cache.json` under `<worktree_dir>/<repo_key>/`; `repo_key` represents the remote `owner/repo` when available, otherwise a local `local-<hash>` key derived from the repository path.
-- **Background Updates**: Upon the UI becoming visible, a background task retrieves data from Git and updates the cache automatically.
-- **Welcome Screen**: Should no worktrees be detected (for instance, during initial use or in an unconfigured directory), a welcome screen provides guidance through the setup process.
-
 ## Trivia
 
 Previously, this was a Python textual application; however, the startup time proved excessive, prompting a migration to a Go-based [charmbracelet bubble](https://github.com/charmbracelet/bubbles) Terminal User Interface. The original Python implementation remains available for review or testing at <https://github.com/chmouel/lazyworktree/tree/python>
