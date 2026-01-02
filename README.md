@@ -19,7 +19,7 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 
 ## Screenshots
 
-<img width="3708" height="2462" alt="image" src="https://github.com/user-attachments/assets/8ef892ff-bc57-4960-ba9d-13fa78eccc79" />
+<img width="3833" height="2084" alt="image" src="https://github.com/user-attachments/assets/76e62f82-21af-4392-bcfc-5d55aa0751f0" />
 
 ## Prerequisites
 
