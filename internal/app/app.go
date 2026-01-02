@@ -3890,7 +3890,6 @@ func (m *Model) renderFooter(layout layoutDims) string {
 	default: // Worktree table (pane 0)
 		hints = []string{
 			m.renderKeyHint("1-3", "Pane Focus"),
-			m.renderKeyHint("g", "LazyGit"),
 			m.renderKeyHint("r", "Refresh"),
 			m.renderKeyHint("d", "Diff"),
 			m.renderKeyHint("p", "PR Info"),
