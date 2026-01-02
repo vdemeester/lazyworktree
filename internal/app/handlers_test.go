@@ -100,7 +100,7 @@ func TestFilterEnterSelectsFirstMatch(t *testing.T) {
 	}
 }
 
-func TestFilterCtrlJKMovesSelection(t *testing.T) {
+func TestFilterAltNPMovesSelectionAndFills(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir:  t.TempDir(),
 		SortByActive: false,
@@ -121,7 +121,7 @@ func TestFilterCtrlJKMovesSelection(t *testing.T) {
 	m.worktreeTable.SetCursor(0)
 	m.selectedIndex = 0
 
-	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true})
 	updatedModel, ok := updated.(*Model)
 	if !ok {
 		t.Fatalf("expected updated model, got %T", updated)
@@ -135,7 +135,7 @@ func TestFilterCtrlJKMovesSelection(t *testing.T) {
 		t.Fatalf("expected filtered worktree %q, got %v", wt2Path, m.filteredWts)
 	}
 
-	updated, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlK})
+	updated, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true})
 	updatedModel, ok = updated.(*Model)
 	if !ok {
 		t.Fatalf("expected updated model, got %T", updated)
@@ -147,6 +147,118 @@ func TestFilterCtrlJKMovesSelection(t *testing.T) {
 	}
 	if len(m.filteredWts) != 1 || m.filteredWts[0].Path != wt1Path {
 		t.Fatalf("expected filtered worktree %q, got %v", wt1Path, m.filteredWts)
+	}
+}
+
+func TestFilterArrowKeysNavigateWithoutFilling(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:  t.TempDir(),
+		SortByActive: false,
+	}
+	m := NewModel(cfg, "")
+
+	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
+	wt2Path := filepath.Join(cfg.WorktreeDir, testWt2)
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: wt1Path, Branch: "feat-one"},
+		{Path: wt2Path, Branch: "feat-two"},
+	}
+	m.filterQuery = testFeat
+	m.filterInput.SetValue(testFeat)
+	m.updateTable()
+	m.showingFilter = true
+	m.filterInput.Focus()
+	m.worktreeTable.SetCursor(0)
+	m.selectedIndex = 0
+
+	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyDown})
+	updatedModel, ok := updated.(*Model)
+	if !ok {
+		t.Fatalf("expected updated model, got %T", updated)
+	}
+	m = updatedModel
+
+	if m.filterInput.Value() != testFeat || m.filterQuery != testFeat {
+		t.Fatalf("expected filter query unchanged, got %q", m.filterQuery)
+	}
+
+	updated, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyUp})
+	updatedModel, ok = updated.(*Model)
+	if !ok {
+		t.Fatalf("expected updated model, got %T", updated)
+	}
+	m = updatedModel
+
+	if m.filterInput.Value() != testFeat || m.filterQuery != testFeat {
+		t.Fatalf("expected filter query unchanged, got %q", m.filterQuery)
+	}
+}
+
+func TestFilterEmptyEnterSelectsCurrent(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:  t.TempDir(),
+		SortByActive: false,
+	}
+	m := NewModel(cfg, "")
+
+	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
+	wt2Path := filepath.Join(cfg.WorktreeDir, testWt2)
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: wt1Path, Branch: "feat-one"},
+		{Path: wt2Path, Branch: "feat-two"},
+	}
+	m.filterQuery = ""
+	m.filterInput.SetValue("")
+	m.updateTable()
+	m.showingFilter = true
+	m.filterInput.Focus()
+	m.worktreeTable.SetCursor(1)
+	m.selectedIndex = 1
+
+	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	updatedModel, ok := updated.(*Model)
+	if !ok {
+		t.Fatalf("expected updated model, got %T", updated)
+	}
+	m = updatedModel
+
+	if m.showingFilter {
+		t.Fatal("expected filter to be closed")
+	}
+	if m.selectedIndex != 1 {
+		t.Fatalf("expected selectedIndex to remain 1, got %d", m.selectedIndex)
+	}
+}
+
+func TestFilterCtrlCExitsFilter(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:  t.TempDir(),
+		SortByActive: false,
+	}
+	m := NewModel(cfg, "")
+
+	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: wt1Path, Branch: "feat-one"},
+	}
+	m.filterQuery = "something"
+	m.filterInput.SetValue("something")
+	m.updateTable()
+	m.showingFilter = true
+	m.filterInput.Focus()
+
+	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updatedModel, ok := updated.(*Model)
+	if !ok {
+		t.Fatalf("expected updated model, got %T", updated)
+	}
+	m = updatedModel
+
+	if m.showingFilter {
+		t.Fatal("expected filter to be closed after Ctrl+C")
+	}
+	if m.filterInput.Focused() {
+		t.Fatal("expected filter input to be blurred")
 	}
 }
 

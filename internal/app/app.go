@@ -518,6 +518,16 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showingFilter {
 		keyStr := msg.String()
 		if keyStr == keyEnter {
+			if m.filterQuery == "" && len(m.filteredWts) > 0 {
+				m.showingFilter = false
+				m.filterInput.Blur()
+				m.worktreeTable.Focus()
+				cursor := m.worktreeTable.Cursor()
+				if cursor >= 0 && cursor < len(m.filteredWts) {
+					m.selectedIndex = cursor
+					return m.handleEnterKey()
+				}
+			}
 			if m.config.SearchAutoSelect && len(m.filteredWts) > 0 {
 				m.showingFilter = false
 				m.filterInput.Blur()
@@ -531,14 +541,17 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.worktreeTable.Focus()
 			return m, nil
 		}
-		if isEscKey(keyStr) {
+		if isEscKey(keyStr) || keyStr == "ctrl+c" {
 			m.showingFilter = false
 			m.filterInput.Blur()
 			m.worktreeTable.Focus()
 			return m, nil
 		}
-		if keyStr == "ctrl+j" || keyStr == "ctrl+k" {
-			return m.handleFilterNavigation(keyStr)
+		if keyStr == "alt+n" || keyStr == "alt+p" {
+			return m.handleFilterNavigation(keyStr, true)
+		}
+		if keyStr == keyUp || keyStr == keyDown {
+			return m.handleFilterNavigation(keyStr, false)
 		}
 		m.filterInput, cmd = m.filterInput.Update(msg)
 		m.filterQuery = m.filterInput.Value()
@@ -752,7 +765,7 @@ func (m *Model) handleNavigationUp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) handleFilterNavigation(keyStr string) (tea.Model, tea.Cmd) {
+func (m *Model) handleFilterNavigation(keyStr string, fillInput bool) (tea.Model, tea.Cmd) {
 	sorted := m.sortedWorktrees()
 	if len(sorted) == 0 {
 		return m, nil
@@ -781,13 +794,13 @@ func (m *Model) handleFilterNavigation(keyStr string) (tea.Model, tea.Cmd) {
 
 	targetIndex := currentIndex
 	switch keyStr {
-	case "ctrl+j":
+	case "alt+n", keyDown:
 		if currentIndex == -1 {
 			targetIndex = 0
 		} else if currentIndex < len(sorted)-1 {
 			targetIndex = currentIndex + 1
 		}
-	case "ctrl+k":
+	case "alt+p", keyUp:
 		if currentIndex == -1 {
 			targetIndex = len(sorted) - 1
 		} else if currentIndex > 0 {
@@ -801,7 +814,9 @@ func (m *Model) handleFilterNavigation(keyStr string) (tea.Model, tea.Cmd) {
 	}
 
 	target := sorted[targetIndex]
-	m.setFilterToWorktree(target)
+	if fillInput {
+		m.setFilterToWorktree(target)
+	}
 	m.selectFilteredWorktree(target.Path)
 	return m, m.debouncedUpdateDetailsView()
 }

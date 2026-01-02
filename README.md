@@ -293,9 +293,16 @@ custom_commands:
 | `r` | Refresh list |
 | `R` | Fetch all remotes |
 | `f`, `/` | Filter worktrees |
-| `ctrl+j`, `ctrl+k` | Move selection and fill filter input |
+| `alt+n`, `alt+p` | Move selection and fill filter input |
+| `↑`, `↓` | Move selection (filter active, no fill) |
 | `s` | Toggle sort (Name/Last Active) |
 | `?` | Show help |
+
+**Filter Mode:**
+- `alt+n`, `alt+p`: Navigate and update filter input with selected item
+- `↑`, `↓`: Navigate list without changing filter input
+- `Enter`: With empty filter, select highlighted item; with text, apply filter
+- `Esc`, `Ctrl+C`: Exit filter mode
 
 **Command Palette Actions:**
 
