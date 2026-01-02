@@ -9,17 +9,13 @@ A Bubble Tea-based TUI for managing Git worktrees efficiently. Visualize status,
 
 - **Worktree Management**: Create, rename, delete, absorb, and prune merged worktrees.
 - **Base Selection**: Pick a base branch or commit from a list (or enter a ref) when creating a worktree.
-- **Create from PR/MR**: Create worktrees directly from open pull/merge requests via command palette.
-- **Command Palette**: Fuzzy search and run actions quickly.
-- **Status at a Glance**: View dirty state, ahead/behind counts, and divergence from main.
 - **Forge Integration**: Fetch and display associated Pull Request (GitHub) or Merge Request (GitLab) status, including CI check results (via `gh` or `glab` CLI).
-- **Diff Viewer**: Three-part diff with optional [delta](https://github.com/dandavison/delta) support and a full-screen viewer.
-- **Commit Details**: Open commit metadata and diffs directly from the log pane.
-- **Repo Automation**: `.wt` init/terminate commands with TOFU security.
-- **LazyGit Integration**: Launch `lazygit` directly for the selected worktree.
-- **Tmux Integration**: Create and manage tmux sessions per worktree with multi-window support.
-- **Shell Integration**: Jump (cd) directly to selected worktrees upon exit.
-- **Mouse Support**: Full mouse support for scrolling and clicking to select items and focus panes.
+- **Create from PR/MR**: Create worktrees directly from open pull/merge requests via command palette.
+- **Status at a Glance**: View dirty state, ahead/behind counts, and divergence from main.
+- **[Tmux](https://github.com/tmux/tmux/) Integration**: Create and manage tmux sessions per worktree with multi-window support.
+- **Diff Viewer**: View diff with optional [delta](https://github.com/dandavison/delta) support.
+- **Repo Automation**: `.wt` init/terminate commands with [TOFU](https://en.wikipedia.org/wiki/Trust_on_first_use) security.
+- **LazyGit Integration**: Launch [lazygit](https://github.com/jesseduffield/lazygit) directly for the selected worktree.
 
 ## Screenshots
 
@@ -33,7 +29,7 @@ A Bubble Tea-based TUI for managing Git worktrees efficiently. Visualize status,
 
 **Optional:**
 
-- **delta**: For syntax-highlighted diffs.
+- **delta**: For syntax-highlighted diffs. (highly recommended)
 - **lazygit**: For full TUI git control.
 - **tmux**: For TMUX integration support.
 

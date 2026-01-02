@@ -460,7 +460,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		if msg.err != nil {
-			m.statusContent = fmt.Sprintf("Error: %v", msg.err)
+			m.showInfo(fmt.Sprintf("Error: %v", msg.err), nil)
 		}
 		return m, nil
 
@@ -782,7 +782,7 @@ func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cm
 	m.worktreesLoaded = true
 	m.loading = false
 	if msg.err != nil {
-		m.statusContent = fmt.Sprintf("Error loading worktrees: %v", msg.err)
+		m.showInfo(fmt.Sprintf("Error loading worktrees: %v", msg.err), nil)
 		return m, nil
 	}
 	m.worktrees = msg.worktrees
@@ -1464,12 +1464,12 @@ func (m *Model) showCreateFromPR() tea.Cmd {
 
 func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 	if msg.err != nil {
-		m.statusContent = fmt.Sprintf("Failed to fetch PRs: %v", msg.err)
+		m.showInfo(fmt.Sprintf("Failed to fetch PRs: %v", msg.err), nil)
 		return nil
 	}
 
 	if len(msg.prs) == 0 {
-		m.statusContent = "No open PRs/MRs found."
+		m.showInfo("No open PRs/MRs found.", nil)
 		return nil
 	}
 
@@ -1547,7 +1547,7 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 func (m *Model) showCreateWorktreeFromChanges() tea.Cmd {
 	// Check if a worktree is selected
 	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
-		m.statusContent = errNoWorktreeSelected
+		m.showInfo(errNoWorktreeSelected, nil)
 		return nil
 	}
 
@@ -1588,15 +1588,31 @@ func (m *Model) handleCreateFromChangesReady(msg createFromChangesReadyMsg) tea.
 	defaultName := fmt.Sprintf("%s-changes", currentBranch)
 
 	// If branch_name_script is configured, run it to generate a suggested name
+	scriptErr := ""
 	if m.config.BranchNameScript != "" && msg.diff != "" {
 		if generatedName, err := runBranchNameScript(m.ctx, m.config.BranchNameScript, msg.diff); err != nil {
 			// Log error but continue with default name
-			m.statusContent = fmt.Sprintf("Branch name script error: %v", err)
+			scriptErr = fmt.Sprintf("Branch name script error: %v", err)
 		} else if generatedName != "" {
 			defaultName = generatedName
 		}
 	}
 
+	if scriptErr != "" {
+		m.showInfo(scriptErr, func() tea.Msg {
+			cmd := m.showCreateFromChangesInput(wt, currentBranch, defaultName)
+			if cmd != nil {
+				return cmd()
+			}
+			return nil
+		})
+		return nil
+	}
+
+	return m.showCreateFromChangesInput(wt, currentBranch, defaultName)
+}
+
+func (m *Model) showCreateFromChangesInput(wt *models.WorktreeInfo, currentBranch, defaultName string) tea.Cmd {
 	// Show input screen for worktree name
 	m.inputScreen = NewInputScreen("Create worktree from changes: branch name", "feature/my-branch", defaultName, m.theme)
 	m.inputSubmit = func(value string) (tea.Cmd, bool) {
@@ -1719,11 +1735,8 @@ func (m *Model) showDiff() tea.Cmd {
 	return func() tea.Msg {
 		diff := m.git.BuildThreePartDiff(m.ctx, wt.Path, m.config)
 		if strings.TrimSpace(diff) == "" {
-			return statusUpdatedMsg{
-				info:   m.buildInfoContent(wt),
-				status: fmt.Sprintf("No diff for %s.", wt.Branch),
-				log:    nil,
-			}
+			m.showInfo(fmt.Sprintf("No diff for %s.", wt.Branch), nil)
+			return nil
 		}
 		diff = m.git.ApplyDelta(m.ctx, diff)
 		m.diffScreen = NewDiffScreen(fmt.Sprintf("Diff for %s", wt.Branch), diff, m.theme)
@@ -1739,7 +1752,7 @@ func (m *Model) showRenameWorktree() tea.Cmd {
 
 	wt := m.filteredWts[m.selectedIndex]
 	if wt.IsMain {
-		m.statusContent = "Cannot rename the main worktree."
+		m.showInfo("Cannot rename the main worktree.", nil)
 		return nil
 	}
 
@@ -1795,7 +1808,7 @@ func (m *Model) showPruneMerged() tea.Cmd {
 	}
 
 	if len(merged) == 0 {
-		m.statusContent = "No merged PR worktrees to prune."
+		m.showInfo("No merged PR worktrees to prune.", nil)
 		return nil
 	}
 
@@ -2681,7 +2694,7 @@ func (m *Model) saveCache() {
 	repoKey := m.getRepoKey()
 	cachePath := filepath.Join(m.getWorktreeDir(), repoKey, models.CacheFilename)
 	if err := os.MkdirAll(filepath.Dir(cachePath), defaultDirPerms); err != nil {
-		m.statusContent = fmt.Sprintf("Failed to create cache dir: %v", err)
+		m.showInfo(fmt.Sprintf("Failed to create cache dir: %v", err), nil)
 		return
 	}
 
@@ -2692,7 +2705,7 @@ func (m *Model) saveCache() {
 	}
 	data, _ := json.Marshal(cacheData)
 	if err := os.WriteFile(cachePath, data, defaultFilePerms); err != nil {
-		m.statusContent = fmt.Sprintf("Failed to write cache: %v", err)
+		m.showInfo(fmt.Sprintf("Failed to write cache: %v", err), nil)
 	}
 }
 
@@ -2755,6 +2768,12 @@ func (m *Model) getWorktreeDir() string {
 // This is used when the application exits to allow the shell to cd into the selected worktree.
 func (m *Model) GetSelectedPath() string {
 	return m.selectedPath
+}
+
+func (m *Model) showInfo(message string, action tea.Cmd) {
+	m.infoScreen = NewInfoScreen(message, m.theme)
+	m.infoAction = action
+	m.currentScreen = screenInfo
 }
 
 func (m *Model) debugf(format string, args ...any) {
@@ -3098,7 +3117,7 @@ func (m *Model) ensureRepoConfig() {
 	}
 	repoCfg, cfgPath, err := config.LoadRepoConfig(mainPath)
 	if err != nil {
-		m.statusContent = fmt.Sprintf("Failed to load .wt: %v", err)
+		m.showInfo(fmt.Sprintf("Failed to load .wt: %v", err), nil)
 		return
 	}
 	m.repoConfigPath = cfgPath

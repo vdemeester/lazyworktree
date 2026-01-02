@@ -17,14 +17,23 @@ func TestIntegrationOpenPRsErrors(t *testing.T) {
 
 	updated, _ := m.Update(openPRsLoadedMsg{err: errors.New("boom")})
 	m = updated.(*Model)
-	if !strings.Contains(m.statusContent, "Failed to fetch PRs") {
-		t.Fatalf("expected fetch error status, got %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
 	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Failed to fetch PRs") {
+		t.Fatalf("expected fetch error modal, got %#v", m.infoScreen)
+	}
+
+	m.currentScreen = screenNone
+	m.infoScreen = nil
 
 	updated, _ = m.Update(openPRsLoadedMsg{prs: []*models.PRInfo{}})
 	m = updated.(*Model)
-	if !strings.Contains(m.statusContent, "No open PRs") {
-		t.Fatalf("unexpected status: %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "No open PRs") {
+		t.Fatalf("unexpected info modal: %#v", m.infoScreen)
 	}
 }
 

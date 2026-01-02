@@ -214,6 +214,50 @@ func TestShowCommitSelection(t *testing.T) {
 	}
 }
 
+func TestShowCommitSelectionShowsInfoOnBranchNameScriptError(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{
+		WorktreeDir:      t.TempDir(),
+		BranchNameScript: "false",
+	}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	cmd := m.showCommitSelection(repo.branch)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	if m.listScreen == nil || len(m.listScreen.items) == 0 {
+		t.Fatal("expected commit list to be populated")
+	}
+
+	item := m.listScreen.items[0]
+	if cmd := m.listSubmit(item); cmd != nil {
+		t.Fatal("expected nil command on script error")
+	}
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Branch name script error") {
+		t.Fatalf("expected branch name script error modal, got %#v", m.infoScreen)
+	}
+
+	_, action := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if action != nil {
+		_ = action()
+	}
+
+	if m.currentScreen != screenInput {
+		t.Fatalf("expected input screen, got %v", m.currentScreen)
+	}
+	if m.inputScreen == nil {
+		t.Fatal("expected input screen to be set")
+	}
+}
+
 func TestShowBranchNameInputValidation(t *testing.T) {
 	repo := initTestRepo(t)
 	withCwd(t, repo.dir)

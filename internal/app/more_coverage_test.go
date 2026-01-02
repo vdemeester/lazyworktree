@@ -205,8 +205,11 @@ func TestShowRenameWorktree(t *testing.T) {
 	if cmd := m.showRenameWorktree(); cmd != nil {
 		t.Fatal("expected nil command for main worktree")
 	}
-	if !strings.Contains(m.statusContent, "Cannot rename") {
-		t.Fatalf("expected rename warning, got %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Cannot rename") {
+		t.Fatalf("expected rename warning modal, got %#v", m.infoScreen)
 	}
 
 	m.selectedIndex = 1
@@ -231,8 +234,11 @@ func TestShowPruneMerged(t *testing.T) {
 	if cmd := m.showPruneMerged(); cmd != nil {
 		t.Fatal("expected nil command when nothing to prune")
 	}
-	if m.statusContent != "No merged PR worktrees to prune." {
-		t.Fatalf("unexpected status: %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || m.infoScreen.message != "No merged PR worktrees to prune." {
+		t.Fatalf("unexpected info modal: %#v", m.infoScreen)
 	}
 
 	m.worktrees = []*models.WorktreeInfo{
@@ -310,13 +316,15 @@ func TestShowDiffNoDiff(t *testing.T) {
 		t.Fatal("expected diff command")
 	}
 	msg := cmd()
-	statusMsg, ok := msg.(statusUpdatedMsg)
-	if !ok {
-		t.Fatalf("expected statusUpdatedMsg, got %T", msg)
+	if msg != nil {
+		t.Fatalf("expected nil message, got %T", msg)
 	}
 	expected := fmt.Sprintf("No diff for %s.", featureBranch)
-	if statusMsg.status != expected {
-		t.Fatalf("expected status %q, got %q", expected, statusMsg.status)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || m.infoScreen.message != expected {
+		t.Fatalf("expected info modal %q, got %#v", expected, m.infoScreen)
 	}
 }
 
@@ -330,15 +338,24 @@ func TestHandleOpenPRsLoaded(t *testing.T) {
 	if cmd := m.handleOpenPRsLoaded(openPRsLoadedMsg{err: fmt.Errorf("fail")}); cmd != nil {
 		t.Fatal("expected no command on error")
 	}
-	if !strings.Contains(m.statusContent, "Failed to fetch PRs") {
-		t.Fatalf("unexpected status: %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
 	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Failed to fetch PRs") {
+		t.Fatalf("unexpected info modal: %#v", m.infoScreen)
+	}
+
+	m.currentScreen = screenNone
+	m.infoScreen = nil
 
 	if cmd := m.handleOpenPRsLoaded(openPRsLoadedMsg{prs: []*models.PRInfo{}}); cmd != nil {
 		t.Fatal("expected no command on empty list")
 	}
-	if m.statusContent != "No open PRs/MRs found." {
-		t.Fatalf("unexpected status: %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || m.infoScreen.message != "No open PRs/MRs found." {
+		t.Fatalf("unexpected info modal: %#v", m.infoScreen)
 	}
 
 	prs := []*models.PRInfo{{Number: 1, Title: "Test", Branch: featureBranch}}
@@ -430,14 +447,17 @@ func TestRenderScreenVariants(t *testing.T) {
 	}
 }
 
-func TestErrMsgUpdatesStatus(t *testing.T) {
+func TestErrMsgShowsInfo(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
 
 	_, _ = m.Update(errMsg{err: errors.New("boom")})
 
-	if !strings.Contains(m.statusContent, "boom") {
-		t.Fatalf("expected status to include error, got %q", m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "boom") {
+		t.Fatalf("expected info modal to include error, got %#v", m.infoScreen)
 	}
 }
 

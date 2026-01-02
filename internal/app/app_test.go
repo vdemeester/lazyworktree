@@ -138,8 +138,11 @@ func TestShowCreateWorktreeFromChangesNoSelection(t *testing.T) {
 	if cmd != nil {
 		t.Error("Expected nil command when no worktree is selected")
 	}
-	if m.statusContent != errNoWorktreeSelected {
-		t.Errorf("Expected status %q, got %q", errNoWorktreeSelected, m.statusContent)
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, errNoWorktreeSelected) {
+		t.Fatalf("expected info modal with %q, got %#v", errNoWorktreeSelected, m.infoScreen)
 	}
 }
 
@@ -438,6 +441,49 @@ func TestCreateFromChangesReadyMsg(t *testing.T) {
 
 	if m.currentScreen != screenInput {
 		t.Errorf("Expected currentScreen to be screenInput, got %v", m.currentScreen)
+	}
+}
+
+func TestCreateFromChangesReadyMsgShowsInfoOnBranchNameScriptError(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:      t.TempDir(),
+		BranchNameScript: "false",
+	}
+	m := NewModel(cfg, "")
+	m.setWindowSize(120, 40)
+
+	wt := &models.WorktreeInfo{
+		Path:   "/tmp/test-worktree",
+		Branch: mainWorktreeName,
+	}
+
+	msg := createFromChangesReadyMsg{
+		worktree:      wt,
+		currentBranch: mainWorktreeName,
+		diff:          "diff",
+	}
+
+	cmd := m.handleCreateFromChangesReady(msg)
+	if cmd != nil {
+		t.Fatal("expected no command when showing info screen")
+	}
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Branch name script error") {
+		t.Fatalf("expected branch name script error modal, got %#v", m.infoScreen)
+	}
+
+	_, action := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if action != nil {
+		_ = action()
+	}
+
+	if m.currentScreen != screenInput {
+		t.Fatalf("expected input screen, got %v", m.currentScreen)
+	}
+	if m.inputScreen == nil {
+		t.Fatal("expected input screen to be set")
 	}
 }
 

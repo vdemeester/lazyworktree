@@ -127,9 +127,10 @@ func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
 		}
 
 		defaultName := ""
+		scriptErr := ""
 		if strings.TrimSpace(m.config.BranchNameScript) != "" && commitMessage != "" {
 			if generatedName, err := runBranchNameScript(m.ctx, m.config.BranchNameScript, commitMessage); err != nil {
-				m.statusContent = fmt.Sprintf("Branch name script error: %v", err)
+				scriptErr = fmt.Sprintf("Branch name script error: %v", err)
 			} else if generatedName != "" {
 				defaultName = generatedName
 			}
@@ -143,6 +144,16 @@ func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
 			defaultName = sanitizeBranchNameFromTitle(subject, commit.shortHash)
 		}
 
+		if scriptErr != "" {
+			m.showInfo(scriptErr, func() tea.Msg {
+				cmd := m.showBranchNameInput(item.id, defaultName)
+				if cmd != nil {
+					return cmd()
+				}
+				return nil
+			})
+			return nil
+		}
 		return m.showBranchNameInput(item.id, defaultName)
 	}
 	m.currentScreen = screenListSelect
