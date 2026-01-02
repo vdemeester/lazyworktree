@@ -12,15 +12,24 @@ constraints and workflow.
 | Tool | Strength |
 |----|----|
 | **lazyworktree** | Full interactive environment for humans |
-| git-worktree-runner (gtr) | Best CLI + scripting ergonomics |
-| worktrunk (wt) | Parallel / AI-agent workflows |
-| worktree-plus (wtp) | Minimal, predictable automation |
-| branchlet | Lightweight TUI with low cognitive load |
-| gwm | Fast fuzzy navigation |
-| kosho | Command-centric, agent-oriented |
-| wtm | Bare-repo / CI / server environments |
+| [git-worktree-runner (gtr)](https://github.com/coderabbitai/git-worktree-runner) | Best CLI + scripting ergonomics |
+| [worktrunk (wt)](https://github.com/max-sixty/worktrunk) | Parallel / AI-agent workflows |
+| [worktree-plus (wtp)](https://github.com/satococoa/wtp) | Minimal, predictable automation |
+| [worktree-cli](https://github.com/fnebenfuehr/worktree-cli) | AI-focused with MCP integration |
+| [branchlet](https://github.com/raghavpillai/branchlet) | Lightweight TUI with low cognitive load |
+| [gwm](https://github.com/shutootaki/gwm) | Fast fuzzy navigation |
+| [Treekanga](https://github.com/garrettkrohn/treekanga) | Smart CLI with Editor/Shell integrations |
+| [newt](https://github.com/cdzombak/newt) | Fast, opinionated directory structure |
+| [kosho](https://github.com/carlsverre/kosho) | Command-centric, agent-oriented |
+| [wtm](https://github.com/jarredkenny/worktree-manager) | Bare-repo / CI / server environments |
 
 lazyworktree intentionally trades **simplicity and scriptability** for **interactive power**.
+
+It is built on the **DWIM (Do What I Mean)** principle, enabling **intuitiveness** by anticipating user intent rather than requiring explicit, verbose instructions. For example:
+
+*   **Smart Creation**: Creating a worktree from a PR automatically fetches code, tracks the branch, and names the directory meaningfully (e.g., `pr-123-fix-bug`).
+*   **Intelligent Absorb**: "Absorbing" a worktree doesn't just delete it; it intelligently rebases or merges changes into main and cleans up artifacts, assuming "I am finished with this feature" is the goal.
+*   **Context Aware**: Opening a terminal (`t`) automatically creates or attaches to a dedicated tmux session for that specific worktree, setting the correct working directory and window names.
 
 ---
 
@@ -157,6 +166,16 @@ lazyworktree is **not the best choice** if you:
 In these cases:
 
 * use **gtr** or **wtp**
+
+---
+
+## General Git TUIs (lazygit, gitui)
+
+Tools like [lazygit](https://github.com/jesseduffield/lazygit) or [gitui](https://github.com/extrawurst/gitui) are excellent general-purpose Git interfaces. They do support worktrees, but they treat them as just another list to manage.
+
+**lazyworktree** has been heavily inspired by the ease of use and "lazy" philosophy of **lazygit**. It is designed to complement it, featuring a **built-in integration** (via the `g` key) that allows you to launch lazygit directly inside the currently selected worktree for full Git control.
+
+However, **lazyworktree** remains different because it treats the **worktree as the primary unit of work**, building the entire workflow (switching, creating from PRs, opening in editor/tmux) around that concept.
 
 ---
 
