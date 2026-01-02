@@ -41,4 +41,6 @@ const (
 	LastSelectedFilename = ".last-selected"
 	// CacheFilename stores cached worktree metadata for faster loads.
 	CacheFilename = ".worktree-cache.json"
+	// CommandHistoryFilename stores the command history for the ! command.
+	CommandHistoryFilename = ".command-history.json"
 )

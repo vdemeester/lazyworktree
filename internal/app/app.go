@@ -238,6 +238,9 @@ type Model struct {
 	// Log cache for commit detail viewer
 	logEntries []commitLogEntry
 
+	// Command history for ! command
+	commandHistory []string
+
 	// Exit
 	selectedPath string
 	quitting     bool
@@ -409,6 +412,7 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 
 // Init satisfies the tea.Model interface and starts with no command.
 func (m *Model) Init() tea.Cmd {
+	m.loadCommandHistory()
 	cmds := []tea.Cmd{
 		m.loadCache(),
 		m.refreshWorktrees(),
@@ -2075,11 +2079,16 @@ func (m *Model) showRunCommand() tea.Cmd {
 		"",
 		m.theme,
 	)
+	// Enable bash-style history navigation with up/down arrows
+	// Always set history, even if empty - it will populate as commands are added
+	m.inputScreen.SetHistory(m.commandHistory)
 	m.inputSubmit = func(value string) (tea.Cmd, bool) {
 		cmdStr := strings.TrimSpace(value)
 		if cmdStr == "" {
 			return nil, true // Close without running
 		}
+		// Add command to history
+		m.addToCommandHistory(cmdStr)
 		return m.executeArbitraryCommand(cmdStr), true
 	}
 	return nil
@@ -3074,6 +3083,37 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Handle history navigation with up/down arrows
+		if len(m.inputScreen.history) > 0 {
+			switch keyStr {
+			case "up":
+				// Go to previous command in history (older)
+				if m.inputScreen.historyIndex == -1 {
+					m.inputScreen.originalInput = m.inputScreen.input.Value()
+					m.inputScreen.historyIndex = 0
+				} else if m.inputScreen.historyIndex < len(m.inputScreen.history)-1 {
+					m.inputScreen.historyIndex++
+				}
+				if m.inputScreen.historyIndex >= 0 && m.inputScreen.historyIndex < len(m.inputScreen.history) {
+					m.inputScreen.input.SetValue(m.inputScreen.history[m.inputScreen.historyIndex])
+					m.inputScreen.input.CursorEnd()
+				}
+				return m, nil
+			case "down":
+				// Go to next command in history (newer)
+				if m.inputScreen.historyIndex > 0 {
+					m.inputScreen.historyIndex--
+					m.inputScreen.input.SetValue(m.inputScreen.history[m.inputScreen.historyIndex])
+					m.inputScreen.input.CursorEnd()
+				} else if m.inputScreen.historyIndex == 0 {
+					m.inputScreen.historyIndex = -1
+					m.inputScreen.input.SetValue(m.inputScreen.originalInput)
+					m.inputScreen.input.CursorEnd()
+				}
+				return m, nil
+			}
+		}
+
 		var cmd tea.Cmd
 		m.inputScreen.input, cmd = m.inputScreen.input.Update(msg)
 		return m, cmd
@@ -3182,6 +3222,77 @@ func (m *Model) saveCache() {
 	if err := os.WriteFile(cachePath, data, defaultFilePerms); err != nil {
 		m.showInfo(fmt.Sprintf("Failed to write cache: %v", err), nil)
 	}
+}
+
+func (m *Model) loadCommandHistory() {
+	repoKey := m.getRepoKey()
+	historyPath := filepath.Join(m.getWorktreeDir(), repoKey, models.CommandHistoryFilename)
+	// #nosec G304 -- historyPath is constructed from vetted worktree directory and constant filename
+	data, err := os.ReadFile(historyPath)
+	if err != nil {
+		// No history file yet, that's fine
+		m.commandHistory = []string{}
+		return
+	}
+
+	var payload struct {
+		Commands []string `json:"commands"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		m.debugf("failed to parse command history: %v", err)
+		m.commandHistory = []string{}
+		return
+	}
+
+	m.commandHistory = payload.Commands
+	if m.commandHistory == nil {
+		m.commandHistory = []string{}
+	}
+}
+
+func (m *Model) saveCommandHistory() {
+	repoKey := m.getRepoKey()
+	historyPath := filepath.Join(m.getWorktreeDir(), repoKey, models.CommandHistoryFilename)
+	if err := os.MkdirAll(filepath.Dir(historyPath), defaultDirPerms); err != nil {
+		m.debugf("failed to create history dir: %v", err)
+		return
+	}
+
+	historyData := struct {
+		Commands []string `json:"commands"`
+	}{
+		Commands: m.commandHistory,
+	}
+	data, _ := json.Marshal(historyData)
+	if err := os.WriteFile(historyPath, data, defaultFilePerms); err != nil {
+		m.debugf("failed to write command history: %v", err)
+	}
+}
+
+func (m *Model) addToCommandHistory(cmd string) {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return
+	}
+
+	// Remove duplicate if it exists
+	filtered := []string{}
+	for _, c := range m.commandHistory {
+		if c != cmd {
+			filtered = append(filtered, c)
+		}
+	}
+
+	// Add to front (most recent first)
+	m.commandHistory = append([]string{cmd}, filtered...)
+
+	// Limit history to 100 entries
+	maxHistory := 100
+	if len(m.commandHistory) > maxHistory {
+		m.commandHistory = m.commandHistory[:maxHistory]
+	}
+
+	m.saveCommandHistory()
 }
 
 func (m *Model) getRepoKey() string {

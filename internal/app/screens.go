@@ -69,6 +69,9 @@ type InputScreen struct {
 	suggestions         []string // Available suggestions for fuzzy matching
 	filteredSuggestions []string
 	selectedSuggestion  int
+	history             []string // Command history for up/down cycling
+	historyIndex        int      // Current position in history (-1 = not browsing)
+	originalInput       string   // Store original input when browsing history
 }
 
 // HelpScreen renders searchable documentation for the app controls.
@@ -369,6 +372,9 @@ func NewInputScreen(prompt, placeholder, value string, thm *theme.Theme) *InputS
 		suggestions:         []string{},
 		filteredSuggestions: []string{},
 		selectedSuggestion:  0,
+		history:             []string{},
+		historyIndex:        -1,
+		originalInput:       "",
 	}
 }
 
@@ -385,6 +391,13 @@ func (s *InputScreen) SetFuzzyFinder(enabled bool, suggestions []string) {
 		s.filteredSuggestions = suggestions
 	}
 	s.selectedSuggestion = 0
+}
+
+// SetHistory enables bash-style history navigation with up/down arrows.
+func (s *InputScreen) SetHistory(history []string) {
+	s.history = history
+	s.historyIndex = -1
+	s.originalInput = ""
 }
 
 // Init satisfies tea.Model.Init for the input modal.
@@ -405,6 +418,8 @@ func (s *InputScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if s.fuzzyFinderInput && s.selectedSuggestion >= 0 && s.selectedSuggestion < len(s.filteredSuggestions) {
 				value = s.filteredSuggestions[s.selectedSuggestion]
 			}
+			// Reset history index on submit
+			s.historyIndex = -1
 			s.result <- value
 			return s, tea.Quit
 		case keyEsc, keyCtrlC:
@@ -420,6 +435,11 @@ func (s *InputScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.selectedSuggestion = (s.selectedSuggestion - 1 + len(s.filteredSuggestions)) % len(s.filteredSuggestions)
 				return s, nil
 			}
+		}
+
+		// If user types something, reset history browsing
+		if keyMsg.Type == tea.KeyRunes || keyMsg.Type == tea.KeyBackspace || keyMsg.Type == tea.KeyDelete {
+			s.historyIndex = -1
 		}
 	}
 
@@ -511,8 +531,10 @@ func (s *InputScreen) View() string {
 	}
 
 	footerText := "Enter to confirm • Esc to cancel"
-	if s.fuzzyFinderInput && len(s.filteredSuggestions) > 0 {
-		footerText = "↑↓ to navigate • Enter to confirm • Esc to cancel"
+	if len(s.history) > 0 {
+		footerText = "↑↓ to navigate history • Enter confirm • Esc cancel"
+	} else if s.fuzzyFinderInput && len(s.filteredSuggestions) > 0 {
+		footerText = "↑↓ to navigate • Enter confirm • Esc cancel"
 	}
 	contentLines = append(contentLines, footerStyle.Render(footerText))
 

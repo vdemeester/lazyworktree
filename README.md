@@ -285,7 +285,7 @@ custom_commands:
 | `d` | View diff in pager (respects pager config) |
 | `A` | Absorb worktree into main |
 | `X` | Prune merged worktrees |
-| `!` | Run arbitrary command in selected worktree |
+| `!` | Run arbitrary command in selected worktree (with command history) |
 | `p` | Fetch PR/MR status (also refreshes CI checks) |
 | `o` | Open PR/MR in browser |
 | `ctrl+p`, `P` | Command palette |
@@ -312,6 +312,15 @@ custom_commands:
 - `↑`, `↓`: Navigate list without changing filter input
 - `Enter`: With empty filter, select highlighted item; with text, apply filter
 - `Esc`, `Ctrl+C`: Exit filter mode
+
+**Command History (! command):**
+
+When running arbitrary commands with `!`, command history is persisted per repository:
+
+- `↑`, `↓`: Navigate through command history (most recent first)
+- Commands are automatically saved after execution
+- History is limited to 100 entries per repository
+- Stored in `~/.local/share/lazyworktree/<repo-key>/.command-history.json`
 
 **Command Palette Actions:**
 
