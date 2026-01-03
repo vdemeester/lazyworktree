@@ -4051,9 +4051,10 @@ func (m *Model) renderFooter(layout layoutDims) string {
 
 	default: // Worktree table (pane 0)
 		hints = []string{
-			m.renderKeyHint("1-3", "Pane Focus"),
-			m.renderKeyHint("r", "Refresh"),
+			m.renderKeyHint("1-3", "Pane"),
+			m.renderKeyHint("/", "Filter"),
 			m.renderKeyHint("d", "Diff"),
+			m.renderKeyHint("D", "Delete"),
 			m.renderKeyHint("p", "PR Info"),
 		}
 		// Show "o" key hint only when current worktree has PR info
@@ -4065,8 +4066,6 @@ func (m *Model) renderFooter(layout layoutDims) string {
 		}
 		hints = append(hints, m.customFooterHints()...)
 		hints = append(hints,
-			m.renderKeyHint("D", "Delete"),
-			m.renderKeyHint("/", "Filter"),
 			m.renderKeyHint("q", "Quit"),
 			m.renderKeyHint("?", "Help"),
 			m.renderKeyHint("ctrl+p", "Palette"),
