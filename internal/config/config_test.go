@@ -28,7 +28,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Empty(t, cfg.DebugLog)
 	assert.NotNil(t, cfg.CustomCommands)
 	require.Contains(t, cfg.CustomCommands, "t")
-	assert.Equal(t, "Open tmux", cfg.CustomCommands["t"].Description)
+	assert.Equal(t, "Tmux", cfg.CustomCommands["t"].Description)
 	assert.Empty(t, cfg.BranchNameScript)
 }
 
@@ -1115,7 +1115,7 @@ func TestParseCustomCommands(t *testing.T) {
 			input: map[string]interface{}{
 				"custom_commands": map[string]interface{}{
 					"x": map[string]interface{}{
-						"description": "Open tmux",
+						"description": "Tmux",
 						"show_help":   true,
 						"tmux": map[string]interface{}{
 							"session_name": "${REPO_NAME}_wt_$WORKTREE_NAME",
@@ -1139,7 +1139,7 @@ func TestParseCustomCommands(t *testing.T) {
 			expected: map[string]*CustomCommand{
 				"x": {
 					Command:     "",
-					Description: "Open tmux",
+					Description: "Tmux",
 					ShowHelp:    true,
 					Wait:        false,
 					Tmux: &TmuxCommand{
@@ -1389,7 +1389,7 @@ func TestParseConfig_CustomCommands(t *testing.T) {
 			},
 			validate: func(t *testing.T, cfg *AppConfig) {
 				require.Contains(t, cfg.CustomCommands, "t")
-				assert.Equal(t, "Open tmux", cfg.CustomCommands["t"].Description)
+				assert.Equal(t, "Tmux", cfg.CustomCommands["t"].Description)
 			},
 		},
 	}

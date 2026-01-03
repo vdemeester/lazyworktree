@@ -300,7 +300,7 @@ func TestShowCommandPaletteIncludesTmuxCommands(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 		CustomCommands: map[string]*config.CustomCommand{
 			"t": {
-				Description: "Open tmux",
+				Description: "Tmux",
 				ShowHelp:    true,
 				Tmux: &config.TmuxCommand{
 					SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
@@ -329,8 +329,8 @@ func TestShowCommandPaletteIncludesTmuxCommands(t *testing.T) {
 	for _, item := range items {
 		if item.id == "t" {
 			found = true
-			if item.label != "Open tmux (t)" {
-				t.Errorf("Expected label 'Open tmux (t)', got %q", item.label)
+			if item.label != "Tmux (t)" {
+				t.Errorf("Expected label 'Tmux (t)', got %q", item.label)
 			}
 			if item.description != tmuxSessionLabel {
 				t.Errorf("Expected description %q, got %q", tmuxSessionLabel, item.description)

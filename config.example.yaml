@@ -91,7 +91,7 @@ custom_commands:
     show_help: true
     show_output: true
   "T":
-    description: Open tmux session
+    description: Tmux session
     show_help: true
     tmux:
       session_name: "${REPO_NAME}_wt_$WORKTREE_NAME"

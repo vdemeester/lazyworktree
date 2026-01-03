@@ -194,7 +194,7 @@ custom_commands:
     description: Open Claude
     show_help: true
   t: # Open a tmux session with multiple windows
-    description: Open tmux
+    description: Tmux
     show_help: true
     tmux:
       session_name: "${REPO_NAME}_wt_$WORKTREE_NAME"

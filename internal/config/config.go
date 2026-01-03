@@ -83,7 +83,7 @@ func DefaultConfig() *AppConfig {
 		FuzzyFinderInput:  false,
 		CustomCommands: map[string]*CustomCommand{
 			"t": {
-				Description: "Open tmux",
+				Description: "Tmux",
 				ShowHelp:    true,
 				Tmux: &TmuxCommand{
 					SessionName: "${REPO_NAME}_wt_$WORKTREE_NAME",
