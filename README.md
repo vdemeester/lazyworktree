@@ -488,6 +488,16 @@ branch_name_script: "gemini --model gemini-2.5-flash-lite -p "Generate a short g
 - Should the script fail or return empty output, the default name (`{current-branch}-changes`) is employed
 - The script operates under a 30-second timeout to prevent hanging.
 
+## Screenshots
+### Command Palette
+
+<img width="1754" height="1077" alt="image" src="https://github.com/user-attachments/assets/c765db31-0419-40f6-99c4-328a686447b1" />
+
+### Branch creation
+
+<img width="1760" height="1072" alt="image" src="https://github.com/user-attachments/assets/f705c330-d1d7-4d09-9f56-85de7d37543a" />
+
+
 ## How does it compare?
 
 lazyworktree covers a broader set of use cases than most Git worktree tools,
