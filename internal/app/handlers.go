@@ -140,6 +140,8 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "r":
 		m.loading = true
+		m.loadingScreen = NewLoadingScreen(loadingRefreshWorktrees, m.theme)
+		m.currentScreen = screenLoading
 		return m, m.refreshWorktrees()
 
 	case "c":
@@ -167,6 +169,8 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		m.loading = true
 		m.statusContent = "Fetching remotes..."
+		m.loadingScreen = NewLoadingScreen("Fetching remotes...", m.theme)
+		m.currentScreen = screenLoading
 		return m, m.fetchRemotes()
 
 	case "f", "/":

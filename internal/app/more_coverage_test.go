@@ -460,13 +460,19 @@ func TestFetchRemotesCompleteTriggersRefresh(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
 	m.loading = true
+	m.loadingScreen = NewLoadingScreen("Fetching remotes...", m.theme)
 
 	_, cmd := m.Update(fetchRemotesCompleteMsg{})
-	if m.loading {
-		t.Fatal("expected loading to be false")
+	// loading stays true while refreshing worktrees
+	if !m.loading {
+		t.Fatal("expected loading to stay true during worktree refresh")
 	}
 	if m.statusContent != "Remotes fetched" {
 		t.Fatalf("unexpected status: %q", m.statusContent)
+	}
+	// loading screen message should be updated to show refresh phase
+	if m.loadingScreen == nil || m.loadingScreen.message != loadingRefreshWorktrees {
+		t.Fatalf("expected loading screen message to be %q", loadingRefreshWorktrees)
 	}
 	if cmd == nil {
 		t.Fatal("expected refresh command")

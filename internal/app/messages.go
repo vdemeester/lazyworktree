@@ -32,6 +32,10 @@ func (m *Model) handleWorktreeMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cmd) {
 	m.worktreesLoaded = true
 	m.loading = false
+	if m.currentScreen == screenLoading {
+		m.currentScreen = screenNone
+		m.loadingScreen = nil
+	}
 	if msg.err != nil {
 		m.showInfo(fmt.Sprintf("Error loading worktrees: %v", msg.err), nil)
 		return m, nil
@@ -70,7 +74,7 @@ func (m *Model) handleCachedWorktrees(msg cachedWorktreesMsg) (tea.Model, tea.Cm
 	if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
 		m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
 	}
-	m.statusContent = "Refreshing worktrees..."
+	m.statusContent = loadingRefreshWorktrees
 	return m, nil
 }
 

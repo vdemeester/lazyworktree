@@ -51,6 +51,9 @@ const (
 
 	// Visual symbols for enhanced UI
 	symbolFilledCircle = "●"
+
+	// Loading messages
+	loadingRefreshWorktrees = "Refreshing worktrees..."
 )
 
 type (
@@ -497,8 +500,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case fetchRemotesCompleteMsg:
-		m.loading = false
 		m.statusContent = "Remotes fetched"
+		// Continue showing loading screen while refreshing worktrees
+		if m.loadingScreen != nil {
+			m.loadingScreen.message = loadingRefreshWorktrees
+		}
 		return m, m.refreshWorktrees()
 
 	case cherryPickResultMsg:
@@ -814,7 +820,7 @@ func (m *Model) updateDetailsView() tea.Cmd {
 	if !m.worktreesLoaded {
 		m.infoContent = m.buildInfoContent(wt)
 		if m.statusContent == "" || m.statusContent == "Loading..." {
-			m.statusContent = "Refreshing worktrees..."
+			m.statusContent = loadingRefreshWorktrees
 		}
 		return nil
 	}

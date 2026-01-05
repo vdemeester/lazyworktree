@@ -266,7 +266,6 @@ func TestHandleCachedWorktreesUpdatesState(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),
 	}
-	const refreshingStatus = "Refreshing worktrees..."
 	m := NewModel(cfg, "")
 	m.selectedIndex = 0
 	m.worktreeTable.SetWidth(80)
@@ -284,7 +283,7 @@ func TestHandleCachedWorktreesUpdatesState(t *testing.T) {
 	if len(m.worktrees) != 1 {
 		t.Fatalf("expected worktrees to be set, got %d", len(m.worktrees))
 	}
-	if m.statusContent != refreshingStatus {
+	if m.statusContent != loadingRefreshWorktrees {
 		t.Fatalf("unexpected status content: %q", m.statusContent)
 	}
 	if !strings.Contains(m.infoContent, "wt1") {
