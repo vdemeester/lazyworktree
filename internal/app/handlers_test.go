@@ -676,12 +676,12 @@ func TestLogPaneCtrlJMovesNextCommit(t *testing.T) {
 	}
 	m.selectedIndex = 0
 	m.logEntries = []commitLogEntry{
-		{sha: "abc123", message: "first"},
-		{sha: "def456", message: "second"},
+		{sha: "abc123", authorInitials: "ab", message: "first"},
+		{sha: "def456", authorInitials: "de", message: "second"},
 	}
 	m.logTable.SetRows([]table.Row{
-		{"abc123", "first"},
-		{"def456", "second"},
+		{"abc123", "ab", "first"},
+		{"def456", "de", "second"},
 	})
 	m.logTable.SetCursor(0)
 
@@ -719,14 +719,14 @@ func TestSearchLogSelectsNextMatch(t *testing.T) {
 	m := NewModel(cfg, "")
 	m.focusedPane = 2
 	m.logEntries = []commitLogEntry{
-		{sha: "abc123", message: "Fix bug in parser"},
-		{sha: "def456", message: "Add new feature"},
-		{sha: "ghi789", message: "Fix tests"},
+		{sha: "abc123", authorInitials: "ab", message: "Fix bug in parser"},
+		{sha: "def456", authorInitials: "de", message: "Add new feature"},
+		{sha: "ghi789", authorInitials: "gh", message: "Fix tests"},
 	}
 	m.logTable.SetRows([]table.Row{
-		{"abc123", formatCommitMessage("Fix bug in parser")},
-		{"def456", formatCommitMessage("Add new feature")},
-		{"ghi789", formatCommitMessage("Fix tests")},
+		{"abc123", "ab", formatCommitMessage("Fix bug in parser")},
+		{"def456", "de", formatCommitMessage("Add new feature")},
+		{"ghi789", "gh", formatCommitMessage("Fix tests")},
 	})
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
@@ -757,8 +757,8 @@ func TestFilterLogNarrowsList(t *testing.T) {
 	m := NewModel(cfg, "")
 	m.focusedPane = 2
 	m.setLogEntries([]commitLogEntry{
-		{sha: "abc123", message: "Fix bug in parser"},
-		{sha: "def456", message: "Add new feature"},
+		{sha: "abc123", authorInitials: "ab", message: "Fix bug in parser"},
+		{sha: "def456", authorInitials: "de", message: "Add new feature"},
 	})
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})

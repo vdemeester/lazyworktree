@@ -126,8 +126,9 @@ type (
 )
 
 type commitLogEntry struct {
-	sha     string
-	message string
+	sha            string
+	authorInitials string
+	message        string
 }
 
 // StatusFile represents a file entry from git status.
@@ -381,7 +382,8 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 	statusVp.SetContent("Loading...")
 
 	logColumns := []table.Column{
-		{Title: "SHA", Width: 10},
+		{Title: "SHA", Width: 8},
+		{Title: "Au", Width: 2},
 		{Title: "Message", Width: 50},
 	}
 	logT := table.New(
@@ -1004,13 +1006,21 @@ func (m *Model) updateDetailsView() tea.Cmd {
 		// Parse log
 		logEntries := []commitLogEntry{}
 		for line := range strings.SplitSeq(logRaw, "\n") {
-			parts := strings.SplitN(line, "\t", 2)
-			if len(parts) == 2 {
-				logEntries = append(logEntries, commitLogEntry{
-					sha:     parts[0],
-					message: parts[1],
-				})
+			parts := strings.SplitN(line, "\t", 3)
+			if len(parts) < 2 {
+				continue
 			}
+			sha := parts[0]
+			message := parts[len(parts)-1]
+			author := ""
+			if len(parts) == 3 {
+				author = parts[1]
+			}
+			logEntries = append(logEntries, commitLogEntry{
+				sha:            sha,
+				authorInitials: authorInitials(author),
+				message:        message,
+			})
 		}
 		return statusUpdatedMsg{
 			info:        m.buildInfoContent(wt),
@@ -2839,7 +2849,7 @@ func (m *Model) getCachedDetails(wt *models.WorktreeInfo) (string, string) {
 
 	// Get status (using porcelain format for reliable machine parsing)
 	statusRaw := m.git.RunGit(m.ctx, []string{"git", "status", "--porcelain=v2"}, wt.Path, []int{0}, true, false)
-	logRaw := m.git.RunGit(m.ctx, []string{"git", "log", "-50", "--pretty=format:%h%x09%s"}, wt.Path, []int{0}, true, false)
+	logRaw := m.git.RunGit(m.ctx, []string{"git", "log", "-50", "--pretty=format:%h%x09%an%x09%s"}, wt.Path, []int{0}, true, false)
 
 	m.detailsCache[cacheKey] = &detailsCacheEntry{
 		statusRaw: statusRaw,
@@ -3891,6 +3901,26 @@ func formatCommitMessage(message string) string {
 	return message[:commitMessageMaxLength] + "…"
 }
 
+func authorInitials(name string) string {
+	fields := strings.Fields(name)
+	if len(fields) == 0 {
+		return ""
+	}
+	if len(fields) == 1 {
+		runes := []rune(fields[0])
+		if len(runes) <= 2 {
+			return string(runes)
+		}
+		return string(runes[:2])
+	}
+	first := []rune(fields[0])
+	last := []rune(fields[len(fields)-1])
+	if len(first) == 0 || len(last) == 0 {
+		return ""
+	}
+	return string([]rune{first[0], last[0]})
+}
+
 func (m *Model) setLogEntries(entries []commitLogEntry) {
 	m.logEntriesAll = entries
 	m.applyLogFilter()
@@ -3917,7 +3947,7 @@ func (m *Model) applyLogFilter() {
 	m.logEntries = filtered
 	rows := make([]table.Row, 0, len(filtered))
 	for _, entry := range filtered {
-		rows = append(rows, table.Row{entry.sha, formatCommitMessage(entry.message)})
+		rows = append(rows, table.Row{entry.sha, entry.authorInitials, formatCommitMessage(entry.message)})
 	}
 	m.logTable.SetRows(rows)
 
@@ -4245,15 +4275,16 @@ func (m *Model) updateTableColumns(totalWidth int) {
 
 func (m *Model) updateLogColumns(totalWidth int) {
 	sha := 8
+	author := 2
 
 	// The table library handles separators internally (3 spaces per separator)
-	// 2 columns = 1 separator = 3 spaces
-	separatorSpace := 3
+	// 3 columns = 2 separators = 6 spaces
+	separatorSpace := 6
 
-	message := maxInt(10, totalWidth-sha-separatorSpace)
+	message := maxInt(10, totalWidth-sha-author-separatorSpace)
 
 	// Final adjustment: ensure column widths + separator space sum exactly to totalWidth
-	actualTotal := sha + message + separatorSpace
+	actualTotal := sha + author + message + separatorSpace
 	if actualTotal < totalWidth {
 		message += (totalWidth - actualTotal)
 	} else if actualTotal > totalWidth {
@@ -4262,6 +4293,7 @@ func (m *Model) updateLogColumns(totalWidth int) {
 
 	m.logTable.SetColumns([]table.Column{
 		{Title: "SHA", Width: sha},
+		{Title: "Au", Width: author},
 		{Title: "Message", Width: message},
 	})
 }

@@ -9,6 +9,7 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 
 - **Worktree Management**: Create, rename, delete, absorb, and prune merged worktrees.
 - **Cherry-pick Commits**: Copy commits from one worktree to another via an interactive worktree picker.
+- **Commit Log Details**: Log pane shows author initials alongside commit subjects.
 - **Base Selection**: Select a base branch or commit from a list, or enter a reference when creating a worktree.
 - **Forge Integration**: Fetch and display associated Pull Request (GitHub) or Merge Request (GitLab) status, including CI check results (via `gh` or `glab` CLI).
 - **Create from PR/MR**: Establish worktrees directly from open pull or merge requests via the command palette.

@@ -56,6 +56,26 @@ func TestFuzzyScoreLowerMissingChars(t *testing.T) {
 	}
 }
 
+func TestAuthorInitials(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "Christian B", want: "CB"},
+		{name: "github-actions", want: "gi"},
+		{name: "John Doe", want: "JD"},
+		{name: "Single", want: "Si"},
+		{name: "A", want: "A"},
+		{name: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := authorInitials(tt.name); got != tt.want {
+			t.Fatalf("authorInitials(%q) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestHandleMouseDoesNotPanic(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir: "/tmp/test",
