@@ -20,10 +20,11 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 - **Repo Automation**: `.wt` init/terminate commands with [TOFU](https://en.wikipedia.org/wiki/Trust_on_first_use) security.
 - **LazyGit Integration**: Launch [lazygit](https://github.com/jesseduffield/lazygit) directly for the currently selected worktree.
 
-## Screenshots
+## Screenshot
 
 <img width="3797" height="2110" alt="image" src="https://github.com/user-attachments/assets/cf5ba9c2-1f38-4865-8503-49ad0d8d5462" />
 
+_See other Screenshots [Below](#screenshots)_
 
 ## Prerequisites
 
