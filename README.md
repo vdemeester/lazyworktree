@@ -21,7 +21,7 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 
 ## Screenshots
 
-<img width="3730" height="2484" alt="image" src="https://github.com/user-attachments/assets/85e79dc9-6a2c-44d6-86a3-33c1c8fdea19" />
+<img width="3806" height="2114" alt="image" src="https://github.com/user-attachments/assets/f21aa139-fd36-4ca1-b774-c6e6f5abb7f8" />
 
 ## Prerequisites
 
@@ -529,6 +529,10 @@ branch_name_script: "gemini --model gemini-2.5-flash-lite -p "Generate a short g
 ### Branch creation
 
 <img width="1760" height="1072" alt="image" src="https://github.com/user-attachments/assets/f705c330-d1d7-4d09-9f56-85de7d37543a" />
+
+### Files in commit view
+
+<img width="3835" height="2037" alt="image" src="https://github.com/user-attachments/assets/2e0bad9d-426c-47dd-bb61-c272a7cfca4a" />
 
 ## How does it compare?
 
