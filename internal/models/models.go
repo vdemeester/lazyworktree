@@ -10,11 +10,14 @@ type CommitFile struct {
 
 // PRInfo captures the relevant metadata for a pull request.
 type PRInfo struct {
-	Number int
-	State  string
-	Title  string
-	URL    string
-	Branch string // Branch name (headRefName for GitHub, source_branch for GitLab)
+	Number      int
+	State       string
+	Title       string
+	URL         string
+	Branch      string // Branch name (headRefName for GitHub, source_branch for GitLab)
+	Author      string // PR/MR author username
+	AuthorName  string // PR/MR author full name
+	AuthorIsBot bool   // Whether the author is a bot
 }
 
 // CICheck represents a single CI check/job status.

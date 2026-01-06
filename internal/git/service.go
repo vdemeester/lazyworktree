@@ -590,13 +590,31 @@ func (s *Service) fetchGitLabPRs(ctx context.Context) (map[string]*models.PRInfo
 		webURL, _ := p["web_url"].(string)
 		sourceBranch, _ := p["source_branch"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := p["author"].(map[string]any); ok {
+			if username, ok := authorObj["username"].(string); ok {
+				author = username
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if bot, ok := authorObj["bot"].(bool); ok {
+				authorIsBot = bot
+			}
+		}
+
 		if sourceBranch != "" {
 			prMap[sourceBranch] = &models.PRInfo{
-				Number: int(iid),
-				State:  state,
-				Title:  title,
-				URL:    webURL,
-				Branch: sourceBranch,
+				Number:      int(iid),
+				State:       state,
+				Title:       title,
+				URL:         webURL,
+				Branch:      sourceBranch,
+				Author:      author,
+				AuthorName:  authorName,
+				AuthorIsBot: authorIsBot,
 			}
 		}
 	}
@@ -617,7 +635,7 @@ func (s *Service) FetchPRMap(ctx context.Context) (map[string]*models.PRInfo, er
 	prRaw := s.RunGit(ctx, []string{
 		"gh", "pr", "list",
 		"--state", "all",
-		"--json", "headRefName,state,number,title,url",
+		"--json", "headRefName,state,number,title,url,author",
 		"--limit", "100",
 	}, "", []int{0}, false, host == gitHostUnknown)
 
@@ -640,13 +658,31 @@ func (s *Service) FetchPRMap(ctx context.Context) (map[string]*models.PRInfo, er
 		title, _ := p["title"].(string)
 		url, _ := p["url"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := p["author"].(map[string]any); ok {
+			if login, ok := authorObj["login"].(string); ok {
+				author = login
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if isBot, ok := authorObj["is_bot"].(bool); ok {
+				authorIsBot = isBot
+			}
+		}
+
 		if headRefName != "" {
 			prMap[headRefName] = &models.PRInfo{
-				Number: int(number),
-				State:  state,
-				Title:  title,
-				URL:    url,
-				Branch: headRefName,
+				Number:      int(number),
+				State:       state,
+				Title:       title,
+				URL:         url,
+				Branch:      headRefName,
+				Author:      author,
+				AuthorName:  authorName,
+				AuthorIsBot: authorIsBot,
 			}
 		}
 	}
@@ -664,7 +700,7 @@ func (s *Service) FetchPRForWorktree(ctx context.Context, worktreePath string) *
 		// Run gh pr view in the worktree directory to get PR for current branch
 		prRaw := s.RunGit(ctx, []string{
 			"gh", "pr", "view",
-			"--json", "number,state,title,url,headRefName",
+			"--json", "number,state,title,url,headRefName,author",
 		}, worktreePath, []int{0}, false, true)
 
 		if prRaw == "" {
@@ -682,12 +718,30 @@ func (s *Service) FetchPRForWorktree(ctx context.Context, worktreePath string) *
 		url, _ := pr["url"].(string)
 		headRefName, _ := pr["headRefName"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := pr["author"].(map[string]any); ok {
+			if login, ok := authorObj["login"].(string); ok {
+				author = login
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if isBot, ok := authorObj["is_bot"].(bool); ok {
+				authorIsBot = isBot
+			}
+		}
+
 		return &models.PRInfo{
-			Number: int(number),
-			State:  state,
-			Title:  title,
-			URL:    url,
-			Branch: headRefName,
+			Number:      int(number),
+			State:       state,
+			Title:       title,
+			URL:         url,
+			Branch:      headRefName,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
 		}
 
 	case gitHostGitLab:
@@ -717,12 +771,30 @@ func (s *Service) FetchPRForWorktree(ctx context.Context, worktreePath string) *
 		webURL, _ := pr["web_url"].(string)
 		sourceBranch, _ := pr["source_branch"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := pr["author"].(map[string]any); ok {
+			if username, ok := authorObj["username"].(string); ok {
+				author = username
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if bot, ok := authorObj["bot"].(bool); ok {
+				authorIsBot = bot
+			}
+		}
+
 		return &models.PRInfo{
-			Number: int(iid),
-			State:  state,
-			Title:  title,
-			URL:    webURL,
-			Branch: sourceBranch,
+			Number:      int(iid),
+			State:       state,
+			Title:       title,
+			URL:         webURL,
+			Branch:      sourceBranch,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
 		}
 	}
 
@@ -740,7 +812,7 @@ func (s *Service) FetchAllOpenPRs(ctx context.Context) ([]*models.PRInfo, error)
 	prRaw := s.RunGit(ctx, []string{
 		"gh", "pr", "list",
 		"--state", "open",
-		"--json", "headRefName,state,number,title,url",
+		"--json", "headRefName,state,number,title,url,author",
 		"--limit", "100",
 	}, "", []int{0}, false, host == gitHostUnknown)
 
@@ -766,12 +838,30 @@ func (s *Service) FetchAllOpenPRs(ctx context.Context) ([]*models.PRInfo, error)
 		url, _ := p["url"].(string)
 		headRefName, _ := p["headRefName"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := p["author"].(map[string]any); ok {
+			if login, ok := authorObj["login"].(string); ok {
+				author = login
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if isBot, ok := authorObj["is_bot"].(bool); ok {
+				authorIsBot = isBot
+			}
+		}
+
 		result = append(result, &models.PRInfo{
-			Number: int(number),
-			State:  prStateOpen,
-			Title:  title,
-			URL:    url,
-			Branch: headRefName,
+			Number:      int(number),
+			State:       prStateOpen,
+			Title:       title,
+			URL:         url,
+			Branch:      headRefName,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
 		})
 	}
 
@@ -807,12 +897,30 @@ func (s *Service) fetchGitLabOpenPRs(ctx context.Context) ([]*models.PRInfo, err
 		webURL, _ := p["web_url"].(string)
 		sourceBranch, _ := p["source_branch"].(string)
 
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := p["author"].(map[string]any); ok {
+			if username, ok := authorObj["username"].(string); ok {
+				author = username
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if bot, ok := authorObj["bot"].(bool); ok {
+				authorIsBot = bot
+			}
+		}
+
 		result = append(result, &models.PRInfo{
-			Number: int(iid),
-			State:  state,
-			Title:  title,
-			URL:    webURL,
-			Branch: sourceBranch,
+			Number:      int(iid),
+			State:       state,
+			Title:       title,
+			URL:         webURL,
+			Branch:      sourceBranch,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
 		})
 	}
 

@@ -4178,6 +4178,20 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 			whiteStyle.Render(fmt.Sprintf("#%d", wt.PR.Number)),
 			wt.PR.Title,
 			stateStyle.Render(wt.PR.State)))
+		// Author line with bot indicator if applicable
+		if wt.PR.Author != "" {
+			grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
+			var authorText string
+			if wt.PR.AuthorName != "" {
+				authorText = fmt.Sprintf("%s (@%s)", wt.PR.AuthorName, wt.PR.Author)
+			} else {
+				authorText = wt.PR.Author
+			}
+			if wt.PR.AuthorIsBot {
+				authorText = "🤖 " + authorText
+			}
+			infoLines = append(infoLines, fmt.Sprintf("     by %s", grayStyle.Render(authorText)))
+		}
 		// URL styled with cyan for consistency
 		urlStyle := lipgloss.NewStyle().Foreground(m.theme.Cyan).Underline(true)
 		infoLines = append(infoLines, fmt.Sprintf("     %s", urlStyle.Render(wt.PR.URL)))
