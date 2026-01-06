@@ -12,7 +12,7 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 - **Commit Log Details**: Log pane shows author initials alongside commit subjects.
 - **Base Selection**: Select a base branch or commit from a list, or enter a reference when creating a worktree.
 - **Forge Integration**: Fetch and display associated Pull Request (GitHub) or Merge Request (GitLab) status, including CI check results (via `gh` or `glab` CLI).
-- **Create from PR/MR**: Establish worktrees directly from open pull or merge requests via the command palette.
+- **Create from PR/MR**: Create worktrees directly from open pull or merge requests, GitHub (or GitHub enterprise) or GitLab supported .
 - **Status at a Glance**: View dirty state, ahead/behind counts, and divergence from main.
 - **[Tmux](https://github.com/tmux/tmux/) Integration**: Create and manage tmux sessions per worktree with multi-window support.
 - **[Zellij](https://zellij.dev/)**: Create and manage zellij sessions per worktree with multi-tab support.
@@ -418,7 +418,7 @@ When running arbitrary commands with `!`, command history is persisted per repos
 
 **Command Palette Actions:**
 
-- **Create from changes**: Establish a new worktree from current uncommitted changes in the selected worktree. This stashes all changes (including untracked files), creates a new worktree, and applies the stashed changes to it. Requires a worktree to be selected with uncommitted changes present.
+- **Create from changes**: Create a new worktree from current uncommitted changes in the selected worktree. This stashes all changes (including untracked files), creates a new worktree, and applies the stashed changes to it. Requires a worktree to be selected with uncommitted changes present.
 
 ### Mouse Controls
 
