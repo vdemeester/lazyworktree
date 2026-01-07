@@ -19,6 +19,8 @@ Read the README if you really need to know what this project do.
 
 - Always Run `make sanity` which will run golangci-lint, gofumpt, and go test.
 - Add tests for any new functionality.
-- Add README.md updates for any user-facing changes. Do not sound like
-it is written by a brain-dead overenthusiastic robot.
-- Update lazyworktree.1 man page for any user-facing changes (features, options, keybindings, etc).
+- For any user-facing changes (Features, options, keybindings, etc), make sure you update:
+  - The README.md. Do not sound like it is written by a brain-dead
+  overenthusiastic robot. Keep it british english and human tone.
+  - Update lazyworktree.1 man page.
+  - Update lazyworktree internal help (NewHelpScreen.helpText)
