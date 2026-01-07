@@ -1453,6 +1453,128 @@ func TestCollectFiles(t *testing.T) {
 	}
 }
 
+func TestShowDeleteFileNoSelection(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{}
+	m.selectedIndex = -1
+
+	if cmd := m.showDeleteFile(); cmd != nil {
+		t.Fatal("expected nil command when no worktree selected")
+	}
+	if m.confirmScreen != nil {
+		t.Fatal("expected no confirm screen when no selection")
+	}
+}
+
+func TestShowDeleteFileNoFiles(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: "/tmp/feat", Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+	m.statusTreeFlat = []*StatusTreeNode{}
+	m.statusTreeIndex = 0
+
+	if cmd := m.showDeleteFile(); cmd != nil {
+		t.Fatal("expected nil command when no files in tree")
+	}
+	if m.confirmScreen != nil {
+		t.Fatal("expected no confirm screen when no files")
+	}
+}
+
+func TestShowDeleteFileSingleFile(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: "/tmp/feat", Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+	m.statusTreeFlat = []*StatusTreeNode{
+		{
+			Path: "file.go",
+			File: &StatusFile{Filename: "file.go", Status: " M"},
+		},
+	}
+	m.statusTreeIndex = 0
+
+	if cmd := m.showDeleteFile(); cmd != nil {
+		t.Fatal("expected nil command for confirm screen setup")
+	}
+	if m.confirmScreen == nil || m.confirmAction == nil || m.currentScreen != screenConfirm {
+		t.Fatal("expected confirm screen to be set for file deletion")
+	}
+}
+
+func TestShowDeleteFileDirectory(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: "/tmp/feat", Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+	m.statusTreeFlat = []*StatusTreeNode{
+		{
+			Path: "src",
+			File: nil, // Directory
+			Children: []*StatusTreeNode{
+				{
+					Path: "src/file1.go",
+					File: &StatusFile{Filename: "src/file1.go", Status: " M"},
+				},
+				{
+					Path: "src/file2.go",
+					File: &StatusFile{Filename: "src/file2.go", Status: "M "},
+				},
+			},
+		},
+	}
+	m.statusTreeIndex = 0
+
+	if cmd := m.showDeleteFile(); cmd != nil {
+		t.Fatal("expected nil command for confirm screen setup")
+	}
+	if m.confirmScreen == nil || m.confirmAction == nil || m.currentScreen != screenConfirm {
+		t.Fatal("expected confirm screen to be set for directory deletion")
+	}
+}
+
+func TestShowDeleteFileEmptyDirectory(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: "/tmp/feat", Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+	m.statusTreeFlat = []*StatusTreeNode{
+		{
+			Path:     "src",
+			File:     nil, // Directory
+			Children: []*StatusTreeNode{},
+		},
+	}
+	m.statusTreeIndex = 0
+
+	if cmd := m.showDeleteFile(); cmd != nil {
+		t.Fatal("expected nil command for empty directory")
+	}
+	if m.confirmScreen != nil {
+		t.Fatal("expected no confirm screen for empty directory")
+	}
+}
+
 // TestStatusFileEnterNoFilesDoesNothing tests Enter with no status files.
 func TestStatusFileEnterNoFilesDoesNothing(t *testing.T) {
 	cfg := &config.AppConfig{
