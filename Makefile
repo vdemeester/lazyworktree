@@ -17,7 +17,7 @@ format:
 	gofumpt -w .
 
 test:
-	go test -v ./...
+	go test ./...
 
 coverage:
 	go test ./... -covermode=count -coverprofile=coverage.out

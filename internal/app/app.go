@@ -58,6 +58,8 @@ const (
 	// Visual symbols for enhanced UI
 	symbolFilledCircle = "●"
 
+	searchFiles = "Search files..."
+
 	// Loading messages
 	loadingRefreshWorktrees = "Refreshing worktrees..."
 
@@ -1049,7 +1051,7 @@ func (m *Model) setFilterTarget(target filterTarget) {
 func (m *Model) searchPlaceholder(target searchTarget) string {
 	switch target {
 	case searchTargetStatus:
-		return "Search files..."
+		return searchFiles
 	case searchTargetLog:
 		return "Search commit titles..."
 	default:
@@ -3135,7 +3137,7 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Start search mode
 			m.commitFilesScreen.showingSearch = true
 			m.commitFilesScreen.showingFilter = false
-			m.commitFilesScreen.filterInput.Placeholder = "Search files..."
+			m.commitFilesScreen.filterInput.Placeholder = searchFiles
 			m.commitFilesScreen.filterInput.SetValue("")
 			m.commitFilesScreen.searchQuery = ""
 			m.commitFilesScreen.filterInput.Focus()
