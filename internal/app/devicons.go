@@ -30,7 +30,8 @@ func (i iconFileInfo) IsDir() bool { return i.isDir }
 func (i iconFileInfo) Sys() any { return nil }
 
 const (
-	iconPR = ""
+	iconPR    = ""
+	iconIssue = "󰄱"
 
 	iconCISuccess   = ""
 	iconCIFailure   = ""

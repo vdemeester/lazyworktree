@@ -20,6 +20,8 @@ Forge Integration: Fetch and display associated Pull Request (GitHub) or Merge R
 .IP \(bu 2
 Create from PR/MR: Establish worktrees directly from open pull or merge requests via the create worktree menu (c)
 .IP \(bu 2
+Create from Issue: Establish worktrees from GitHub/GitLab issues with automatic branch name generation
+.IP \(bu 2
 Status at a Glance: View dirty state, ahead/behind counts, and divergence from main
 .IP \(bu 2
 Tmux Integration: Create and manage tmux sessions per worktree with multi-window support
@@ -53,7 +55,7 @@ Write the selected worktree path to FILE on exit (for shell integration)
 Jump to worktree (exit and cd), open commit file tree in log pane
 .TP
 .B c
-Create new worktree (from branch, commit, or PR/MR)
+Create new worktree (from branch, commit, PR/MR, or issue)
 .TP
 .B m
 Rename selected worktree

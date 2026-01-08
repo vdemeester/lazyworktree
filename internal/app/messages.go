@@ -276,6 +276,140 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 	return textinput.Blink
 }
 
+// handleOpenIssuesLoaded handles the result of fetching open issues.
+func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
+	if msg.err != nil {
+		m.showInfo(fmt.Sprintf("Failed to fetch issues: %v", msg.err), nil)
+		return nil
+	}
+
+	if len(msg.issues) == 0 {
+		m.showInfo("No open issues found.", nil)
+		return nil
+	}
+
+	// Show issue selection screen
+	m.issueSelectionScreen = NewIssueSelectionScreen(msg.issues, m.windowWidth, m.windowHeight, m.theme, m.config.ShowIcons)
+	m.issueSelectionSubmit = func(issue *models.IssueInfo) tea.Cmd {
+		// Show base branch selection
+		defaultBase := m.git.GetMainBranch(m.ctx)
+		return m.showBranchSelection(
+			fmt.Sprintf("Select base branch for issue #%d", issue.Number),
+			"Filter branches...",
+			"No branches found.",
+			defaultBase,
+			func(baseBranch string) tea.Cmd {
+				// Generate branch name
+				defaultName := ""
+				scriptErr := ""
+
+				// If branch_name_script is configured, run it with issue title and body
+				if m.config.BranchNameScript != "" {
+					issueContent := fmt.Sprintf("%s\n\n%s", issue.Title, issue.Body)
+					if generatedName, err := runBranchNameScript(m.ctx, m.config.BranchNameScript, issueContent); err != nil {
+						scriptErr = fmt.Sprintf("Branch name script error: %v", err)
+					} else if generatedName != "" {
+						// Prepend issue prefix and number to script-generated name
+						prefix := m.config.IssuePrefix
+						if prefix == "" {
+							prefix = "issue"
+						}
+						defaultName = fmt.Sprintf("%s-%d-%s", prefix, issue.Number, generatedName)
+					}
+				}
+
+				// If no script or script returned empty, use default generation
+				if defaultName == "" {
+					prefix := m.config.IssuePrefix
+					if prefix == "" {
+						prefix = "issue"
+					}
+					defaultName = generateIssueWorktreeName(issue, prefix)
+				}
+
+				// Suggest branch name (check for duplicates)
+				suggested := strings.TrimSpace(defaultName)
+				if suggested != "" {
+					suggested = m.suggestBranchName(suggested)
+				}
+
+				if scriptErr != "" {
+					m.showInfo(scriptErr, func() tea.Msg {
+						cmd := m.showBranchNameInput(baseBranch, suggested)
+						if cmd != nil {
+							return cmd()
+						}
+						return nil
+					})
+					return nil
+				}
+
+				// Show input screen with generated name
+				m.inputScreen = NewInputScreen(
+					fmt.Sprintf("Create worktree from issue #%d", issue.Number),
+					"Worktree name",
+					suggested,
+					m.theme,
+				)
+				m.inputSubmit = func(value string) (tea.Cmd, bool) {
+					newBranch := strings.TrimSpace(value)
+					if newBranch == "" {
+						m.inputScreen.errorMsg = errBranchEmpty
+						return nil, false
+					}
+
+					// Prevent duplicates
+					for _, wt := range m.worktrees {
+						if wt.Branch == newBranch {
+							m.inputScreen.errorMsg = fmt.Sprintf("Branch %q already exists.", newBranch)
+							return nil, false
+						}
+					}
+
+					targetPath := filepath.Join(m.getRepoWorktreeDir(), newBranch)
+					if _, err := os.Stat(targetPath); err == nil {
+						m.inputScreen.errorMsg = fmt.Sprintf("Path already exists: %s", targetPath)
+						return nil, false
+					}
+
+					m.inputScreen.errorMsg = ""
+					if err := os.MkdirAll(m.getRepoWorktreeDir(), defaultDirPerms); err != nil {
+						return func() tea.Msg { return errMsg{err: fmt.Errorf("failed to create worktree directory: %w", err)} }, true
+					}
+
+					// Create worktree from base branch (can take time, so do it async with a loading pulse)
+					m.loading = true
+					m.statusContent = fmt.Sprintf("Creating worktree from issue #%d...", issue.Number)
+					m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme)
+					m.currentScreen = screenLoading
+					m.pendingSelectWorktreePath = targetPath
+					return func() tea.Msg {
+						ok := m.git.RunCommandChecked(
+							m.ctx,
+							[]string{"git", "worktree", "add", "-b", newBranch, targetPath, baseBranch},
+							"",
+							fmt.Sprintf("Failed to create worktree %s from %s", newBranch, baseBranch),
+						)
+						if !ok {
+							return createFromIssueResultMsg{
+								issueNumber: issue.Number,
+								branch:      newBranch,
+								targetPath:  targetPath,
+								err:         fmt.Errorf("create worktree from issue #%d", issue.Number),
+							}
+						}
+						return createFromIssueResultMsg{issueNumber: issue.Number, branch: newBranch, targetPath: targetPath}
+					}, true
+				}
+				m.currentScreen = screenInput
+				return textinput.Blink
+			},
+		)
+	}
+	m.currentScreen = screenIssueSelect
+	return textinput.Blink
+}
+
 // handleCreateFromChangesReady handles the result of checking for changes.
 func (m *Model) handleCreateFromChangesReady(msg createFromChangesReadyMsg) tea.Cmd {
 	wt := msg.worktree

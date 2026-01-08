@@ -28,6 +28,7 @@ const (
 	screenPalette
 	screenDiff
 	screenPRSelect
+	screenIssueSelect
 	screenListSelect
 	screenLoading
 	screenCommitFiles
@@ -146,6 +147,19 @@ type selectionItem struct {
 type PRSelectionScreen struct {
 	prs          []*models.PRInfo
 	filtered     []*models.PRInfo
+	filterInput  textinput.Model
+	cursor       int
+	scrollOffset int
+	width        int
+	height       int
+	thm          *theme.Theme
+	showIcons    bool
+}
+
+// IssueSelectionScreen lets the user pick an issue from a filtered list.
+type IssueSelectionScreen struct {
+	issues       []*models.IssueInfo
+	filtered     []*models.IssueInfo
 	filterInput  textinput.Model
 	cursor       int
 	scrollOffset int
@@ -671,7 +685,7 @@ func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.Cu
 - q / Esc: Return to commit log
 
 **⚡ Worktree Actions**
-- c: Create new worktree (from branch, commit, or PR/MR)
+- c: Create new worktree (from branch, commit, PR/MR, or issue)
 - m: Rename selected worktree
 - D: Delete selected worktree
 - A: Absorb worktree into main (merge + delete)
@@ -1264,6 +1278,231 @@ func (s *PRSelectionScreen) View() string {
 			itemViews = append(itemViews, noResultsStyle.Render("No open PRs/MRs found."))
 		} else {
 			itemViews = append(itemViews, noResultsStyle.Render("No PRs match your filter."))
+		}
+	}
+
+	// Separator
+	separator := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(s.thm.BorderDim).
+		Width(s.width - 2).
+		Render("")
+
+	// Footer
+	footerStyle := lipgloss.NewStyle().
+		Foreground(s.thm.MutedFg).
+		Align(lipgloss.Right).
+		Width(s.width - 2).
+		PaddingTop(1)
+	footer := footerStyle.Render("Enter to select • Esc to cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		titleStyle,
+		inputView,
+		separator,
+		strings.Join(itemViews, "\n"),
+		footer,
+	)
+
+	return boxStyle.Render(content)
+}
+
+// NewIssueSelectionScreen builds an issue selection screen with 80% of screen size.
+func NewIssueSelectionScreen(issues []*models.IssueInfo, maxWidth, maxHeight int, thm *theme.Theme, showIcons bool) *IssueSelectionScreen {
+	// Use 80% of screen size
+	width := int(float64(maxWidth) * 0.8)
+	height := int(float64(maxHeight) * 0.8)
+
+	// Ensure minimum sizes
+	if width < 60 {
+		width = 60
+	}
+	if height < 20 {
+		height = 20
+	}
+
+	ti := textinput.New()
+	ti.Placeholder = "Filter issues by number or title..."
+	ti.CharLimit = 100
+	ti.Prompt = "> "
+	ti.Focus()
+	ti.Width = width - 4 // padding
+
+	screen := &IssueSelectionScreen{
+		issues:       issues,
+		filtered:     issues,
+		filterInput:  ti,
+		cursor:       0,
+		scrollOffset: 0,
+		width:        width,
+		height:       height,
+		thm:          thm,
+		showIcons:    showIcons,
+	}
+	return screen
+}
+
+// Init configures the issue selection input before Bubble Tea updates begin.
+func (s *IssueSelectionScreen) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+// Update handles updates for the issue selection screen.
+func (s *IssueSelectionScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	maxVisible := s.height - 6 // Account for header, input, footer
+
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if ok {
+		switch keyMsg.String() {
+		case keyEnter:
+			return s, tea.Quit
+		case keyEsc, keyCtrlC:
+			s.cursor = -1
+			return s, tea.Quit
+		case keyUp, keyCtrlK:
+			if s.cursor > 0 {
+				s.cursor--
+				if s.cursor < s.scrollOffset {
+					s.scrollOffset = s.cursor
+				}
+			}
+			return s, nil
+		case keyDown, keyCtrlJ:
+			if s.cursor < len(s.filtered)-1 {
+				s.cursor++
+				if s.cursor >= s.scrollOffset+maxVisible {
+					s.scrollOffset = s.cursor - maxVisible + 1
+				}
+			}
+			return s, nil
+		}
+	}
+
+	s.filterInput, cmd = s.filterInput.Update(msg)
+	s.applyFilter()
+	return s, cmd
+}
+
+func (s *IssueSelectionScreen) applyFilter() {
+	query := strings.ToLower(strings.TrimSpace(s.filterInput.Value()))
+	if query == "" {
+		s.filtered = s.issues
+	} else {
+		s.filtered = []*models.IssueInfo{}
+		for _, issue := range s.issues {
+			// Match by number or title
+			issueNumStr := fmt.Sprintf("%d", issue.Number)
+			titleLower := strings.ToLower(issue.Title)
+			if strings.Contains(issueNumStr, query) || strings.Contains(titleLower, query) {
+				s.filtered = append(s.filtered, issue)
+			}
+		}
+	}
+
+	// Reset cursor if needed
+	if s.cursor >= len(s.filtered) {
+		s.cursor = maxInt(0, len(s.filtered)-1)
+	}
+	if s.cursor < 0 && len(s.filtered) > 0 {
+		s.cursor = 0
+	}
+	s.scrollOffset = 0
+}
+
+// Selected returns the currently selected issue, if any.
+func (s *IssueSelectionScreen) Selected() (*models.IssueInfo, bool) {
+	if s.cursor < 0 || s.cursor >= len(s.filtered) {
+		return nil, false
+	}
+	return s.filtered[s.cursor], true
+}
+
+// View renders the issue selection screen.
+func (s *IssueSelectionScreen) View() string {
+	maxVisible := s.height - 6 // Account for header, input, footer
+
+	// Enhanced issue selection modal with rounded border
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(s.thm.Accent).
+		Width(s.width).
+		Padding(0)
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(s.thm.Accent).
+		Bold(true).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(s.thm.BorderDim).
+		Width(s.width-2).
+		Padding(0, 1).
+		Render("📋 Select Issue to Create Worktree")
+
+	inputStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Width(s.width - 2).
+		Foreground(s.thm.TextFg)
+
+	itemStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Width(s.width - 2)
+
+	selectedStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Width(s.width - 2).
+		Background(s.thm.Accent).
+		Foreground(s.thm.TextFg).
+		Bold(true)
+
+	noResultsStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Width(s.width - 2).
+		Foreground(s.thm.MutedFg).
+		Italic(true)
+
+	// Render Input
+	inputView := inputStyle.Render(s.filterInput.View())
+
+	// Render Issues
+	var itemViews []string
+
+	end := s.scrollOffset + maxVisible
+	if end > len(s.filtered) {
+		end = len(s.filtered)
+	}
+	start := s.scrollOffset
+	if start > end {
+		start = end
+	}
+
+	for i := start; i < end; i++ {
+		issue := s.filtered[i]
+		iconPrefix := ""
+		if s.showIcons {
+			iconPrefix = iconWithSpace(iconIssue)
+		}
+		issueLabel := fmt.Sprintf("%s#%d: %s", iconPrefix, issue.Number, issue.Title)
+
+		// Truncate if too long
+		maxLabelLen := s.width - 10
+		if len(issueLabel) > maxLabelLen {
+			issueLabel = issueLabel[:maxLabelLen-1] + "…"
+		}
+
+		var line string
+		if i == s.cursor {
+			line = selectedStyle.Render(issueLabel)
+		} else {
+			line = itemStyle.Render(issueLabel)
+		}
+		itemViews = append(itemViews, line)
+	}
+
+	if len(s.filtered) == 0 {
+		if len(s.issues) == 0 {
+			itemViews = append(itemViews, noResultsStyle.Render("No open issues found."))
+		} else {
+			itemViews = append(itemViews, noResultsStyle.Render("No issues match your filter."))
 		}
 	}
 

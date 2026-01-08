@@ -45,13 +45,18 @@ trust_mode: "tofu"
 # Options: "rebase" (default - rebases onto main, then fast-forwards), "merge" (creates merge commit)
 merge_method: "rebase"
 
-# Script to generate branch name suggestions when creating worktrees from changes.
-# The script receives the git diff on stdin and should output a branch name.
+# Script to generate branch name suggestions when creating worktrees from changes or issues.
+# The script receives the git diff (for changes) or issue title+body (for issues) on stdin and should output a branch name.
 # Useful for AI-powered branch name generation.
 # Examples:
 #   branch_name_script: "aichat -m gemini:gemini-2.5-flash 'Generate a short git branch name for this diff'"
 #   branch_name_script: "claude 'Suggest a branch name based on this diff'"
 # branch_name_script: ""
+
+# Prefix for issue branch names (default: "issue")
+# When creating a worktree from an issue, branch names will be formatted as: {prefix}-{number}-{title}
+# Example: issue-123-fix-bug-in-login
+# issue_prefix: "issue"
 
 init_commands:
   - link_topsymlinks

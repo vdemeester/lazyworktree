@@ -34,6 +34,8 @@ const (
 
 	// PR state constants
 	prStateOpen = "OPEN"
+	// Issue state constants
+	issueStateOpened = "OPENED"
 )
 
 // NotifyFn receives ongoing notifications.
@@ -918,6 +920,129 @@ func (s *Service) fetchGitLabOpenPRs(ctx context.Context) ([]*models.PRInfo, err
 			Title:       title,
 			URL:         webURL,
 			Branch:      sourceBranch,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
+		})
+	}
+
+	return result, nil
+}
+
+// FetchAllOpenIssues fetches all open issues and returns them as a slice.
+func (s *Service) FetchAllOpenIssues(ctx context.Context) ([]*models.IssueInfo, error) {
+	host := s.detectHost(ctx)
+	if host == gitHostGitLab {
+		return s.fetchGitLabOpenIssues(ctx)
+	}
+
+	// Default to GitHub
+	issueRaw := s.RunGit(ctx, []string{
+		"gh", "issue", "list",
+		"--state", "open",
+		"--json", "number,state,title,body,url,author",
+		"--limit", "100",
+	}, "", []int{0}, false, host == gitHostUnknown)
+
+	if issueRaw == "" {
+		return []*models.IssueInfo{}, nil
+	}
+
+	var issues []map[string]any
+	if err := json.Unmarshal([]byte(issueRaw), &issues); err != nil {
+		key := "issue_json_decode"
+		s.notifyOnce(key, fmt.Sprintf("Failed to parse issue data: %v", err), "error")
+		return nil, err
+	}
+
+	result := make([]*models.IssueInfo, 0, len(issues))
+	for _, i := range issues {
+		state, _ := i["state"].(string)
+		if !strings.EqualFold(state, "open") {
+			continue
+		}
+		number, _ := i["number"].(float64)
+		title, _ := i["title"].(string)
+		body, _ := i["body"].(string)
+		url, _ := i["url"].(string)
+
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := i["author"].(map[string]any); ok {
+			if login, ok := authorObj["login"].(string); ok {
+				author = login
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if isBot, ok := authorObj["is_bot"].(bool); ok {
+				authorIsBot = isBot
+			}
+		}
+
+		result = append(result, &models.IssueInfo{
+			Number:      int(number),
+			State:       "open",
+			Title:       title,
+			Body:        body,
+			URL:         url,
+			Author:      author,
+			AuthorName:  authorName,
+			AuthorIsBot: authorIsBot,
+		})
+	}
+
+	return result, nil
+}
+
+func (s *Service) fetchGitLabOpenIssues(ctx context.Context) ([]*models.IssueInfo, error) {
+	issueRaw := s.RunGit(ctx, []string{"glab", "api", "issues?state=opened&per_page=100"}, "", []int{0}, false, false)
+	if issueRaw == "" {
+		return []*models.IssueInfo{}, nil
+	}
+
+	var issues []map[string]any
+	if err := json.Unmarshal([]byte(issueRaw), &issues); err != nil {
+		key := "issue_json_decode_glab"
+		s.notifyOnce(key, fmt.Sprintf("Failed to parse GLAB issue data: %v", err), "error")
+		return nil, err
+	}
+
+	result := make([]*models.IssueInfo, 0, len(issues))
+	for _, i := range issues {
+		state, _ := i["state"].(string)
+		state = strings.ToUpper(state)
+		if state != issueStateOpened && state != "OPEN" {
+			continue
+		}
+
+		iid, _ := i["iid"].(float64)
+		title, _ := i["title"].(string)
+		description, _ := i["description"].(string)
+		webURL, _ := i["web_url"].(string)
+
+		author := ""
+		authorName := ""
+		authorIsBot := false
+		if authorObj, ok := i["author"].(map[string]any); ok {
+			if username, ok := authorObj["username"].(string); ok {
+				author = username
+			}
+			if name, ok := authorObj["name"].(string); ok {
+				authorName = name
+			}
+			if bot, ok := authorObj["bot"].(bool); ok {
+				authorIsBot = bot
+			}
+		}
+
+		result = append(result, &models.IssueInfo{
+			Number:      int(iid),
+			State:       "open",
+			Title:       title,
+			Body:        description,
+			URL:         webURL,
 			Author:      author,
 			AuthorName:  authorName,
 			AuthorIsBot: authorIsBot,

@@ -132,6 +132,16 @@ type (
 		targetPath string
 		err        error
 	}
+	openIssuesLoadedMsg struct {
+		issues []*models.IssueInfo
+		err    error
+	}
+	createFromIssueResultMsg struct {
+		issueNumber int
+		branch      string
+		targetPath  string
+		err         error
+	}
 	createFromChangesReadyMsg struct {
 		worktree      *models.WorktreeInfo
 		currentBranch string
@@ -233,50 +243,52 @@ type Model struct {
 	filterInput    textinput.Model
 
 	// State
-	worktrees           []*models.WorktreeInfo
-	filteredWts         []*models.WorktreeInfo
-	selectedIndex       int
-	filterQuery         string
-	statusFilterQuery   string
-	logFilterQuery      string
-	worktreeSearchQuery string
-	statusSearchQuery   string
-	logSearchQuery      string
-	sortMode            int // sortModePath, sortModeLastActive, or sortModeLastSwitched
-	prDataLoaded        bool
-	accessHistory       map[string]int64 // worktree path -> last access timestamp
-	repoKey             string
-	repoKeyOnce         sync.Once
-	currentScreen       screenType
-	currentDetailsPath  string
-	helpScreen          *HelpScreen
-	trustScreen         *TrustScreen
-	inputScreen         *InputScreen
-	inputSubmit         func(string) (tea.Cmd, bool)
-	commitScreen        *CommitScreen
-	welcomeScreen       *WelcomeScreen
-	paletteScreen       *CommandPaletteScreen
-	paletteSubmit       func(string) tea.Cmd
-	prSelectionScreen   *PRSelectionScreen
-	prSelectionSubmit   func(*models.PRInfo) tea.Cmd
-	listScreen          *ListSelectionScreen
-	listSubmit          func(selectionItem) tea.Cmd
-	diffScreen          *DiffScreen
-	spinner             spinner.Model
-	loading             bool
-	showingFilter       bool
-	filterTarget        filterTarget
-	showingSearch       bool
-	searchTarget        searchTarget
-	focusedPane         int // 0=table, 1=status, 2=log
-	zoomedPane          int // -1 = no zoom, 0/1/2 = which pane is zoomed
-	windowWidth         int
-	windowHeight        int
-	infoContent         string
-	statusContent       string
-	statusFiles         []StatusFile // parsed list of files from git status (kept for compatibility)
-	statusFilesAll      []StatusFile // full list of files from git status
-	statusFileIndex     int          // currently selected file index in status pane
+	worktrees            []*models.WorktreeInfo
+	filteredWts          []*models.WorktreeInfo
+	selectedIndex        int
+	filterQuery          string
+	statusFilterQuery    string
+	logFilterQuery       string
+	worktreeSearchQuery  string
+	statusSearchQuery    string
+	logSearchQuery       string
+	sortMode             int // sortModePath, sortModeLastActive, or sortModeLastSwitched
+	prDataLoaded         bool
+	accessHistory        map[string]int64 // worktree path -> last access timestamp
+	repoKey              string
+	repoKeyOnce          sync.Once
+	currentScreen        screenType
+	currentDetailsPath   string
+	helpScreen           *HelpScreen
+	trustScreen          *TrustScreen
+	inputScreen          *InputScreen
+	inputSubmit          func(string) (tea.Cmd, bool)
+	commitScreen         *CommitScreen
+	welcomeScreen        *WelcomeScreen
+	paletteScreen        *CommandPaletteScreen
+	paletteSubmit        func(string) tea.Cmd
+	prSelectionScreen    *PRSelectionScreen
+	issueSelectionScreen *IssueSelectionScreen
+	issueSelectionSubmit func(*models.IssueInfo) tea.Cmd
+	prSelectionSubmit    func(*models.PRInfo) tea.Cmd
+	listScreen           *ListSelectionScreen
+	listSubmit           func(selectionItem) tea.Cmd
+	diffScreen           *DiffScreen
+	spinner              spinner.Model
+	loading              bool
+	showingFilter        bool
+	filterTarget         filterTarget
+	showingSearch        bool
+	searchTarget         searchTarget
+	focusedPane          int // 0=table, 1=status, 2=log
+	zoomedPane           int // -1 = no zoom, 0/1/2 = which pane is zoomed
+	windowWidth          int
+	windowHeight         int
+	infoContent          string
+	statusContent        string
+	statusFiles          []StatusFile // parsed list of files from git status (kept for compatibility)
+	statusFilesAll       []StatusFile // full list of files from git status
+	statusFileIndex      int          // currently selected file index in status pane
 
 	// Status tree view
 	statusTree          *StatusTreeNode   // Root of the file tree
@@ -566,6 +578,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case openPRsLoadedMsg:
 		return m, m.handleOpenPRsLoaded(msg)
 
+	case openIssuesLoadedMsg:
+		return m, m.handleOpenIssuesLoaded(msg)
+
 	case createFromPRResultMsg:
 		m.loading = false
 		if m.currentScreen == screenLoading {
@@ -575,6 +590,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.pendingSelectWorktreePath = ""
 			m.showInfo(fmt.Sprintf("Failed to create worktree from PR/MR #%d: %v", msg.prNumber, msg.err), nil)
+			return m, nil
+		}
+		env := m.buildCommandEnv(msg.branch, msg.targetPath)
+		initCmds := m.collectInitCommands()
+		after := func() tea.Msg {
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return worktreesLoadedMsg{worktrees: worktrees, err: err}
+		}
+		return m, m.runCommandsWithTrust(initCmds, msg.targetPath, env, after)
+
+	case createFromIssueResultMsg:
+		m.loading = false
+		if m.currentScreen == screenLoading {
+			m.currentScreen = screenNone
+			m.loadingScreen = nil
+		}
+		if msg.err != nil {
+			m.pendingSelectWorktreePath = ""
+			m.showInfo(fmt.Sprintf("Failed to create worktree from issue #%d: %v", msg.issueNumber, msg.err), nil)
 			return m, nil
 		}
 		env := m.buildCommandEnv(msg.branch, msg.targetPath)
@@ -703,6 +737,8 @@ func screenName(screen screenType) string {
 		return "diff"
 	case screenPRSelect:
 		return "pr-select"
+	case screenIssueSelect:
+		return "issue-select"
 	case screenListSelect:
 		return "list-select"
 	case screenCommitFiles:
@@ -755,6 +791,10 @@ func (m *Model) View() string {
 	case screenPRSelect:
 		if m.prSelectionScreen != nil {
 			return m.overlayPopup(baseView, m.prSelectionScreen.View(), 2)
+		}
+	case screenIssueSelect:
+		if m.issueSelectionScreen != nil {
+			return m.overlayPopup(baseView, m.issueSelectionScreen.View(), 2)
 		}
 	case screenListSelect:
 		if m.listScreen != nil {
@@ -1283,6 +1323,17 @@ func (m *Model) showCreateFromPR() tea.Cmd {
 		return openPRsLoadedMsg{
 			prs: prs,
 			err: err,
+		}
+	}
+}
+
+func (m *Model) showCreateFromIssue() tea.Cmd {
+	// Fetch all open issues
+	return func() tea.Msg {
+		issues, err := m.git.FetchAllOpenIssues(m.ctx)
+		return openIssuesLoadedMsg{
+			issues: issues,
+			err:    err,
 		}
 	}
 }
@@ -2921,6 +2972,34 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ps, cmd := m.prSelectionScreen.Update(msg)
 		if updated, ok := ps.(*PRSelectionScreen); ok {
 			m.prSelectionScreen = updated
+		}
+		return m, cmd
+	case screenIssueSelect:
+		if m.issueSelectionScreen == nil {
+			m.currentScreen = screenNone
+			return m, nil
+		}
+		keyStr := msg.String()
+		if isEscKey(keyStr) {
+			m.currentScreen = screenNone
+			m.issueSelectionScreen = nil
+			m.issueSelectionSubmit = nil
+			return m, nil
+		}
+		if keyStr == keyEnter {
+			if m.issueSelectionSubmit != nil {
+				if issue, ok := m.issueSelectionScreen.Selected(); ok {
+					cmd := m.issueSelectionSubmit(issue)
+					// Don't set screenNone here - issueSelectionSubmit sets screenInput or screenListSelect
+					m.issueSelectionScreen = nil
+					m.issueSelectionSubmit = nil
+					return m, cmd
+				}
+			}
+		}
+		is, cmd := m.issueSelectionScreen.Update(msg)
+		if updated, ok := is.(*IssueSelectionScreen); ok {
+			m.issueSelectionScreen = updated
 		}
 		return m, cmd
 	case screenListSelect:

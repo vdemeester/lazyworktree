@@ -63,6 +63,7 @@ type AppConfig struct {
 	MergeMethod       string // Merge method for absorb: "rebase" or "merge" (default: "rebase")
 	FuzzyFinderInput  bool   // Enable fuzzy finder for input suggestions (default: false)
 	ShowIcons         bool   // Render Nerd Font icons in file trees and PR views (default: true)
+	IssuePrefix       string // Prefix for issue branch names (default: "issue")
 }
 
 // RepoConfig represents repository-scoped commands from .wt
@@ -87,6 +88,7 @@ func DefaultConfig() *AppConfig {
 		MergeMethod:       "rebase",
 		FuzzyFinderInput:  false,
 		ShowIcons:         true,
+		IssuePrefix:       "issue",
 		CustomCommands: map[string]*CustomCommand{
 			"t": {
 				Description: "Tmux",
@@ -398,6 +400,13 @@ func parseConfig(data map[string]any) *AppConfig {
 		branchNameScript = strings.TrimSpace(branchNameScript)
 		if branchNameScript != "" {
 			cfg.BranchNameScript = branchNameScript
+		}
+	}
+
+	if issuePrefix, ok := data["issue_prefix"].(string); ok {
+		issuePrefix = strings.TrimSpace(issuePrefix)
+		if issuePrefix != "" {
+			cfg.IssuePrefix = issuePrefix
 		}
 	}
 

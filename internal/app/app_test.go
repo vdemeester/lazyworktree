@@ -187,8 +187,8 @@ func TestShowCreateWorktreeStartsWithBasePicker(t *testing.T) {
 	if m.listScreen.title != "Select base for new worktree" {
 		t.Fatalf("unexpected list title: %q", m.listScreen.title)
 	}
-	if len(m.listScreen.items) != 4 {
-		t.Fatalf("expected 4 base options, got %d", len(m.listScreen.items))
+	if len(m.listScreen.items) != 5 {
+		t.Fatalf("expected 5 base options, got %d", len(m.listScreen.items))
 	}
 	if m.listScreen.items[0].id != "branch-list" {
 		t.Fatalf("expected first option branch-list, got %q", m.listScreen.items[0].id)

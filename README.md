@@ -12,7 +12,8 @@ A [BubbleTea](https://github.com/charmbracelet/bubbletea)-based Terminal User In
 - **Commit Log Details**: Log pane shows author initials alongside commit subjects.
 - **Base Selection**: Select a base branch or commit from a list, or enter a reference when creating a worktree.
 - **Forge Integration**: Fetch and display associated Pull Request (GitHub) or Merge Request (GitLab) status, including CI check results (via `gh` or `glab` CLI).
-- **Create from PR/MR**: Create worktrees directly from open pull or merge requests, GitHub (or GitHub enterprise) or GitLab supported .
+- **Create from PR/MR**: Create worktrees directly from open pull or merge requests, GitHub (or GitHub enterprise) or GitLab supported.
+- **Create from Issue**: Create worktrees from GitHub/GitLab issues with automatic branch name generation based on issue title.
 - **Status at a Glance**: View dirty state, ahead/behind counts, and divergence from main.
 - **[Tmux](https://github.com/tmux/tmux/) Integration**: Create and manage tmux sessions per worktree with multi-window support.
 - **[Zellij](https://zellij.dev/)**: Create and manage zellij sessions per worktree with multi-tab support.
@@ -336,7 +337,7 @@ custom_commands:
 | Key | Action |
 | --- | --- |
 | `Enter` | Jump to worktree (exit and cd) |
-| `c` | Create new worktree (from branch, commit, or PR/MR) |
+| `c` | Create new worktree (from branch, commit, PR/MR, or issue) |
 | `m` | Rename selected worktree |
 | `D` | Delete selected worktree |
 | `d` | View diff in pager (respects pager config) |
@@ -565,8 +566,10 @@ branch_name_script: "gemini --model gemini-2.5-flash-lite -p "Generate a short g
 
 ### How It Works
 
-1. Upon selecting "Create from changes" in the command palette
-2. Should `branch_name_script` be configured, the current diff is piped to the script
+1. Upon selecting "Create from changes" in the command palette, or when creating from an issue
+2. Should `branch_name_script` be configured:
+   - For changes: the current diff is piped to the script
+   - For issues: the issue title and body are piped to the script
 3. The script's output (first line only) serves as the suggested branch name
 4. You may edit the suggestion prior to confirmation
 

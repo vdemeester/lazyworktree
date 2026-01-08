@@ -20,6 +20,18 @@ type PRInfo struct {
 	AuthorIsBot bool   // Whether the author is a bot
 }
 
+// IssueInfo captures the relevant metadata for an issue.
+type IssueInfo struct {
+	Number      int
+	State       string
+	Title       string
+	Body        string // For branch_name_script input
+	URL         string
+	Author      string // Issue author username
+	AuthorName  string // Issue author full name
+	AuthorIsBot bool   // Whether the author is a bot
+}
+
 // CICheck represents a single CI check/job status.
 type CICheck struct {
 	Name       string // Name of the check/job
