@@ -65,7 +65,7 @@ func DraculaLight() *Theme {
 	return &Theme{
 		Background: lipgloss.Color("#FFFFFF"), // White
 		Accent:     lipgloss.Color("#c6dbe5"), // Purple (darker for light bg)
-		AccentFg:   lipgloss.Color("#FFFFFF"), // White text on accent
+		AccentFg:   lipgloss.Color("#24292F"), // Dark text on accent
 		AccentDim:  lipgloss.Color("#F3E8FF"), // Light purple wash
 		Border:     lipgloss.Color("#D0D7DE"), // Subtle gray border
 		BorderDim:  lipgloss.Color("#E8E8E8"), // Lighter border
@@ -105,7 +105,7 @@ func CleanLight() *Theme {
 	return &Theme{
 		Background: lipgloss.Color("#FFFFFF"), // Pure White
 		Accent:     lipgloss.Color("#c6dbe5"), // Cyan (matching header)
-		AccentFg:   lipgloss.Color("#FFFFFF"), // White text on accent
+		AccentFg:   lipgloss.Color("#24292F"), // Dark text on accent
 		AccentDim:  lipgloss.Color("#DDF4FF"), // Very light blue wash
 		Border:     lipgloss.Color("#D0D7DE"), // Subtle cool gray
 		BorderDim:  lipgloss.Color("#E1E4E8"), // Very subtle divider
