@@ -165,9 +165,9 @@ func minInt(a, b int) int {
 }
 
 // generatePRWorktreeName creates a worktree name from a PR using a template.
-// The template supports placeholders: {prefix}, {number}, {title}
+// The template supports placeholders: {number}, {title}
 // The name is sanitized to be a valid git branch name and truncated to 100 characters.
-func generatePRWorktreeName(pr *models.PRInfo, prefix, template string) string {
+func generatePRWorktreeName(pr *models.PRInfo, template string) string {
 	// Sanitize the title
 	title := strings.ToLower(pr.Title)
 
@@ -182,7 +182,6 @@ func generatePRWorktreeName(pr *models.PRInfo, prefix, template string) string {
 
 	// Replace placeholders in template
 	name := template
-	name = strings.ReplaceAll(name, "{prefix}", prefix)
 	name = strings.ReplaceAll(name, "{number}", fmt.Sprintf("%d", pr.Number))
 	name = strings.ReplaceAll(name, "{title}", title)
 
@@ -201,9 +200,9 @@ func generatePRWorktreeName(pr *models.PRInfo, prefix, template string) string {
 }
 
 // generateIssueWorktreeName creates a worktree name from an issue using a template.
-// The template supports placeholders: {prefix}, {number}, {title}
+// The template supports placeholders: {number}, {title}
 // The name is sanitized to be a valid git branch name and truncated to 100 characters.
-func generateIssueWorktreeName(issue *models.IssueInfo, prefix, template string) string {
+func generateIssueWorktreeName(issue *models.IssueInfo, template string) string {
 	// Sanitize the title
 	title := strings.ToLower(issue.Title)
 
@@ -218,7 +217,6 @@ func generateIssueWorktreeName(issue *models.IssueInfo, prefix, template string)
 
 	// Replace placeholders in template
 	name := template
-	name = strings.ReplaceAll(name, "{prefix}", prefix)
 	name = strings.ReplaceAll(name, "{number}", fmt.Sprintf("%d", issue.Number))
 	name = strings.ReplaceAll(name, "{title}", title)
 

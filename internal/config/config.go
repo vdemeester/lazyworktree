@@ -74,10 +74,8 @@ type AppConfig struct {
 	MergeMethod             string // Merge method for absorb: "rebase" or "merge" (default: "rebase")
 	FuzzyFinderInput        bool   // Enable fuzzy finder for input suggestions (default: false)
 	ShowIcons               bool   // Render Nerd Font icons in file trees and PR views (default: true)
-	IssuePrefix             string // Prefix for issue branch names (default: "issue")
-	IssueBranchNameTemplate string // Template for issue branch names with placeholders: {prefix}, {number}, {title} (default: "{prefix}-{number}-{title}")
-	PRPrefix                string // Prefix for PR branch names (default: "pr")
-	PRBranchNameTemplate    string // Template for PR branch names with placeholders: {prefix}, {number}, {title} (default: "{prefix}-{number}-{title}")
+	IssueBranchNameTemplate string // Template for issue branch names with placeholders: {number}, {title} (default: "issue-{number}-{title}")
+	PRBranchNameTemplate    string // Template for PR branch names with placeholders: {number}, {title} (default: "pr-{number}-{title}")
 	CustomCreateMenus       []*CustomCreateMenu
 }
 
@@ -103,10 +101,8 @@ func DefaultConfig() *AppConfig {
 		MergeMethod:             "rebase",
 		FuzzyFinderInput:        false,
 		ShowIcons:               true,
-		IssuePrefix:             "issue",
-		IssueBranchNameTemplate: "{prefix}-{number}-{title}",
-		PRPrefix:                "pr",
-		PRBranchNameTemplate:    "{prefix}-{number}-{title}",
+		IssueBranchNameTemplate: "issue-{number}-{title}",
+		PRBranchNameTemplate:    "pr-{number}-{title}",
 		CustomCommands: map[string]*CustomCommand{
 			"t": {
 				Description: "Tmux",
@@ -421,24 +417,10 @@ func parseConfig(data map[string]any) *AppConfig {
 		}
 	}
 
-	if issuePrefix, ok := data["issue_prefix"].(string); ok {
-		issuePrefix = strings.TrimSpace(issuePrefix)
-		if issuePrefix != "" {
-			cfg.IssuePrefix = issuePrefix
-		}
-	}
-
 	if issueBranchNameTemplate, ok := data["issue_branch_name_template"].(string); ok {
 		issueBranchNameTemplate = strings.TrimSpace(issueBranchNameTemplate)
 		if issueBranchNameTemplate != "" {
 			cfg.IssueBranchNameTemplate = issueBranchNameTemplate
-		}
-	}
-
-	if prPrefix, ok := data["pr_prefix"].(string); ok {
-		prPrefix = strings.TrimSpace(prPrefix)
-		if prPrefix != "" {
-			cfg.PRPrefix = prPrefix
 		}
 	}
 

@@ -218,26 +218,17 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 			if generatedName, err := runBranchNameScript(m.ctx, m.config.BranchNameScript, prContent); err != nil {
 				scriptErr = fmt.Sprintf("Branch name script error: %v", err)
 			} else if generatedName != "" {
-				// Prepend PR prefix and number to script-generated name
-				prefix := m.config.PRPrefix
-				if prefix == "" {
-					prefix = "pr"
-				}
-				defaultName = fmt.Sprintf("%s-%d-%s", prefix, pr.Number, generatedName)
+				defaultName = generatedName
 			}
 		}
 
 		// If no script or script returned empty, use default generation
 		if defaultName == "" {
-			prefix := m.config.PRPrefix
-			if prefix == "" {
-				prefix = "pr"
-			}
 			template := m.config.PRBranchNameTemplate
 			if template == "" {
-				template = "{prefix}-{number}-{title}"
+				template = "pr-{number}-{title}"
 			}
-			defaultName = generatePRWorktreeName(pr, prefix, template)
+			defaultName = generatePRWorktreeName(pr, template)
 		}
 
 		// Suggest branch name (check for duplicates)
@@ -414,26 +405,17 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 					if generatedName, err := runBranchNameScript(m.ctx, m.config.BranchNameScript, issueContent); err != nil {
 						scriptErr = fmt.Sprintf("Branch name script error: %v", err)
 					} else if generatedName != "" {
-						// Prepend issue prefix and number to script-generated name
-						prefix := m.config.IssuePrefix
-						if prefix == "" {
-							prefix = "issue"
-						}
-						defaultName = fmt.Sprintf("%s-%d-%s", prefix, issue.Number, generatedName)
+						defaultName = generatedName
 					}
 				}
 
 				// If no script or script returned empty, use default generation
 				if defaultName == "" {
-					prefix := m.config.IssuePrefix
-					if prefix == "" {
-						prefix = "issue"
-					}
 					template := m.config.IssueBranchNameTemplate
 					if template == "" {
-						template = "{prefix}-{number}-{title}"
+						template = "issue-{number}-{title}"
 					}
-					defaultName = generateIssueWorktreeName(issue, prefix, template)
+					defaultName = generateIssueWorktreeName(issue, template)
 				}
 
 				// Suggest branch name (check for duplicates)

@@ -74,8 +74,8 @@ func TestGeneratePRWorktreeName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use default prefix and template (new default format)
-			result := generatePRWorktreeName(tt.pr, "pr", "{prefix}-{number}-{title}")
+			// Use default template format
+			result := generatePRWorktreeName(tt.pr, "pr-{number}-{title}")
 			// For the long title test, just verify it's <= 100 chars and doesn't end with hyphen
 			if tt.name == "long title gets truncated" {
 				if len(result) > 100 {
@@ -95,15 +95,15 @@ func TestGeneratePRWorktreeName(t *testing.T) {
 	}
 
 	// Test custom templates
-	t.Run("old template format without hyphen (backward compatibility)", func(t *testing.T) {
+	t.Run("template format without hyphen", func(t *testing.T) {
 		pr := &models.PRInfo{
 			Number: 123,
 			Title:  "Add feature",
 		}
-		result := generatePRWorktreeName(pr, "pr", "{prefix}{number}-{title}")
+		result := generatePRWorktreeName(pr, "pr{number}-{title}")
 		expected := "pr123-add-feature"
 		if result != expected {
-			t.Errorf("generatePRWorktreeName() with old template = %q, want %q", result, expected)
+			t.Errorf("generatePRWorktreeName() with custom template = %q, want %q", result, expected)
 		}
 	})
 
@@ -112,7 +112,7 @@ func TestGeneratePRWorktreeName(t *testing.T) {
 			Number: 456,
 			Title:  "Fix bug",
 		}
-		result := generatePRWorktreeName(pr, "pr", "{number}-{title}")
+		result := generatePRWorktreeName(pr, "{number}-{title}")
 		expected := "456-fix-bug"
 		if result != expected {
 			t.Errorf("generatePRWorktreeName() with custom template = %q, want %q", result, expected)
@@ -124,7 +124,7 @@ func TestGeneratePRWorktreeName(t *testing.T) {
 			Number: 789,
 			Title:  "Update docs",
 		}
-		result := generatePRWorktreeName(pr, "pull", "{prefix}{number}-{title}")
+		result := generatePRWorktreeName(pr, "pull{number}-{title}")
 		expected := "pull789-update-docs"
 		if result != expected {
 			t.Errorf("generatePRWorktreeName() with custom prefix = %q, want %q", result, expected)

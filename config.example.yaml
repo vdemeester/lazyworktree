@@ -67,33 +67,25 @@ editor: nvim
 # BRANCH NAMING
 # ============================================================================
 
-# Prefix for issue branch names
-issue_prefix: "issue"
-
 # Template for issue branch names when creating worktrees from issues
 # Available placeholders:
-#   {prefix} - The issue prefix (from issue_prefix setting)
 #   {number} - The issue number
 #   {title}  - The sanitised issue title
 # Examples:
-#   issue_branch_name_template: "{prefix}-{number}-{title}"  # issue-123-fix-login-bug
-#   issue_branch_name_template: "{number}-{title}"           # 123-fix-login-bug
-#   issue_branch_name_template: "fix/{number}-{title}"       # fix/123-fix-login-bug
-issue_branch_name_template: "{prefix}-{number}-{title}"
-
-# Prefix for PR branch names
-pr_prefix: "pr"
+#   issue_branch_name_template: "issue-{number}-{title}"  # issue-123-fix-login-bug
+#   issue_branch_name_template: "{number}-{title}"        # 123-fix-login-bug
+#   issue_branch_name_template: "fix/{number}-{title}"    # fix/123-fix-login-bug
+issue_branch_name_template: "issue-{number}-{title}"
 
 # Template for PR branch names when creating worktrees from pull requests
 # Available placeholders:
-#   {prefix} - The PR prefix (from pr_prefix setting)
 #   {number} - The PR number
 #   {title}  - The sanitised PR title
 # Examples:
-#   pr_branch_name_template: "{prefix}-{number}-{title}"  # pr-123-fix-login-bug
-#   pr_branch_name_template: "{prefix}{number}-{title}"   # pr123-fix-login-bug
-#   pr_branch_name_template: "{number}-{title}"           # 123-fix-login-bug
-pr_branch_name_template: "{prefix}-{number}-{title}"
+#   pr_branch_name_template: "pr-{number}-{title}"    # pr-123-fix-login-bug
+#   pr_branch_name_template: "pr{number}-{title}"     # pr123-fix-login-bug
+#   pr_branch_name_template: "{number}-{title}"       # 123-fix-login-bug
+pr_branch_name_template: "pr-{number}-{title}"
 
 # Script to generate branch name suggestions when creating worktrees from changes or issues
 # The script receives the git diff (for changes) or issue title+body (for issues) on stdin

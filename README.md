@@ -478,10 +478,8 @@ delta_args:
 trust_mode: "tofu" # Options: "tofu" (default), "never", "always"
 merge_method: "rebase" # Options: "rebase" (default), "merge"
 # Branch name generation for issues and PRs
-issue_prefix: "issue" # Prefix for issue branch names (default: "issue")
-issue_branch_name_template: "{prefix}-{number}-{title}" # Template with {prefix}, {number}, {title} placeholders
-pr_prefix: "pr" # Prefix for PR branch names (default: "pr")
-pr_branch_name_template: "{prefix}-{number}-{title}" # Template with {prefix}, {number}, {title} placeholders
+issue_branch_name_template: "issue-{number}-{title}" # Template with {number}, {title} placeholders
+pr_branch_name_template: "pr-{number}-{title}" # Template with {number}, {title} placeholders
 # AI-powered branch name generation (works for changes, issues, and PRs)
 branch_name_script: "" # Script to generate branch names from diff/issue/PR content
 init_commands:
@@ -526,10 +524,8 @@ Notes:
 - `editor` sets the editor command for the Status pane `e` key (default: config value, then `$EDITOR`, then `nvim`, then `vi`).
 - `merge_method` controls how the "Absorb worktree" action integrates changes into main: `rebase` (default) rebases the feature branch onto main then fast-forwards; `merge` creates a merge commit.
 - `branch_name_script` executes a script to generate branch name suggestions when creating worktrees from changes, issues, or PRs. The script receives the git diff (for changes), issue title+body (for issues), or PR title+body (for PRs) on stdin and should output a branch name. Refer to [AI-powered branch names](#ai-powered-branch-names) below.
-- `issue_prefix` sets the prefix for issue branch names (default: `"issue"`).
-- `issue_branch_name_template` defines the template for issue branch names with placeholders: `{prefix}`, `{number}`, `{title}` (default: `"{prefix}-{number}-{title}"`). Examples: `issue-123-fix-bug-in-login`, `123-fix-bug-in-login`, `fix/123-fix-bug-in-login`.
-- `pr_prefix` sets the prefix for PR branch names (default: `"pr"`).
-- `pr_branch_name_template` defines the template for PR branch names with placeholders: `{prefix}`, `{number}`, `{title}` (default: `"{prefix}-{number}-{title}"`). Examples: `pr-123-fix-bug`, `pr123-fix-bug`, `123-fix-bug`.
+- `issue_branch_name_template` defines the template for issue branch names with placeholders: `{number}`, `{title}` (default: `"issue-{number}-{title}"`). Examples: `issue-123-fix-bug-in-login`, `123-fix-bug-in-login`, `fix/123-fix-bug-in-login`.
+- `pr_branch_name_template` defines the template for PR branch names with placeholders: `{number}`, `{title}` (default: `"pr-{number}-{title}"`). Examples: `pr-123-fix-bug`, `pr123-fix-bug`, `123-fix-bug`.
 - `custom_create_menus` adds custom items to the worktree creation menu (`c` key). Each entry requires a `label` and `command`; `description` is optional. The workflow: you first select a base branch, then the command runs to generate a branch name. By default, commands run non-interactively with a 30-second timeout and their stdout is captured directly. Set `interactive: true` for TUI-based commands (like `jayrah browse` or `fzf`); this suspends lazyworktree, runs the command in the terminal with no timeout, and captures stdout via a temp file. The command output (first line only, whitespace trimmed, case preserved) is used as the suggested branch name. Optionally, specify `post_command` to run a command in the new worktree directory after creation (runs after global/repo `init_commands`); non-interactive post-commands have a 30-second timeout, whilst `post_interactive: true` suspends the TUI with no timeout for interactive post-commands. Post-commands have access to environment variables like `WORKTREE_BRANCH`, `WORKTREE_PATH`, etc. If a post-command fails, the error is shown but the worktree is kept.
 
 ## Themes
@@ -600,8 +596,7 @@ branch_name_script: "gemini --model gemini-2.5-flash-lite -p "Generate a short g
    - For issues: the issue title and body are piped to the script
    - For PRs: the PR title and body are piped to the script
 3. The script's output (first line only) serves as the suggested branch name
-4. For issues and PRs, if the script generates a name, it is automatically prepended with `{prefix}-{number}-` (e.g., `issue-123-{script-output}` or `pr-456-{script-output}`)
-5. You may edit the suggestion prior to confirmation
+4. You may edit the suggestion prior to confirmation
 
 ### Script Requirements
 
