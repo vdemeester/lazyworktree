@@ -324,7 +324,11 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 					if prefix == "" {
 						prefix = "issue"
 					}
-					defaultName = generateIssueWorktreeName(issue, prefix)
+					template := m.config.IssueBranchNameTemplate
+					if template == "" {
+						template = "{prefix}-{number}-{title}"
+					}
+					defaultName = generateIssueWorktreeName(issue, prefix, template)
 				}
 
 				// Suggest branch name (check for duplicates)

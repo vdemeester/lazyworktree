@@ -54,9 +54,18 @@ merge_method: "rebase"
 # branch_name_script: ""
 
 # Prefix for issue branch names (default: "issue")
-# When creating a worktree from an issue, branch names will be formatted as: {prefix}-{number}-{title}
-# Example: issue-123-fix-bug-in-login
 # issue_prefix: "issue"
+
+# Template for issue branch names (default: "{prefix}-{number}-{title}")
+# When creating a worktree from an issue, branch names use this template with placeholders:
+#   {prefix} - The issue prefix (from issue_prefix config)
+#   {number} - The issue number
+#   {title}  - The sanitized issue title
+# Examples:
+#   issue_branch_name_template: "{prefix}-{number}-{title}"  # issue-123-fix-bug-in-login
+#   issue_branch_name_template: "{number}-{title}"            # 123-fix-bug-in-login
+#   issue_branch_name_template: "fix/{number}-{title}"        # fix/123-fix-bug-in-login
+# issue_branch_name_template: "{prefix}-{number}-{title}"
 
 init_commands:
   - link_topsymlinks

@@ -197,12 +197,10 @@ func generatePRWorktreeName(pr *models.PRInfo) string {
 	return name
 }
 
-// generateIssueWorktreeName creates a worktree name from an issue in the format {prefix}-{number}-{sanitized-title}
+// generateIssueWorktreeName creates a worktree name from an issue using a template.
+// The template supports placeholders: {prefix}, {number}, {title}
 // The name is sanitized to be a valid git branch name and truncated to 100 characters.
-func generateIssueWorktreeName(issue *models.IssueInfo, prefix string) string {
-	// Start with {prefix}-{number}-
-	name := fmt.Sprintf("%s-%d", prefix, issue.Number)
-
+func generateIssueWorktreeName(issue *models.IssueInfo, prefix, template string) string {
 	// Sanitize the title
 	title := strings.ToLower(issue.Title)
 
@@ -215,10 +213,11 @@ func generateIssueWorktreeName(issue *models.IssueInfo, prefix string) string {
 	re2 := regexp.MustCompile(`-+`)
 	title = re2.ReplaceAllString(title, "-")
 
-	// Combine: {prefix}-{number}-{title}
-	if title != "" {
-		name = name + "-" + title
-	}
+	// Replace placeholders in template
+	name := template
+	name = strings.ReplaceAll(name, "{prefix}", prefix)
+	name = strings.ReplaceAll(name, "{number}", fmt.Sprintf("%d", issue.Number))
+	name = strings.ReplaceAll(name, "{title}", title)
 
 	// Truncate to 100 characters
 	if len(name) > 100 {

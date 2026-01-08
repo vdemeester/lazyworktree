@@ -42,28 +42,29 @@ type TmuxWindow struct {
 
 // AppConfig defines the global lazyworktree configuration options.
 type AppConfig struct {
-	WorktreeDir       string
-	InitCommands      []string
-	TerminateCommands []string
-	SortMode          string // Sort mode: "path", "active" (commit date), "switched" (last accessed)
-	AutoFetchPRs      bool
-	SearchAutoSelect  bool // Start with filter focused and select first match on Enter.
-	MaxUntrackedDiffs int
-	MaxDiffChars      int
-	DeltaArgs         []string
-	DeltaArgsSet      bool `yaml:"-"`
-	DeltaPath         string
-	TrustMode         string
-	DebugLog          string
-	Pager             string
-	Editor            string
-	CustomCommands    map[string]*CustomCommand
-	BranchNameScript  string // Script to generate branch name suggestions from diff
-	Theme             string // Theme name: see AvailableThemes in internal/theme
-	MergeMethod       string // Merge method for absorb: "rebase" or "merge" (default: "rebase")
-	FuzzyFinderInput  bool   // Enable fuzzy finder for input suggestions (default: false)
-	ShowIcons         bool   // Render Nerd Font icons in file trees and PR views (default: true)
-	IssuePrefix       string // Prefix for issue branch names (default: "issue")
+	WorktreeDir             string
+	InitCommands            []string
+	TerminateCommands       []string
+	SortMode                string // Sort mode: "path", "active" (commit date), "switched" (last accessed)
+	AutoFetchPRs            bool
+	SearchAutoSelect        bool // Start with filter focused and select first match on Enter.
+	MaxUntrackedDiffs       int
+	MaxDiffChars            int
+	DeltaArgs               []string
+	DeltaArgsSet            bool `yaml:"-"`
+	DeltaPath               string
+	TrustMode               string
+	DebugLog                string
+	Pager                   string
+	Editor                  string
+	CustomCommands          map[string]*CustomCommand
+	BranchNameScript        string // Script to generate branch name suggestions from diff
+	Theme                   string // Theme name: see AvailableThemes in internal/theme
+	MergeMethod             string // Merge method for absorb: "rebase" or "merge" (default: "rebase")
+	FuzzyFinderInput        bool   // Enable fuzzy finder for input suggestions (default: false)
+	ShowIcons               bool   // Render Nerd Font icons in file trees and PR views (default: true)
+	IssuePrefix             string // Prefix for issue branch names (default: "issue")
+	IssueBranchNameTemplate string // Template for issue branch names with placeholders: {prefix}, {number}, {title} (default: "{prefix}-{number}-{title}")
 }
 
 // RepoConfig represents repository-scoped commands from .wt
@@ -76,19 +77,20 @@ type RepoConfig struct {
 // DefaultConfig returns the default configuration values.
 func DefaultConfig() *AppConfig {
 	return &AppConfig{
-		SortMode:          "switched",
-		AutoFetchPRs:      false,
-		SearchAutoSelect:  false,
-		MaxUntrackedDiffs: 10,
-		MaxDiffChars:      200000,
-		DeltaArgs:         DefaultDeltaArgsForTheme(theme.DraculaName),
-		DeltaPath:         "delta",
-		TrustMode:         "tofu",
-		Theme:             "",
-		MergeMethod:       "rebase",
-		FuzzyFinderInput:  false,
-		ShowIcons:         true,
-		IssuePrefix:       "issue",
+		SortMode:                "switched",
+		AutoFetchPRs:            false,
+		SearchAutoSelect:        false,
+		MaxUntrackedDiffs:       10,
+		MaxDiffChars:            200000,
+		DeltaArgs:               DefaultDeltaArgsForTheme(theme.DraculaName),
+		DeltaPath:               "delta",
+		TrustMode:               "tofu",
+		Theme:                   "",
+		MergeMethod:             "rebase",
+		FuzzyFinderInput:        false,
+		ShowIcons:               true,
+		IssuePrefix:             "issue",
+		IssueBranchNameTemplate: "{prefix}-{number}-{title}",
 		CustomCommands: map[string]*CustomCommand{
 			"t": {
 				Description: "Tmux",
@@ -407,6 +409,13 @@ func parseConfig(data map[string]any) *AppConfig {
 		issuePrefix = strings.TrimSpace(issuePrefix)
 		if issuePrefix != "" {
 			cfg.IssuePrefix = issuePrefix
+		}
+	}
+
+	if issueBranchNameTemplate, ok := data["issue_branch_name_template"].(string); ok {
+		issueBranchNameTemplate = strings.TrimSpace(issueBranchNameTemplate)
+		if issueBranchNameTemplate != "" {
+			cfg.IssueBranchNameTemplate = issueBranchNameTemplate
 		}
 	}
 
