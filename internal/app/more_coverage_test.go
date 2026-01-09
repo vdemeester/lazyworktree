@@ -537,6 +537,49 @@ func TestBuildZellijScriptDefaultOnExistsIncludesNoop(t *testing.T) {
 	}
 }
 
+func TestBuildZellijScriptAddsLayoutsAsTabs(t *testing.T) {
+	cfg := &config.TmuxCommand{
+		SessionName: "session",
+		OnExists:    "",
+	}
+	script := buildZellijScript("session", cfg, []string{"/tmp/layout1", "/tmp/layout2"})
+	if !strings.Contains(script, "zellij attach --create-background \"$session\"") {
+		t.Fatalf("expected session creation without layout flag, got %q", script)
+	}
+	if strings.Count(script, "new-tab --layout") != 2 {
+		t.Fatalf("expected all layouts added as new tabs, got %q", script)
+	}
+	if !strings.Contains(script, "new-tab --layout '/tmp/layout1'") || !strings.Contains(script, "new-tab --layout '/tmp/layout2'") {
+		t.Fatalf("expected both layouts as new-tab actions, got %q", script)
+	}
+	if !strings.Contains(script, "while ! zellij list-sessions --short 2>/dev/null | grep -Fxq \"$session\"; do") {
+		t.Fatalf("expected wait loop for session readiness, got %q", script)
+	}
+	if !strings.Contains(script, "if [ $tries -ge 50 ]") {
+		t.Fatalf("expected timeout in wait loop, got %q", script)
+	}
+	if !strings.Contains(script, "go-to-tab 1") || !strings.Contains(script, "close-tab") {
+		t.Fatalf("expected close-tab cleanup to remove default tab, got %q", script)
+	}
+}
+
+func TestBuildZellijScriptNoLayoutsKeepsDefaultTab(t *testing.T) {
+	cfg := &config.TmuxCommand{
+		SessionName: "session",
+		OnExists:    "",
+	}
+	script := buildZellijScript("session", cfg, nil)
+	if strings.Contains(script, "new-tab --layout") {
+		t.Fatalf("expected no new-tab actions when no layouts provided, got %q", script)
+	}
+	if strings.Contains(script, "close-tab") {
+		t.Fatalf("did not expect close-tab when no layouts provided, got %q", script)
+	}
+	if !strings.Contains(script, "zellij attach --create-background \"$session\"") {
+		t.Fatalf("expected basic attach when no layouts provided, got %q", script)
+	}
+}
+
 func TestOpenTmuxSession(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")

@@ -3976,14 +3976,23 @@ func buildZellijScript(sessionName string, zellijCfg *config.TmuxCommand, layout
 	b.WriteString("if ! session_exists \"$session\"; then\n")
 	b.WriteString("  zellij attach --create-background \"$session\"\n")
 	b.WriteString("  created=true\n")
+	// Wait for session with timeout (5 seconds max)
+	b.WriteString("  tries=0\n")
+	b.WriteString("  while ! zellij list-sessions --short 2>/dev/null | grep -Fxq \"$session\"; do\n")
+	b.WriteString("    sleep 0.1\n")
+	b.WriteString("    tries=$((tries+1))\n")
+	b.WriteString("    if [ $tries -ge 50 ]; then echo \"Timeout waiting for zellij session\" >&2; exit 1; fi\n")
+	b.WriteString("  done\n")
 	b.WriteString("fi\n")
-	b.WriteString("if [ \"$created\" = \"true\" ]; then\n")
-	for _, layoutPath := range layoutPaths {
-		b.WriteString(fmt.Sprintf("  ZELLIJ_SESSION_NAME=\"$session\" zellij action new-tab --layout %s\n", shellQuote(layoutPath)))
+	if len(layoutPaths) > 0 {
+		b.WriteString("if [ \"$created\" = \"true\" ]; then\n")
+		for _, layoutPath := range layoutPaths {
+			b.WriteString(fmt.Sprintf("  ZELLIJ_SESSION_NAME=\"$session\" zellij action new-tab --layout %s\n", shellQuote(layoutPath)))
+		}
+		b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action go-to-tab 1\n")
+		b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action close-tab\n")
+		b.WriteString("fi\n")
 	}
-	b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action go-to-tab 1\n")
-	b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action close-tab\n")
-	b.WriteString("fi\n")
 	b.WriteString("if [ -n \"${LW_ZELLIJ_SESSION_FILE:-}\" ]; then printf '%s' \"$session\" > \"$LW_ZELLIJ_SESSION_FILE\"; fi\n")
 	return b.String()
 }
