@@ -62,5 +62,11 @@ func GetFlags() []FlagInfo {
 			ValueHint:   "SHELL",
 			Values:      []string{"bash", "zsh", "fish"},
 		},
+		{
+			Name:        "config",
+			Description: "Path to configuration file",
+			HasValue:    true,
+			ValueHint:   "FILE",
+		},
 	}
 }

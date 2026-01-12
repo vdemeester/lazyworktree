@@ -33,6 +33,7 @@ func main() {
 	var showVersion bool
 	var showSyntaxThemes bool
 	var completionShell string
+	var configFile string
 
 	flag.StringVar(&worktreeDir, "worktree-dir", "", "Override the default worktree root directory")
 	flag.StringVar(&debugLog, "debug-log", "", "Path to debug log file")
@@ -42,6 +43,7 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "Print version information")
 	flag.BoolVar(&showSyntaxThemes, "show-syntax-themes", false, "List available delta syntax themes")
 	flag.StringVar(&completionShell, "completion", "", "Generate shell completion script (bash, zsh, fish)")
+	flag.StringVar(&configFile, "config", "", "Path to configuration file")
 	flag.Parse()
 
 	if showVersion {
@@ -77,7 +79,7 @@ func main() {
 
 	initialFilter := strings.Join(flag.Args(), " ")
 
-	cfg, err := config.LoadConfig("")
+	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		cfg = config.DefaultConfig()

@@ -1780,17 +1780,6 @@ other_field: preserved # Inline comment
 	assert.Contains(t, string(data), "theme: nord")
 }
 
-func TestLoadConfigRejectsOutsideConfigDir(t *testing.T) {
-	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
-
-	outside := filepath.Join(t.TempDir(), "config.yaml")
-	cfg, err := LoadConfig(outside)
-	require.Error(t, err)
-	assert.NotNil(t, cfg)
-	assert.Equal(t, DefaultConfig().SortMode, cfg.SortMode)
-}
-
 func TestIsPathWithin(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "base")
 	inside := filepath.Join(base, "child")
@@ -1799,4 +1788,49 @@ func TestIsPathWithin(t *testing.T) {
 	assert.True(t, isPathWithin(base, base))
 	assert.True(t, isPathWithin(base, inside))
 	assert.False(t, isPathWithin(base, outside))
+}
+
+func TestLoadConfigWithCustomPath(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a custom config file with valid YAML
+	customConfigPath := filepath.Join(tempDir, "custom-config.yaml")
+	customConfigContent := "theme: narna\n"
+	err := os.WriteFile(customConfigPath, []byte(customConfigContent), 0o600)
+	require.NoError(t, err)
+
+	// Load config from custom path
+	cfg, err := LoadConfig(customConfigPath)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, "narna", cfg.Theme)
+	assert.Equal(t, customConfigPath, cfg.ConfigPath)
+}
+
+func TestLoadConfigWithCustomPathFromAnywhere(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a custom config file outside standard config directory
+	customConfigPath := filepath.Join(tempDir, "my-custom-config.yaml")
+	customConfigContent := "theme: dracula-light\nauto_fetch_prs: true\n"
+	err := os.WriteFile(customConfigPath, []byte(customConfigContent), 0o600)
+	require.NoError(t, err)
+
+	// Load config from arbitrary path - should work now since we allow any path
+	cfg, err := LoadConfig(customConfigPath)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, "dracula-light", cfg.Theme)
+	assert.True(t, cfg.AutoFetchPRs)
+	assert.Equal(t, customConfigPath, cfg.ConfigPath)
+}
+
+func TestLoadConfigWithNonexistentPathFallsBack(t *testing.T) {
+	// Try to load from a non-existent path
+	cfg, err := LoadConfig("/this/path/does/not/exist/config.yaml")
+	require.NoError(t, err)
+	// Should return default config when file doesn't exist
+	assert.NotNil(t, cfg)
+	// Theme will be auto-detected or set to default
+	assert.NotEmpty(t, cfg.Theme)
 }

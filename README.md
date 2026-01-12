@@ -528,6 +528,7 @@ custom_create_menus:
 
 Notes:
 
+- `--config` specifies a custom configuration file path, allowing you to override the default XDG config directory location (e.g., `lazyworktree --config ~/my-configs/lazyworktree.yaml`).
 - `--worktree-dir` overrides the `worktree_dir` setting.
 - `theme` selects the colour theme. Available themes: `dracula`, `dracula-light`, `narna`, `clean-light`, `catppuccin-latte`, `rose-pine-dawn`, `one-light`, `everforest-light`, `everforest-dark`, `solarized-dark`, `solarized-light`, `gruvbox-dark`, `gruvbox-light`, `nord`, `monokai`, `catppuccin-mocha`, `modern`, `tokyo-night`, `one-dark`, `rose-pine`, `ayu-mirage`. Default: auto-detected (`dracula` for dark, `dracula-light` for light).
 - `init_commands` and `terminate_commands` execute prior to any repository-specific `.wt` commands (if present).

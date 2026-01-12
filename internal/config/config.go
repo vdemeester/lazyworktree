@@ -436,9 +436,6 @@ func LoadConfig(configPath string) (*AppConfig, error) {
 		if err != nil {
 			return DefaultConfig(), err
 		}
-		if !isPathWithin(configBase, absPath) {
-			return DefaultConfig(), fmt.Errorf("config path must reside inside %s", configBase)
-		}
 		paths = []string{absPath}
 	} else {
 		paths = []string{
@@ -454,7 +451,7 @@ func LoadConfig(configPath string) (*AppConfig, error) {
 			continue
 		}
 
-		// #nosec G304 -- path is constrained to the config directory after validation
+		// #nosec G304 -- path expanded from user config location or CLI argument
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
