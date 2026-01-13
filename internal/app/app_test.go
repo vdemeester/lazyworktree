@@ -1787,6 +1787,71 @@ func TestShowDeleteWorktree(t *testing.T) {
 	}
 }
 
+func TestWorktreeDeletedMsg(t *testing.T) {
+	t.Run("success shows branch deletion prompt", func(t *testing.T) {
+		cfg := &config.AppConfig{
+			WorktreeDir: t.TempDir(),
+		}
+		m := NewModel(cfg, "")
+		m.currentScreen = screenNone
+
+		msg := worktreeDeletedMsg{
+			path:   "/tmp/feat",
+			branch: "feature-branch",
+			err:    nil,
+		}
+
+		result, cmd := m.Update(msg)
+		m = result.(*Model)
+
+		if cmd != nil {
+			t.Fatal("expected nil command")
+		}
+		if m.currentScreen != screenConfirm {
+			t.Fatalf("expected confirm screen, got %v", m.currentScreen)
+		}
+		if m.confirmScreen == nil {
+			t.Fatal("expected confirm screen to be set")
+		}
+		if m.confirmAction == nil {
+			t.Fatal("expected confirm action to be set")
+		}
+		if !strings.Contains(m.confirmScreen.message, "Delete branch 'feature-branch'?") {
+			t.Fatalf("unexpected message: %s", m.confirmScreen.message)
+		}
+		if m.confirmScreen.selectedButton != 0 {
+			t.Fatalf("expected default button to be 0, got %d", m.confirmScreen.selectedButton)
+		}
+	})
+
+	t.Run("failure does not show branch deletion prompt", func(t *testing.T) {
+		cfg := &config.AppConfig{
+			WorktreeDir: t.TempDir(),
+		}
+		m := NewModel(cfg, "")
+		m.currentScreen = screenNone
+
+		msg := worktreeDeletedMsg{
+			path:   "/tmp/feat",
+			branch: "feature-branch",
+			err:    fmt.Errorf("worktree deletion failed"),
+		}
+
+		result, cmd := m.Update(msg)
+		m = result.(*Model)
+
+		if cmd != nil {
+			t.Fatal("expected nil command")
+		}
+		if m.currentScreen != screenNone {
+			t.Fatalf("expected screen to remain unchanged, got %v", m.currentScreen)
+		}
+		if m.confirmScreen != nil {
+			t.Fatal("expected no confirm screen for failed deletion")
+		}
+	})
+}
+
 func TestShowRenameWorktree(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),

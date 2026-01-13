@@ -224,6 +224,16 @@ func NewConfirmScreen(message string, thm *theme.Theme) *ConfirmScreen {
 	}
 }
 
+// NewConfirmScreenWithDefault creates a confirmation modal with a specified default button.
+func NewConfirmScreenWithDefault(message string, defaultButton int, thm *theme.Theme) *ConfirmScreen {
+	return &ConfirmScreen{
+		message:        message,
+		result:         make(chan bool, 1),
+		selectedButton: defaultButton, // Use provided default
+		thm:            thm,
+	}
+}
+
 // NewInfoScreen creates an informational modal with an OK button.
 func NewInfoScreen(message string, thm *theme.Theme) *InfoScreen {
 	return &InfoScreen{

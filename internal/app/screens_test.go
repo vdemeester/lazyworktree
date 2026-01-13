@@ -391,3 +391,31 @@ func TestListSelectionScreenUpdate(t *testing.T) {
 		t.Fatalf("expected cursor to move up, got %d", screen.cursor)
 	}
 }
+
+func TestNewConfirmScreenWithDefault(t *testing.T) {
+	thm := theme.Dracula()
+
+	t.Run("default button 0 (Confirm)", func(t *testing.T) {
+		screen := NewConfirmScreenWithDefault("Test message", 0, thm)
+		if screen.selectedButton != 0 {
+			t.Fatalf("expected default button to be 0, got %d", screen.selectedButton)
+		}
+		if screen.message != "Test message" {
+			t.Fatalf("expected message 'Test message', got %s", screen.message)
+		}
+	})
+
+	t.Run("default button 1 (Cancel)", func(t *testing.T) {
+		screen := NewConfirmScreenWithDefault("Test message", 1, thm)
+		if screen.selectedButton != 1 {
+			t.Fatalf("expected default button to be 1, got %d", screen.selectedButton)
+		}
+	})
+
+	t.Run("regular NewConfirmScreen defaults to 0", func(t *testing.T) {
+		screen := NewConfirmScreen("Test message", thm)
+		if screen.selectedButton != 0 {
+			t.Fatalf("expected NewConfirmScreen default button to be 0, got %d", screen.selectedButton)
+		}
+	})
+}

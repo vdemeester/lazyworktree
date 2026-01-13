@@ -120,6 +120,11 @@ type (
 		branch string
 		err    error
 	}
+	worktreeDeletedMsg struct {
+		path   string
+		branch string
+		err    error
+	}
 	ciStatusLoadedMsg struct {
 		branch string
 		checks []*models.CICheck
@@ -606,6 +611,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case openIssuesLoadedMsg:
 		return m, m.handleOpenIssuesLoaded(msg)
+
+	case worktreeDeletedMsg:
+		if msg.err != nil {
+			// Worktree deletion failed, don't prompt for branch deletion
+			return m, nil
+		}
+
+		// Worktree deleted successfully, show branch deletion prompt
+		m.confirmScreen = NewConfirmScreenWithDefault(
+			fmt.Sprintf("Worktree deleted successfully.\n\nDelete branch '%s'?", msg.branch),
+			0, // Default to Confirm button (Yes)
+			m.theme,
+		)
+		m.confirmAction = m.deleteBranchCmd(msg.branch)
+		m.currentScreen = screenConfirm
+		return m, nil
 
 	case createFromPRResultMsg:
 		m.loading = false
@@ -1769,7 +1790,7 @@ func (m *Model) showDeleteWorktree() tea.Cmd {
 		return nil
 	}
 	m.confirmScreen = NewConfirmScreen(fmt.Sprintf("Delete worktree?\n\nPath: %s\nBranch: %s", wt.Path, wt.Branch), m.theme)
-	m.confirmAction = m.deleteWorktreeCmd(wt)
+	m.confirmAction = m.deleteWorktreeOnlyCmd(wt)
 	m.currentScreen = screenConfirm
 	return nil
 }
@@ -2719,6 +2740,58 @@ func (m *Model) deleteWorktreeCmd(wt *models.WorktreeInfo) func() tea.Cmd {
 
 	return func() tea.Cmd {
 		return m.runCommandsWithTrust(terminateCmds, wt.Path, env, afterCmd)
+	}
+}
+
+func (m *Model) deleteWorktreeOnlyCmd(wt *models.WorktreeInfo) func() tea.Cmd {
+	env := m.buildCommandEnv(wt.Branch, wt.Path)
+	terminateCmds := m.collectTerminateCommands()
+
+	afterCmd := func() tea.Msg {
+		// Only remove worktree
+		success := m.git.RunCommandChecked(
+			m.ctx,
+			[]string{"git", "worktree", "remove", "--force", wt.Path},
+			"",
+			fmt.Sprintf("Failed to remove worktree %s", wt.Path),
+		)
+
+		if !success {
+			return worktreeDeletedMsg{
+				path:   wt.Path,
+				branch: wt.Branch,
+				err:    fmt.Errorf("worktree deletion failed"),
+			}
+		}
+
+		return worktreeDeletedMsg{
+			path:   wt.Path,
+			branch: wt.Branch,
+			err:    nil,
+		}
+	}
+
+	return func() tea.Cmd {
+		return m.runCommandsWithTrust(terminateCmds, wt.Path, env, afterCmd)
+	}
+}
+
+func (m *Model) deleteBranchCmd(branch string) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			m.git.RunCommandChecked(
+				m.ctx,
+				[]string{"git", "branch", "-D", branch},
+				"",
+				fmt.Sprintf("Failed to delete branch %s", branch),
+			)
+
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return worktreesLoadedMsg{
+				worktrees: worktrees,
+				err:       err,
+			}
+		}
 	}
 }
 
