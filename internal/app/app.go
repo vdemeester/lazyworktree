@@ -141,6 +141,11 @@ type (
 		output string
 		err    error
 	}
+	syncResultMsg struct {
+		stage  string
+		output string
+		err    error
+	}
 	createFromPRResultMsg struct {
 		prNumber   int
 		branch     string
@@ -246,6 +251,7 @@ const (
 
 	// Merge methods for absorb worktree
 	mergeMethodRebase = "rebase"
+	pullRebaseFlag    = "--rebase=true"
 
 	// Sort modes for worktree list
 	sortModePath         = 0 // Sort by path (alphabetical)
@@ -318,6 +324,7 @@ type Model struct {
 	checklistSubmit           func([]ChecklistItem) tea.Cmd
 	spinner                   spinner.Model
 	loading                   bool
+	loadingOperation          string // Tracks what operation is loading (push, sync, etc.)
 	showingFilter             bool
 	filterTarget              filterTarget
 	showingSearch             bool
@@ -861,6 +868,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pushResultMsg:
 		m.loading = false
+		m.loadingOperation = ""
 		if m.currentScreen == screenLoading {
 			m.currentScreen = screenNone
 			m.loadingScreen = nil
@@ -869,7 +877,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			message := fmt.Sprintf("Push failed: %v", msg.err)
 			if output != "" {
-				message = fmt.Sprintf("Push failed.\n\n%s", truncateToHeight(output, 3))
+				message = fmt.Sprintf("Push failed.\n\n%s", truncateToHeightFromEnd(output, 5))
 			}
 			m.showInfo(message, nil)
 			return m, nil
@@ -880,6 +888,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.statusContent = "Push completed"
+		return m, m.updateDetailsView()
+
+	case syncResultMsg:
+		m.loading = false
+		m.loadingOperation = ""
+		if m.currentScreen == screenLoading {
+			m.currentScreen = screenNone
+			m.loadingScreen = nil
+		}
+		output := strings.TrimSpace(msg.output)
+		if msg.err != nil {
+			heading := "Synchronise failed."
+			switch msg.stage {
+			case "pull":
+				heading = "Pull failed."
+			case "push":
+				heading = "Push failed."
+			}
+			message := fmt.Sprintf("%s: %v", heading, msg.err)
+			if output != "" {
+				message = fmt.Sprintf("%s\n\n%s", heading, truncateToHeightFromEnd(output, 5))
+			}
+			m.showInfo(message, nil)
+			return m, nil
+		}
+		if output != "" {
+			message := fmt.Sprintf("Synchronised.\n\n%s", truncateToHeight(output, 3))
+			m.showInfo(message, m.updateDetailsView())
+			return m, nil
+		}
+		m.statusContent = "Synchronised"
 		return m, m.updateDetailsView()
 
 	case autoRefreshTickMsg:
@@ -1539,20 +1578,62 @@ func (m *Model) pushToUpstream() tea.Cmd {
 		return nil
 	}
 	if wt.HasUpstream {
-		return m.beginPush(wt, nil)
+		remote, branch, ok := m.validatedUpstream(wt, "push")
+		if !ok {
+			return nil
+		}
+		return m.beginPush(wt, []string{remote, fmt.Sprintf("HEAD:%s", branch)})
 	}
-	return m.showPushUpstreamInput(wt)
+	return m.showUpstreamInput(wt, func(remote, branch string) tea.Cmd {
+		return m.beginPush(wt, []string{"-u", remote, fmt.Sprintf("HEAD:%s", branch)})
+	})
+}
+
+func (m *Model) syncWithUpstream() tea.Cmd {
+	wt := m.selectedWorktree()
+	if wt == nil {
+		m.showInfo(errNoWorktreeSelected, nil)
+		return nil
+	}
+	if hasLocalChanges(wt) {
+		m.showInfo("Cannot synchronise while the worktree has local changes.\n\nPlease commit, stash, or discard them first.", nil)
+		return nil
+	}
+	if strings.TrimSpace(wt.Branch) == "" {
+		m.showInfo("Cannot synchronise a detached worktree.", nil)
+		return nil
+	}
+	if wt.HasUpstream {
+		remote, branch, ok := m.validatedUpstream(wt, "synchronise")
+		if !ok {
+			return nil
+		}
+		return m.beginSync(wt, []string{remote, branch}, []string{remote, fmt.Sprintf("HEAD:%s", branch)})
+	}
+	return m.showUpstreamInput(wt, func(remote, branch string) tea.Cmd {
+		return m.beginSync(wt, []string{remote, branch}, []string{"-u", remote, fmt.Sprintf("HEAD:%s", branch)})
+	})
 }
 
 func (m *Model) beginPush(wt *models.WorktreeInfo, args []string) tea.Cmd {
 	m.loading = true
+	m.loadingOperation = "push"
 	m.statusContent = "Pushing to upstream..."
 	m.loadingScreen = NewLoadingScreen("Pushing to upstream...", m.theme)
 	m.currentScreen = screenLoading
 	return m.runPush(wt, args)
 }
 
-func (m *Model) showPushUpstreamInput(wt *models.WorktreeInfo) tea.Cmd {
+func (m *Model) beginSync(wt *models.WorktreeInfo, pullArgs, pushArgs []string) tea.Cmd {
+	m.loading = true
+	m.loadingOperation = "sync"
+	m.statusContent = "Synchronising with upstream..."
+	m.loadingScreen = NewLoadingScreen("Synchronising with upstream...", m.theme)
+	m.currentScreen = screenLoading
+	return m.runSync(wt, pullArgs, pushArgs)
+}
+
+func (m *Model) showUpstreamInput(wt *models.WorktreeInfo, onSubmit func(remote, branch string) tea.Cmd) tea.Cmd {
 	defaultUpstream := fmt.Sprintf("origin/%s", wt.Branch)
 	prompt := fmt.Sprintf("Set upstream for '%s' (remote/branch)", wt.Branch)
 	m.inputScreen = NewInputScreen(prompt, defaultUpstream, defaultUpstream, m.theme)
@@ -1562,11 +1643,33 @@ func (m *Model) showPushUpstreamInput(wt *models.WorktreeInfo) tea.Cmd {
 			m.inputScreen.errorMsg = "Please provide upstream as remote/branch."
 			return nil, false
 		}
+		if branch != wt.Branch {
+			m.inputScreen.errorMsg = fmt.Sprintf("Upstream branch must match %q.", wt.Branch)
+			return nil, false
+		}
 		m.inputScreen.errorMsg = ""
-		return m.beginPush(wt, []string{"-u", remote, branch}), true
+		return onSubmit(remote, branch), true
 	}
 	m.currentScreen = screenInput
 	return textinput.Blink
+}
+
+func (m *Model) validatedUpstream(wt *models.WorktreeInfo, action string) (string, string, bool) {
+	upstream := strings.TrimSpace(wt.UpstreamBranch)
+	if upstream == "" {
+		m.showInfo(fmt.Sprintf("Cannot %s because no upstream is configured.", action), nil)
+		return "", "", false
+	}
+	remote, branch, ok := parseUpstreamRef(upstream)
+	if !ok {
+		m.showInfo(fmt.Sprintf("Cannot %s because upstream %q is not in remote/branch format.", action, upstream), nil)
+		return "", "", false
+	}
+	if branch != wt.Branch {
+		m.showInfo(fmt.Sprintf("Cannot %s because upstream %q does not match current branch %q.", action, upstream, wt.Branch), nil)
+		return "", "", false
+	}
+	return remote, branch, true
 }
 
 func parseUpstreamRef(input string) (string, string, bool) {
@@ -1618,6 +1721,66 @@ func (m *Model) runPush(wt *models.WorktreeInfo, args []string) tea.Cmd {
 			err:    err,
 		}
 	}
+}
+
+func (m *Model) runSync(wt *models.WorktreeInfo, pullArgs, pushArgs []string) tea.Cmd {
+	env := m.buildCommandEnv(wt.Branch, wt.Path)
+	envVars := os.Environ()
+	for k, v := range env {
+		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Clear cache so status pane refreshes with latest git status
+	delete(m.detailsCache, wt.Path)
+
+	pullCmdArgs := append([]string{"pull"}, m.syncPullArgs(pullArgs)...)
+	pullCmd := m.commandRunner("git", pullCmdArgs...)
+	pullCmd.Dir = wt.Path
+	pullCmd.Env = envVars
+
+	return func() tea.Msg {
+		pullOutput, pullErr := pullCmd.CombinedOutput()
+		pullText := strings.TrimSpace(string(pullOutput))
+		if pullErr != nil {
+			return syncResultMsg{
+				stage:  "pull",
+				output: pullText,
+				err:    pullErr,
+			}
+		}
+
+		pushCmdArgs := append([]string{"push"}, pushArgs...)
+		pushCmd := m.commandRunner("git", pushCmdArgs...)
+		pushCmd.Dir = wt.Path
+		pushCmd.Env = envVars
+
+		pushOutput, pushErr := pushCmd.CombinedOutput()
+		pushText := strings.TrimSpace(string(pushOutput))
+		combined := strings.TrimSpace(strings.Join(filterNonEmpty([]string{pullText, pushText}), "\n"))
+
+		if pushErr != nil {
+			return syncResultMsg{
+				stage:  "push",
+				output: combined,
+				err:    pushErr,
+			}
+		}
+		return syncResultMsg{
+			output: combined,
+			err:    nil,
+		}
+	}
+}
+
+func (m *Model) syncPullArgs(pullArgs []string) []string {
+	mergeMethod := strings.TrimSpace(m.config.MergeMethod)
+	if mergeMethod == "" {
+		mergeMethod = mergeMethodRebase
+	}
+	if mergeMethod == mergeMethodRebase {
+		return append([]string{pullRebaseFlag}, pullArgs...)
+	}
+	return pullArgs
 }
 
 func (m *Model) showCreateWorktree() tea.Cmd {
@@ -3023,6 +3186,8 @@ func (m *Model) buildMRUPaletteItems() []paletteItem {
 		{id: "diff", label: "Show diff (d)", description: "Show diff for current worktree or commit"},
 		{id: "refresh", label: "Refresh (r)", description: "Reload worktrees"},
 		{id: "fetch", label: "Fetch remotes (R)", description: "git fetch --all"},
+		{id: "push", label: "Push to upstream (P)", description: "git push (clean worktree only)"},
+		{id: "sync", label: "Synchronise with upstream (S)", description: "git pull, then git push (clean worktree only)"},
 		{id: "fetch-pr-data", label: "Fetch PR data (p)", description: "Fetch PR/MR status from GitHub/GitLab"},
 		{id: "pr", label: "Open PR (o)", description: "Open PR in browser"},
 		{id: "lazygit", label: "Open LazyGit (g)", description: "Open LazyGit in selected worktree"},
@@ -3136,6 +3301,8 @@ func (m *Model) showCommandPalette() tea.Cmd {
 	addItem(paletteItem{id: "diff", label: "Show diff (d)", description: "Show diff for current worktree or commit"})
 	addItem(paletteItem{id: "refresh", label: "Refresh (r)", description: "Reload worktrees"})
 	addItem(paletteItem{id: "fetch", label: "Fetch remotes (R)", description: "git fetch --all"})
+	addItem(paletteItem{id: "push", label: "Push to upstream (P)", description: "git push (clean worktree only)"})
+	addItem(paletteItem{id: "sync", label: "Synchronise with upstream (S)", description: "git pull, then git push (clean worktree only)"})
 	addItem(paletteItem{id: "fetch-pr-data", label: "Fetch PR data (p)", description: "Fetch PR/MR status from GitHub/GitLab"})
 	addItem(paletteItem{id: "pr", label: "Open PR (o)", description: "Open PR in browser"})
 	addItem(paletteItem{id: "lazygit", label: "Open LazyGit (g)", description: "Open LazyGit in selected worktree"})
@@ -3249,6 +3416,10 @@ func (m *Model) showCommandPalette() tea.Cmd {
 			return m.refreshWorktrees()
 		case "fetch":
 			return m.fetchRemotes()
+		case "push":
+			return m.pushToUpstream()
+		case "sync":
+			return m.syncWithUpstream()
 		case "fetch-pr-data":
 			m.ciCache = make(map[string]*ciCacheEntry)
 			m.prDataLoaded = false
@@ -6141,6 +6312,7 @@ func (m *Model) renderFooter(layout layoutDims) string {
 			m.renderKeyHint("D", "Delete"),
 			m.renderKeyHint("p", "PR Info"),
 			m.renderKeyHint("P", "Push"),
+			m.renderKeyHint("S", "Sync"),
 		}
 		// Show "o" key hint only when current worktree has PR info
 		if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
@@ -7306,4 +7478,24 @@ func truncateToHeight(s string, maxLines int) string {
 		lines = lines[:maxLines]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// truncateToHeightFromEnd returns the last maxLines lines from the string.
+// Useful for git errors where the actual error is at the end.
+func truncateToHeightFromEnd(s string, maxLines int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func filterNonEmpty(values []string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }

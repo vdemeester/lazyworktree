@@ -445,6 +445,9 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "P":
 		return m, m.pushToUpstream()
 
+	case "S":
+		return m, m.syncWithUpstream()
+
 	case "R":
 		m.loading = true
 		m.statusContent = "Fetching remotes..."

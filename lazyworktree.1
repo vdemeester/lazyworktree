@@ -166,8 +166,12 @@ Refresh worktree list.
 Fetch all remotes.
 .
 .TP
+.B S
+Synchronise with upstream (git pull, then git push, current branch only, requires a clean worktree, honours merge_method).
+.
+.TP
 .B P
-Push to upstream branch. Requires a clean worktree and prompts to set upstream when missing.
+Push to upstream branch. Current branch only, requires a clean worktree and prompts to set upstream when missing.
 .
 .TP
 .B s
@@ -540,9 +544,9 @@ Options: \fBtofu\fR (default - prompts on first use/change), \fBnever\fR (never 
 .
 .TP
 .B merge_method
-Merge method for "Absorb worktree" action.
+Merge method for "Absorb worktree" and "Synchronise with upstream" actions.
 .br
-Options: \fBrebase\fR (default - rebases onto main then fast-forwards), \fBmerge\fR (creates merge commit).
+Options: \fBrebase\fR (default - rebases onto main then fast-forwards, synchronise uses \fBgit pull --rebase=true\fR), \fBmerge\fR (creates merge commit and uses a standard \fBgit pull\fR).
 .
 .SS Automation
 .TP

@@ -399,7 +399,8 @@ custom_commands:
 | `g` | Open LazyGit |
 | `r` | Refresh list |
 | `R` | Fetch all remotes |
-| `P` | Push to upstream branch (requires a clean worktree, prompts to set upstream when missing) |
+| `S` | Synchronise with upstream (git pull, then git push, current branch only, requires a clean worktree, honours merge_method) |
+| `P` | Push to upstream branch (current branch only, requires a clean worktree, prompts to set upstream when missing) |
 | `f` | Filter focused pane (worktrees, files, commits) |
 | `/` | Search focused pane (incremental) |
 | `alt+n`, `alt+p` | Move selection and fill filter input |
@@ -583,7 +584,7 @@ Notes:
 - `git_pager_interactive` enables interactive diff viewers that require terminal control (default: `false`). Set to `true` for tools like `diffnav`, `ftdv`, or `tig` that provide keyboard navigation. When enabled, only unstaged changes (`git diff`) are shown, as interactive tools cannot handle the combined diff format. Non-interactive formatters like `delta` and `diff-so-fancy` should keep this set to `false`.
 - `pager` designates the pager for `show_output` commands and the diff viewer (default: `$PAGER`, fallback `less --use-color --wordwrap -qcR -P 'Press q to exit..'`, then `more`, then `cat`). When the pager is `less`, lazyworktree configures `LESS=` and `LESSHISTFILE=-` to disregard user defaults.
 - `editor` sets the editor command for the Status pane `e` key (default: config value, then `$EDITOR`, then `nvim`, then `vi`).
-- `merge_method` controls how the "Absorb worktree" action integrates changes into main: `rebase` (default) rebases the feature branch onto main then fast-forwards; `merge` creates a merge commit.
+- `merge_method` controls how the "Absorb worktree" action integrates changes into main and how `S` synchronises with upstream: `rebase` (default) rebases the feature branch onto main then fast-forwards, and uses `git pull --rebase=true`; `merge` creates a merge commit and performs a standard `git pull`.
 - `session_prefix` defines the prefix for tmux and zellij session names (default: `wt-`). The command palette filters active sessions by this prefix. Sessions created by lazyworktree will use this prefix, and the palette will only show sessions matching this prefix. Note: tmux does not permit colons (`:`) in session names, so any colons in the prefix will be automatically converted to hyphens (`-`).
 - `branch_name_script` executes a script to generate branch name suggestions when creating worktrees from changes, issues, or PRs. The script receives the git diff (for changes), issue title+body (for issues), or PR title+body (for PRs) on stdin and should output a title (for PRs/issues) or branch name (for diffs). The output is available via the `{generated}` placeholder in templates. Refer to [AI-powered branch names](#ai-powered-branch-names) below.
 - `issue_branch_name_template` defines the template for issue branch names with placeholders: `{number}`, `{title}` (original title), `{generated}` (AI-generated title, falls back to `{title}`) (default: `"issue-{number}-{title}"`). Examples: `issue-123-fix-bug-in-login`, `issue-123-fix-auth-bug` (using `{generated}`), `fix/123-fix-bug-in-login`.

@@ -31,10 +31,13 @@ func (m *Model) handleWorktreeMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleWorktreesLoaded processes worktrees loaded message.
 func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cmd) {
 	m.worktreesLoaded = true
-	m.loading = false
-	if m.currentScreen == screenLoading {
-		m.currentScreen = screenNone
-		m.loadingScreen = nil
+	// Don't clear loading screen if we're in the middle of push/sync operations
+	if m.loadingOperation != "push" && m.loadingOperation != "sync" {
+		m.loading = false
+		if m.currentScreen == screenLoading {
+			m.currentScreen = screenNone
+			m.loadingScreen = nil
+		}
 	}
 	if msg.err != nil {
 		m.showInfo(fmt.Sprintf("Error loading worktrees: %v", msg.err), nil)

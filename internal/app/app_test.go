@@ -812,7 +812,7 @@ func TestShowCommandPaletteHasAllActions(t *testing.T) {
 		"create", "delete", "rename", "absorb", "prune",
 		"create-from-current", "create-from-branch", "create-from-commit",
 		"create-from-pr", "create-from-issue", "create-freeform",
-		"diff", "refresh", "fetch", "fetch-pr-data", "pr", "lazygit", "run-command",
+		"diff", "refresh", "fetch", "push", "sync", "fetch-pr-data", "pr", "lazygit", "run-command",
 		"stage-file", "commit-staged", "commit-all", "edit-file", "delete-file",
 		"cherry-pick", "commit-view",
 		"zoom-toggle", "filter", "search", "focus-worktrees", "focus-status", "focus-log", "sort-cycle",
@@ -845,6 +845,8 @@ func TestRenderFooterIncludesCustomHelpHints(t *testing.T) {
 		},
 	}
 	m := NewModel(cfg, "")
+	m.windowWidth = 200
+	m.windowHeight = 50
 	layout := m.computeLayout()
 	footer := m.renderFooter(layout)
 

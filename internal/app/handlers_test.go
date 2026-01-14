@@ -15,12 +15,17 @@ import (
 )
 
 const (
-	testFeat        = "feat"
-	testGitCmd      = "git"
-	testWt1         = "wt1"
-	testWt2         = "wt2"
-	testReadme      = "README.md"
-	testFilterQuery = "test"
+	testFeat         = "feat"
+	testGitCmd       = "git"
+	testGitPullArg   = "pull"
+	testGitPushArg   = "push"
+	testRemoteOrigin = "origin"
+	testUpstreamRef  = "origin/feature"
+	testOtherBranch  = "origin/other"
+	testWt1          = "wt1"
+	testWt2          = "wt2"
+	testReadme       = "README.md"
+	testFilterQuery  = "test"
 )
 
 func TestHandlePageDownUpOnStatusPane(t *testing.T) {
@@ -1148,7 +1153,7 @@ func TestPushToUpstreamRunsGitPush(t *testing.T) {
 	}
 
 	m.filteredWts = []*models.WorktreeInfo{
-		{Path: wtPath, Branch: "feature", HasUpstream: true},
+		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
 	}
 	m.selectedIndex = 0
 
@@ -1182,13 +1187,11 @@ func TestPushToUpstreamRunsGitPush(t *testing.T) {
 	if gotName != testGitCmd {
 		t.Fatalf("expected git command, got %q", gotName)
 	}
-	if len(gotArgs) < 1 || gotArgs[0] != "push" {
+	if len(gotArgs) < 1 || gotArgs[0] != testGitPushArg {
 		t.Fatalf("expected git push args, got %v", gotArgs)
 	}
-	for _, arg := range gotArgs {
-		if arg == "-u" {
-			t.Fatalf("did not expect set-upstream flag, got %v", gotArgs)
-		}
+	if len(gotArgs) < 3 || gotArgs[1] != testRemoteOrigin || gotArgs[2] != "HEAD:"+featureBranch {
+		t.Fatalf("expected git push origin HEAD:%s, got %v", featureBranch, gotArgs)
 	}
 }
 
@@ -1204,7 +1207,7 @@ func TestPushToUpstreamPromptsForUpstream(t *testing.T) {
 	}
 
 	m.filteredWts = []*models.WorktreeInfo{
-		{Path: wtPath, Branch: "feature"},
+		{Path: wtPath, Branch: featureBranch},
 	}
 	m.selectedIndex = 0
 
@@ -1218,8 +1221,8 @@ func TestPushToUpstreamPromptsForUpstream(t *testing.T) {
 	if m.inputScreen == nil {
 		t.Fatal("expected inputScreen to be set")
 	}
-	if got := m.inputScreen.input.Value(); got != "origin/feature" {
-		t.Fatalf("expected default upstream %q, got %q", "origin/feature", got)
+	if got := m.inputScreen.input.Value(); got != testUpstreamRef {
+		t.Fatalf("expected default upstream %q, got %q", testUpstreamRef, got)
 	}
 
 	var gotName string
@@ -1230,7 +1233,7 @@ func TestPushToUpstreamPromptsForUpstream(t *testing.T) {
 		return exec.Command("printf", "")
 	}
 
-	pushCmd, closeInput := m.inputSubmit("origin/feature", false)
+	pushCmd, closeInput := m.inputSubmit(testUpstreamRef, false)
 	if !closeInput {
 		t.Fatal("expected input to close after submit")
 	}
@@ -1258,11 +1261,11 @@ func TestPushToUpstreamPromptsForUpstream(t *testing.T) {
 	if len(gotArgs) < 4 {
 		t.Fatalf("expected git push -u args, got %v", gotArgs)
 	}
-	if gotArgs[0] != "push" {
+	if gotArgs[0] != testGitPushArg {
 		t.Fatalf("expected git push args, got %v", gotArgs)
 	}
-	if gotArgs[1] != "-u" || gotArgs[2] != "origin" || gotArgs[3] != "feature" {
-		t.Fatalf("expected git push -u origin feature, got %v", gotArgs)
+	if gotArgs[1] != "-u" || gotArgs[2] != testRemoteOrigin || gotArgs[3] != "HEAD:"+featureBranch {
+		t.Fatalf("expected git push -u origin HEAD:%s, got %v", featureBranch, gotArgs)
 	}
 }
 
@@ -1278,7 +1281,7 @@ func TestPushToUpstreamBlocksWithLocalChanges(t *testing.T) {
 	}
 
 	m.filteredWts = []*models.WorktreeInfo{
-		{Path: wtPath, Branch: "feature", Dirty: true, Modified: 1},
+		{Path: wtPath, Branch: featureBranch, Dirty: true, Modified: 1},
 	}
 	m.selectedIndex = 0
 
@@ -1294,6 +1297,321 @@ func TestPushToUpstreamBlocksWithLocalChanges(t *testing.T) {
 	}
 	if !strings.Contains(m.infoScreen.message, "Cannot push") {
 		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	}
+}
+
+func TestPushToUpstreamRejectsOtherBranch(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	if cmd == nil {
+		t.Fatal("expected input command to be returned")
+	}
+	if m.currentScreen != screenInput {
+		t.Fatalf("expected screenInput, got %v", m.currentScreen)
+	}
+
+	pushCmd, closeInput := m.inputSubmit(testOtherBranch, false)
+	if closeInput {
+		t.Fatal("expected input to remain open on invalid branch")
+	}
+	if pushCmd != nil {
+		t.Fatal("expected no command on invalid branch")
+	}
+	if m.inputScreen == nil || !strings.Contains(m.inputScreen.errorMsg, "Upstream branch must match") {
+		t.Fatalf("expected validation error, got %q", m.inputScreen.errorMsg)
+	}
+}
+
+func TestPushToUpstreamRejectsConfiguredOtherBranch(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testOtherBranch},
+	}
+	m.selectedIndex = 0
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	if cmd != nil {
+		t.Fatal("expected no command when upstream is for another branch")
+	}
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "does not match current branch") {
+		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	}
+}
+
+func TestSyncWithUpstreamRunsPullThenPush(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		MergeMethod: "merge",
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
+	}
+	m.selectedIndex = 0
+
+	type call struct {
+		name string
+		args []string
+	}
+	var calls []call
+	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, call{name: name, args: append([]string{}, args...)})
+		return exec.Command("printf", "")
+	}
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	if m.currentScreen != screenLoading {
+		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	}
+	if !m.loading || m.loadingScreen == nil {
+		t.Fatal("expected loading screen to be set")
+	}
+	msg := cmd()
+	syncMsg, ok := msg.(syncResultMsg)
+	if !ok {
+		t.Fatalf("expected syncResultMsg, got %T", msg)
+	}
+	if syncMsg.err != nil {
+		t.Fatalf("unexpected sync error: %v", syncMsg.err)
+	}
+
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(calls))
+	}
+	if calls[0].name != testGitCmd || len(calls[0].args) < 3 || calls[0].args[0] != testGitPullArg {
+		t.Fatalf("expected git pull with upstream first, got %v %v", calls[0].name, calls[0].args)
+	}
+	if calls[0].args[1] != testRemoteOrigin || calls[0].args[2] != featureBranch {
+		t.Fatalf("expected git pull origin %s, got %v", featureBranch, calls[0].args)
+	}
+	if calls[1].name != testGitCmd || len(calls[1].args) < 1 || calls[1].args[0] != testGitPushArg {
+		t.Fatalf("expected git push second, got %v %v", calls[1].name, calls[1].args)
+	}
+	if len(calls[1].args) < 3 || calls[1].args[1] != testRemoteOrigin || calls[1].args[2] != "HEAD:"+featureBranch {
+		t.Fatalf("expected git push origin HEAD:%s, got %v", featureBranch, calls[1].args)
+	}
+}
+
+func TestSyncWithUpstreamPromptsForUpstream(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		MergeMethod: "merge",
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch},
+	}
+	m.selectedIndex = 0
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	if cmd == nil {
+		t.Fatal("expected input command to be returned")
+	}
+	if m.currentScreen != screenInput {
+		t.Fatalf("expected screenInput, got %v", m.currentScreen)
+	}
+	if m.inputScreen == nil {
+		t.Fatal("expected inputScreen to be set")
+	}
+	if got := m.inputScreen.input.Value(); got != testUpstreamRef {
+		t.Fatalf("expected default upstream %q, got %q", testUpstreamRef, got)
+	}
+
+	type call struct {
+		name string
+		args []string
+	}
+	var calls []call
+	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, call{name: name, args: append([]string{}, args...)})
+		return exec.Command("printf", "")
+	}
+
+	syncCmd, closeInput := m.inputSubmit(testUpstreamRef, false)
+	if !closeInput {
+		t.Fatal("expected input to close after submit")
+	}
+	if syncCmd == nil {
+		t.Fatal("expected sync command to be returned")
+	}
+	if m.currentScreen != screenLoading {
+		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	}
+	if !m.loading || m.loadingScreen == nil {
+		t.Fatal("expected loading screen to be set")
+	}
+	msg := syncCmd()
+	syncMsg, ok := msg.(syncResultMsg)
+	if !ok {
+		t.Fatalf("expected syncResultMsg, got %T", msg)
+	}
+	if syncMsg.err != nil {
+		t.Fatalf("unexpected sync error: %v", syncMsg.err)
+	}
+
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(calls))
+	}
+	if calls[0].name != testGitCmd || len(calls[0].args) < 3 || calls[0].args[0] != testGitPullArg {
+		t.Fatalf("expected git pull with upstream, got %v %v", calls[0].name, calls[0].args)
+	}
+	if calls[0].args[1] != testRemoteOrigin || calls[0].args[2] != featureBranch {
+		t.Fatalf("expected git pull origin feature, got %v", calls[0].args)
+	}
+	if calls[1].name != testGitCmd || len(calls[1].args) < 4 || calls[1].args[0] != testGitPushArg {
+		t.Fatalf("expected git push with upstream, got %v %v", calls[1].name, calls[1].args)
+	}
+	if calls[1].args[1] != "-u" || calls[1].args[2] != testRemoteOrigin || calls[1].args[3] != "HEAD:"+featureBranch {
+		t.Fatalf("expected git push -u origin HEAD:%s, got %v", featureBranch, calls[1].args)
+	}
+}
+
+func TestSyncWithUpstreamBlocksWithLocalChanges(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		MergeMethod: "merge",
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch, Dirty: true, Modified: 1},
+	}
+	m.selectedIndex = 0
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	if cmd != nil {
+		t.Fatal("expected no command when local changes exist")
+	}
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil {
+		t.Fatal("expected infoScreen to be set")
+	}
+	if !strings.Contains(m.infoScreen.message, "Cannot synchronise") {
+		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	}
+}
+
+func TestSyncWithUpstreamRejectsConfiguredOtherBranch(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		MergeMethod: "merge",
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testOtherBranch},
+	}
+	m.selectedIndex = 0
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	if cmd != nil {
+		t.Fatal("expected no command when upstream is for another branch")
+	}
+	if m.currentScreen != screenInfo {
+		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	}
+	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "does not match current branch") {
+		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	}
+}
+
+func TestSyncWithUpstreamUsesRebasePull(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		MergeMethod: mergeMethodRebase,
+	}
+	m := NewModel(cfg, "")
+
+	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
+	if err := os.MkdirAll(wtPath, 0o700); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
+	}
+	m.selectedIndex = 0
+
+	type call struct {
+		name string
+		args []string
+	}
+	var calls []call
+	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, call{name: name, args: append([]string{}, args...)})
+		return exec.Command("printf", "")
+	}
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	_ = cmd()
+
+	if len(calls) == 0 {
+		t.Fatal("expected pull command to be invoked")
+	}
+	if calls[0].name != testGitCmd || len(calls[0].args) < 4 || calls[0].args[0] != testGitPullArg {
+		t.Fatalf("expected git pull with rebase, got %v %v", calls[0].name, calls[0].args)
+	}
+	if calls[0].args[1] != pullRebaseFlag {
+		t.Fatalf("expected pull rebase flag %q, got %v", pullRebaseFlag, calls[0].args)
+	}
+	if calls[0].args[2] != testRemoteOrigin || calls[0].args[3] != featureBranch {
+		t.Fatalf("expected git pull --rebase=true origin %s, got %v", featureBranch, calls[0].args)
 	}
 }
 
