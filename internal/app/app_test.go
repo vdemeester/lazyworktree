@@ -668,6 +668,11 @@ func TestShowCommandPaletteIncludesCustomCommands(t *testing.T) {
 }
 
 func TestShowCommandPaletteIncludesTmuxCommands(t *testing.T) {
+	// Skip this test if tmux is not available
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not available in test environment")
+	}
+
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),
 		CustomCommands: map[string]*config.CustomCommand{
@@ -716,6 +721,11 @@ func TestShowCommandPaletteIncludesTmuxCommands(t *testing.T) {
 }
 
 func TestShowCommandPaletteIncludesZellijCommands(t *testing.T) {
+	// Skip this test if zellij is not available
+	if _, err := exec.LookPath("zellij"); err != nil {
+		t.Skip("zellij not available in test environment")
+	}
+
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),
 		CustomCommands: map[string]*config.CustomCommand{
