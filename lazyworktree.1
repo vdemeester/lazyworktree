@@ -79,8 +79,20 @@ Print version information and exit.
 Generate shell completion script (bash, zsh, fish).
 .
 .TP
-.B \-\-config \fIFILE\fR
+.B \-\-config\-file \fIFILE\fR
 Path to configuration file, overriding the default XDG config directory location.
+.
+.TP
+.B \-\-config \fIKEY=VALUE\fR
+Override config values from the command line (repeatable).
+.br
+Format: \fB--config=lw.key=value\fR
+.br
+Supported keys: \fBtheme\fR, \fBworktree_dir\fR, \fBsort_mode\fR, \fBauto_fetch_prs\fR, \fBauto_refresh\fR, \fBsearch_auto_select\fR, \fBfuzzy_finder_input\fR, \fBshow_icons\fR, \fBpalette_mru\fR, \fBpalette_mru_limit\fR, \fBgit_pager\fR, \fBgit_pager_args\fR, \fBgit_pager_interactive\fR, \fBpager\fR, \fBeditor\fR, \fBmax_untracked_diffs\fR, \fBmax_diff_chars\fR, \fBrefresh_interval_seconds\fR, \fBtrust_mode\fR, \fBmerge_method\fR, \fBbranch_name_script\fR, \fBissue_branch_name_template\fR, \fBpr_branch_name_template\fR, \fBsession_prefix\fR, \fBinit_commands\fR, \fBterminate_commands\fR.
+.br
+Examples: \fB--config=lw.theme=nord\fR, \fB--config=lw.auto_fetch_prs=true\fR
+.br
+This has the highest precedence and overrides all other configuration sources.
 .
 .SH KEY BINDINGS
 .SS General Navigation
@@ -371,7 +383,42 @@ Consecutive hyphens are collapsed to a single hyphen
 Maximum length: 50 characters (manual input), 100 characters (auto-generated from PR/issue titles)
 
 .SH CONFIGURATION
-lazyworktree reads configuration from \fB~/.config/lazyworktree/config.yaml\fR (or \fBconfig.yml\fR).
+lazyworktree reads configuration from multiple sources with the following precedence (highest to lowest):
+.IP 1. 4
+CLI overrides (using \fB--config\fR flag)
+.IP 2. 4
+Git local configuration (repository-specific via \fBgit config --local\fR)
+.IP 3. 4
+Git global configuration (user-wide via \fBgit config --global\fR)
+.IP 4. 4
+YAML configuration file (\fB~/.config/lazyworktree/config.yaml\fR or \fBconfig.yml\fR)
+.IP 5. 4
+Built-in defaults
+.
+.SS Git Configuration
+Settings can be stored in Git's configuration system with the \fBlw.\fR prefix:
+.
+.RS
+.nf
+# Set globally
+git config --global lw.theme nord
+git config --global lw.auto_fetch_prs true
+git config --global lw.worktree_dir ~/.local/share/worktrees
+
+# Set per-repository (overrides global)
+git config --local lw.theme dracula
+git config --local lw.init_commands "link_topsymlinks"
+git config --local lw.init_commands "npm install"  # Multi-values supported
+
+# View all lazyworktree settings
+git config --global --get-regexp "^lw\."
+git config --local --get-regexp "^lw\."
+.fi
+.RE
+.PP
+This allows flexible configuration at different levels. For example, set a default theme globally and override it per-repository, or temporarily change settings via the command line with \fB--config\fR.
+.PP
+lazyworktree reads \fB~/.config/lazyworktree/config.yaml\fR (or \fBconfig.yml\fR) for default settings. An example configuration is provided below (also available in \fBconfig.example.yaml\fR).
 .
 .SS General Settings
 .TP

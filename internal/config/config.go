@@ -508,10 +508,6 @@ func (cfg *AppConfig) ApplyCLIOverrides(overrides []string) error {
 	if err != nil {
 		return err
 	}
-
-	// Apply overrides directly to cfg by re-creating from merged data
-	// Create a map representation of current config, merge overrides, re-parse
-	// For now, just parse the overrides and apply each field directly
 	overrideCfg := parseConfig(overrideData)
 
 	// Apply each non-zero/non-empty field from overrideCfg to cfg

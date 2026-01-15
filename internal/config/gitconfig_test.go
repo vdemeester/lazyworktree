@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -39,10 +40,12 @@ lw.worktree_dir /path`,
 		{
 			name: "values with spaces",
 			output: `lw.worktree_dir /path/to/my worktrees
-lw.git_pager_args --syntax-theme Dracula`,
+lw.git_pager_args --syntax-theme Dracula
+lw.editor code --wait`,
 			expected: map[string][]string{
 				"worktree_dir":   {"/path/to/my worktrees"},
 				"git_pager_args": {"--syntax-theme Dracula"},
+				"editor":         {"code --wait"},
 			},
 		},
 		{
@@ -190,6 +193,13 @@ func TestParseCLIConfigOverrides(t *testing.T) {
 			},
 		},
 		{
+			name:      "boolean override as string",
+			overrides: []string{"lw.auto_fetch_prs=yes"},
+			expected: map[string]any{
+				"auto_fetch_prs": "yes",
+			},
+		},
+		{
 			name:      "value with equals sign",
 			overrides: []string{"lw.branch_name_script=awk -F= '{print $2}'"},
 			expected: map[string]any{
@@ -215,7 +225,7 @@ func TestParseCLIConfigOverrides(t *testing.T) {
 			name:      "missing equals sign",
 			overrides: []string{"lw.theme"},
 			wantErr:   true,
-			errMsg:    "invalid config override format",
+			errMsg:    "invalid config override",
 		},
 		{
 			name:      "missing lw prefix",
@@ -250,6 +260,20 @@ func TestParseCLIConfigOverrides(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestLoadGitConfigErrorHandling(t *testing.T) {
+	// Setup mock
+	defer func() { gitConfigMock = nil }()
+
+	gitConfigMock = func(args []string, repoPath string) (string, error) {
+		return "", fmt.Errorf("git command failed")
+	}
+
+	result, err := loadGitConfig(true, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git command failed")
+	assert.Nil(t, result)
 }
 
 func TestLoadGitConfig(t *testing.T) {
@@ -336,7 +360,7 @@ func TestDetermineRepoPath(t *testing.T) {
 		{
 			name:        "empty worktree dir, current dir is git repo",
 			worktreeDir: "",
-			expectEmpty: false, // Assumes test runs in git repo
+			expectEmpty: false, // Test runs in git repo
 		},
 		{
 			name:        "valid worktree dir that is git repo",

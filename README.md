@@ -67,10 +67,13 @@ Or build and run directly:
 go run ./cmd/lazyworktree/main.go
 ```
 
-To override the default worktree root, use the following:
+To override the default worktree root or apply configuration overrides, use the following:
 
 ```bash
 lazyworktree --worktree-dir ~/worktrees
+
+# Override config values via command line
+lazyworktree --config lw.theme=nord --config lw.auto_fetch_prs=true
 ```
 
 ### Pre-built Binaries
@@ -563,9 +566,45 @@ custom_create_menus:
     command: "pbpaste"
 ```
 
+### Configuration Precedence
+
+lazyworktree reads configuration from multiple sources with the following precedence (highest to lowest):
+
+1. **CLI overrides** (using `--config` flag): Highest priority
+2. **Git local configuration** (repository-specific via `git config --local`)
+3. **Git global configuration** (user-wide via `git config --global`)
+4. **YAML configuration file** (`~/.config/lazyworktree/config.yaml`)
+5. **Built-in defaults**: Lowest priority
+
+This allows flexible configuration at different levels. For example, you can set a default theme globally in your Git config, override it for a specific repository, and temporarily change it via the command line.
+
+### Git Configuration
+
+Settings can be stored in Git's configuration system with the `lw.` prefix. Examples:
+
+```bash
+# Set globally
+git config --global lw.theme nord
+git config --global lw.auto_fetch_prs true
+git config --global lw.worktree_dir ~/.local/share/worktrees
+
+# Set per-repository
+git config --local lw.theme dracula
+git config --local lw.init_commands "link_topsymlinks"
+git config --local lw.init_commands "npm install"  # Multi-values supported
+```
+
+To view configured values:
+
+```bash
+git config --global --get-regexp "^lw\."
+git config --local --get-regexp "^lw\."
+```
+
 Notes:
 
-- `--config` specifies a custom configuration file path, allowing you to override the default XDG config directory location (e.g., `lazyworktree --config ~/my-configs/lazyworktree.yaml`).
+- `--config-file` specifies a custom configuration file path, allowing you to override the default XDG config directory location (e.g., `lazyworktree --config-file ~/my-configs/lazyworktree.yaml`).
+- `--config` (repeatable) allows CLI config overrides with highest precedence. Supported keys: `theme`, `worktree_dir`, `sort_mode`, `auto_fetch_prs`, `auto_refresh`, `search_auto_select`, `fuzzy_finder_input`, `show_icons`, `palette_mru`, `palette_mru_limit`, `git_pager`, `git_pager_args`, `git_pager_interactive`, `pager`, `editor`, `max_untracked_diffs`, `max_diff_chars`, `refresh_interval_seconds`, `trust_mode`, `merge_method`, `branch_name_script`, `issue_branch_name_template`, `pr_branch_name_template`, `session_prefix`, `init_commands`, and `terminate_commands`. Example: `lazyworktree --config=lw.theme=nord --config=lw.auto_fetch_prs=true`.
 - `--worktree-dir` overrides the `worktree_dir` setting.
 - `theme` selects the colour theme. Available themes: `dracula`, `dracula-light`, `narna`, `clean-light`, `catppuccin-latte`, `rose-pine-dawn`, `one-light`, `everforest-light`, `everforest-dark`, `solarized-dark`, `solarized-light`, `gruvbox-dark`, `gruvbox-light`, `nord`, `monokai`, `catppuccin-mocha`, `modern`, `tokyo-night`, `one-dark`, `rose-pine`, `ayu-mirage`. Default: auto-detected (`dracula` for dark, `dracula-light` for light).
 - `init_commands` and `terminate_commands` execute prior to any repository-specific `.wt` commands (if present).

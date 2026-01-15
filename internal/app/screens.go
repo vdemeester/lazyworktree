@@ -1194,6 +1194,16 @@ Search Mode:
 **🔧 Shell Completion**
 Generate completions: lazyworktree --completion <bash|zsh|fish>
 
+**⚙️ Configuration & Overrides**
+Configuration is read from multiple sources (in order of precedence):
+1. CLI overrides (highest): lazyworktree --config=lw.key=value
+2. Git local config: git config --local lw.key value
+3. Git global config: git config --global lw.key value
+4. YAML file: ~/.config/lazyworktree/config.yaml
+5. Built-in defaults (lowest)
+
+Example: lazyworktree --config=lw.theme=nord --config=lw.auto_fetch_prs=true
+
 💡 Tip: PR data is not fetched by default for speed.
        Press 'p' to fetch PR information on demand.`
 

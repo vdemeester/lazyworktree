@@ -1096,6 +1096,13 @@ terminate_commands:
 }
 
 func TestLoadConfig(t *testing.T) {
+	// Setup mock to prevent loading real git config from the test repository
+	defer func() { gitConfigMock = nil }()
+	gitConfigMock = func(args []string, repoPath string) (string, error) {
+		// Return empty config for all git config calls in these tests
+		return "", nil
+	}
+
 	t.Run("no config file returns defaults", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", tmpDir)
@@ -1792,6 +1799,12 @@ func TestIsPathWithin(t *testing.T) {
 }
 
 func TestLoadConfigWithCustomPath(t *testing.T) {
+	// Setup mock to prevent loading real git config from the test repository
+	defer func() { gitConfigMock = nil }()
+	gitConfigMock = func(args []string, repoPath string) (string, error) {
+		return "", nil
+	}
+
 	tempDir := t.TempDir()
 
 	// Create a custom config file with valid YAML
@@ -1809,6 +1822,12 @@ func TestLoadConfigWithCustomPath(t *testing.T) {
 }
 
 func TestLoadConfigWithCustomPathFromAnywhere(t *testing.T) {
+	// Setup mock to prevent loading real git config from the test repository
+	defer func() { gitConfigMock = nil }()
+	gitConfigMock = func(args []string, repoPath string) (string, error) {
+		return "", nil
+	}
+
 	tempDir := t.TempDir()
 
 	// Create a custom config file outside standard config directory
@@ -1988,7 +2007,7 @@ func TestApplyCLIOverridesInvalidFormat(t *testing.T) {
 	overrides := []string{"lw.theme"}
 	err := cfg.ApplyCLIOverrides(overrides)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid config override format")
+	assert.Contains(t, err.Error(), "invalid config override")
 
 	// Invalid format (missing lw prefix)
 	overrides = []string{"theme=nord"}

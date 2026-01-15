@@ -130,12 +130,12 @@ func isInGitRepo(path string) bool {
 
 // determineRepoPath returns repo path for local git config lookup.
 func determineRepoPath(worktreeDir string) string {
-	// Try worktreeDir if specified
+	// Try worktreeDir if specified.
 	if worktreeDir != "" && isInGitRepo(worktreeDir) {
 		return worktreeDir
 	}
 
-	// Fall back to current directory
+	// Fall back to current directory.
 	if wd, err := os.Getwd(); err == nil && isInGitRepo(wd) {
 		return wd
 	}
@@ -153,7 +153,7 @@ func parseCLIConfigOverrides(overrides []string) (map[string]any, error) {
 		// Parse "lw.key=value" format
 		parts := strings.SplitN(override, "=", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid config override format: %q (expected lw.key=value)", override)
+			return nil, fmt.Errorf("invalid config override: %q, expected format: lw.key=value (note: use = not space)", override)
 		}
 
 		fullKey := parts[0]
@@ -180,6 +180,7 @@ func parseCLIConfigOverrides(overrides []string) (map[string]any, error) {
 			} else {
 				result[key] = append(result[key].([]any), value)
 			}
+
 		} else {
 			result[key] = value
 		}
