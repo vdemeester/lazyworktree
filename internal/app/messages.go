@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	log "github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
@@ -202,10 +203,8 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 		m.loadingScreen = nil
 	}
 	if msg.err == nil {
-		if m.debugLogger != nil {
-			m.debugLogger.Printf("handlePRDataLoaded: prMap has %d entries, worktreePRs has %d entries, worktreeErrors has %d entries",
-				len(msg.prMap), len(msg.worktreePRs), len(msg.worktreeErrors))
-		}
+		log.Printf("handlePRDataLoaded: prMap has %d entries, worktreePRs has %d entries, worktreeErrors has %d entries",
+			len(msg.prMap), len(msg.worktreePRs), len(msg.worktreeErrors))
 
 		for _, wt := range m.worktrees {
 			// Clear previous status
@@ -213,29 +212,25 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 			wt.PRFetchStatus = models.PRFetchStatusNoPR
 
 			// DEBUG: Log assignment attempts
-			if m.debugLogger != nil {
-				m.debugLogger.Printf("Processing worktree: Branch=%q Path=%q", wt.Branch, wt.Path)
-			}
+			log.Printf("Processing worktree: Branch=%q Path=%q", wt.Branch, wt.Path)
 
 			// First try matching by local branch name from the prMap
 			if msg.prMap != nil {
 				if pr, ok := msg.prMap[wt.Branch]; ok {
 					wt.PR = pr
 					wt.PRFetchStatus = models.PRFetchStatusLoaded
-					if m.debugLogger != nil {
-						m.debugLogger.Printf("  Assigned from prMap: PR#%d", pr.Number)
-					}
+					log.Printf("  Assigned from prMap: PR#%d", pr.Number)
 					continue
-				} else if m.debugLogger != nil {
+				} else {
 					// DEBUG: Show why match failed
-					m.debugLogger.Printf("  Branch %q not found in prMap. Available keys:", wt.Branch)
+					log.Printf("  Branch %q not found in prMap. Available keys:", wt.Branch)
 					for key := range msg.prMap {
-						m.debugLogger.Printf("    %q (match=%v, len=%d vs %d)",
+						log.Printf("    %q (match=%v, len=%d vs %d)",
 							key, key == wt.Branch, len(key), len(wt.Branch))
 
 						// Check for invisible characters
 						if key != wt.Branch && strings.TrimSpace(key) == strings.TrimSpace(wt.Branch) {
-							m.debugLogger.Printf("    ^ WHITESPACE DIFFERENCE DETECTED")
+							log.Printf("    ^ WHITESPACE DIFFERENCE DETECTED")
 						}
 					}
 				}
@@ -246,9 +241,7 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 				if pr, ok := msg.worktreePRs[wt.Path]; ok {
 					wt.PR = pr
 					wt.PRFetchStatus = models.PRFetchStatusLoaded
-					if m.debugLogger != nil {
-						m.debugLogger.Printf("  Assigned from worktreePRs: PR#%d", pr.Number)
-					}
+					log.Printf("  Assigned from worktreePRs: PR#%d", pr.Number)
 					continue
 				}
 			}
@@ -258,21 +251,17 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 				if errMsg, hasErr := msg.worktreeErrors[wt.Path]; hasErr {
 					wt.PRFetchError = errMsg
 					wt.PRFetchStatus = models.PRFetchStatusError
-					if m.debugLogger != nil {
-						m.debugLogger.Printf("  Error: %s", errMsg)
-					}
-				} else if m.debugLogger != nil {
-					m.debugLogger.Printf("  No PR found in either map, no error")
+					log.Printf("  Error: %s", errMsg)
+				} else {
+					log.Printf("  No PR found in either map, no error")
 				}
 			}
 
 			// DEBUG: Final status
-			if m.debugLogger != nil {
-				if wt.PR != nil {
-					m.debugLogger.Printf("  Final: wt.PR = #%d, status = %s", wt.PR.Number, wt.PRFetchStatus)
-				} else {
-					m.debugLogger.Printf("  Final: wt.PR = nil, status = %s, error = %q", wt.PRFetchStatus, wt.PRFetchError)
-				}
+			if wt.PR != nil {
+				log.Printf("  Final: wt.PR = #%d, status = %s", wt.PR.Number, wt.PRFetchStatus)
+			} else {
+				log.Printf("  Final: wt.PR = nil, status = %s, error = %q", wt.PRFetchStatus, wt.PRFetchError)
 			}
 		}
 		m.prDataLoaded = true

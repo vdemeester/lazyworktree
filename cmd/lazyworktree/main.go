@@ -14,6 +14,7 @@ import (
 	"github.com/chmouel/lazyworktree/internal/app"
 	"github.com/chmouel/lazyworktree/internal/completion"
 	"github.com/chmouel/lazyworktree/internal/config"
+	"github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/theme"
 )
 
@@ -93,16 +94,49 @@ func main() {
 
 	initialFilter := strings.Join(flag.Args(), " ")
 
+	// Set up debug logging before loading config, so debug output is captured
+	if debugLog != "" {
+		expanded, err := expandPath(debugLog)
+		if err == nil {
+			if err := log.SetFile(expanded); err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening debug log file %q: %v\n", expanded, err)
+			}
+		} else {
+			if err := log.SetFile(debugLog); err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening debug log file %q: %v\n", debugLog, err)
+			}
+		}
+	}
+
 	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		cfg = config.DefaultConfig()
 	}
 
+	// If debug log wasn't set via flag, check if it's in the config
+	// If it is, enable logging. If not, disable logging and discard buffer.
+	if debugLog == "" {
+		if cfg.DebugLog != "" {
+			expanded, err := expandPath(cfg.DebugLog)
+			path := cfg.DebugLog
+			if err == nil {
+				path = expanded
+			}
+			if err := log.SetFile(path); err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening debug log file from config %q: %v\n", path, err)
+			}
+		} else {
+			// No debug log configured, discard any buffered logs
+			_ = log.SetFile("")
+		}
+	}
+
 	if themeName != "" {
 		normalized := config.NormalizeThemeName(themeName)
 		if normalized == "" {
 			fmt.Fprintf(os.Stderr, "Unknown theme %q\n", themeName)
+			_ = log.Close()
 			os.Exit(1)
 		}
 		cfg.Theme = normalized
@@ -119,6 +153,7 @@ func main() {
 		expanded, err := expandPath(worktreeDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error expanding worktree-dir: %v\n", err)
+			_ = log.Close()
 			os.Exit(1)
 		}
 		cfg.WorktreeDir = expanded
@@ -145,6 +180,7 @@ func main() {
 	if len(configOverrideList) > 0 {
 		if err := cfg.ApplyCLIOverrides(configOverrideList); err != nil {
 			fmt.Fprintf(os.Stderr, "Error applying config overrides: %v\n", err)
+			_ = log.Close()
 			os.Exit(1)
 		}
 	}
@@ -156,6 +192,7 @@ func main() {
 	model.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running app: %v\n", err)
+		_ = log.Close()
 		os.Exit(1)
 	}
 
@@ -164,11 +201,13 @@ func main() {
 		expanded, err := expandPath(outputSelection)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error expanding output-selection: %v\n", err)
+			_ = log.Close()
 			os.Exit(1)
 		}
 		const defaultDirPerms = 0o750
 		if err := os.MkdirAll(filepath.Dir(expanded), defaultDirPerms); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating output-selection dir: %v\n", err)
+			_ = log.Close()
 			os.Exit(1)
 		}
 		data := ""
@@ -178,12 +217,16 @@ func main() {
 		const defaultFilePerms = 0o600
 		if err := os.WriteFile(expanded, []byte(data), defaultFilePerms); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing output-selection: %v\n", err)
+			_ = log.Close()
 			os.Exit(1)
 		}
 		return
 	}
 	if selectedPath != "" {
 		fmt.Println(selectedPath)
+	}
+	if err := log.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error closing debug log: %v\n", err)
 	}
 }
 

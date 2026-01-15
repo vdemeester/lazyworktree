@@ -180,7 +180,6 @@ func parseCLIConfigOverrides(overrides []string) (map[string]any, error) {
 			} else {
 				result[key] = append(result[key].([]any), value)
 			}
-
 		} else {
 			result[key] = value
 		}

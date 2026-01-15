@@ -1900,6 +1900,7 @@ func TestMaxNameLengthConfig(t *testing.T) {
 		})
 	}
 }
+
 // Integration tests for git config precedence
 
 func TestLoadConfigWithGitGlobalConfig(t *testing.T) {

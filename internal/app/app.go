@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -25,6 +24,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/git"
+	log "github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/models"
 	"github.com/chmouel/lazyworktree/internal/security"
 	"github.com/chmouel/lazyworktree/internal/theme"
@@ -432,10 +432,6 @@ type Model struct {
 	commandRunner func(string, ...string) *exec.Cmd
 	execProcess   func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 	startCommand  func(*exec.Cmd) error
-
-	// Debug logging
-	debugLogger  *log.Logger
-	debugLogFile *os.File
 }
 
 // NewModel creates a new application model with the given configuration.
@@ -446,47 +442,25 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 	// Load theme
 	thm := theme.GetTheme(cfg.Theme)
 
-	var debugLogFile *os.File
-	var debugLogger *log.Logger
-	var debugMu sync.Mutex
 	debugNotified := map[string]bool{}
+	var debugMu sync.Mutex // Protects debugNotified map
 
-	if strings.TrimSpace(cfg.DebugLog) != "" {
-		logDir := filepath.Dir(cfg.DebugLog)
-		if err := os.MkdirAll(logDir, defaultDirPerms); err == nil {
-			file, err := os.OpenFile(cfg.DebugLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultFilePerms)
-			if err == nil {
-				debugLogFile = file
-				debugLogger = log.New(file, "", log.LstdFlags)
-				debugLogger.SetFlags(log.LstdFlags | log.Lmicroseconds)
-				debugLogger.Printf("debug logging enabled")
-			}
-		}
-	}
+	log.Printf("debug logging enabled")
 
 	notify := func(message string, severity string) {
-		if debugLogger == nil {
-			return
-		}
-		debugMu.Lock()
-		defer debugMu.Unlock()
-		debugLogger.Printf("[%s] %s", severity, message)
+		log.Printf("[%s] %s", severity, message)
 	}
 	notifyOnce := func(key string, message string, severity string) {
-		if debugLogger == nil {
-			return
-		}
 		debugMu.Lock()
 		defer debugMu.Unlock()
 		if debugNotified[key] {
 			return
 		}
 		debugNotified[key] = true
-		debugLogger.Printf("[%s] %s", severity, message)
+		log.Printf("[%s] %s", severity, message)
 	}
 
 	gitService := git.NewService(notify, notifyOnce)
-	gitService.SetDebugLogger(debugLogger)
 	gitService.SetGitPager(cfg.GitPager)
 	gitService.SetGitPagerArgs(cfg.GitPagerArgs)
 	trustManager := security.NewTrustManager()
@@ -591,8 +565,6 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 		startCommand: func(cmd *exec.Cmd) error {
 			return cmd.Start()
 		},
-		debugLogger:  debugLogger,
-		debugLogFile: debugLogFile,
 	}
 
 	if initialFilter != "" {
@@ -1515,11 +1487,9 @@ func (m *Model) fetchPRData() tea.Cmd {
 		}
 
 		// DEBUG: Log what we got from FetchPRMap
-		if m.debugLogger != nil {
-			m.debugLogger.Printf("FetchPRMap returned %d PRs", len(prMap))
-			for branch, pr := range prMap {
-				m.debugLogger.Printf("  prMap[%q] = PR#%d", branch, pr.Number)
-			}
+		log.Printf("FetchPRMap returned %d PRs", len(prMap))
+		for branch, pr := range prMap {
+			log.Printf("  prMap[%q] = PR#%d", branch, pr.Number)
 		}
 
 		// Also fetch PRs per worktree for cases where local branch differs from remote
@@ -1528,13 +1498,11 @@ func (m *Model) fetchPRData() tea.Cmd {
 		worktreeErrors := make(map[string]string)
 		for _, wt := range m.worktrees {
 			// DEBUG: Log branch name and match attempt
-			if m.debugLogger != nil {
-				m.debugLogger.Printf("Checking worktree: Branch=%q Path=%q", wt.Branch, wt.Path)
-				if pr, ok := prMap[wt.Branch]; ok {
-					m.debugLogger.Printf("  Found in prMap: PR#%d", pr.Number)
-				} else {
-					m.debugLogger.Printf("  Not in prMap, will fetch per-worktree")
-				}
+			log.Printf("Checking worktree: Branch=%q Path=%q", wt.Branch, wt.Path)
+			if pr, ok := prMap[wt.Branch]; ok {
+				log.Printf("  Found in prMap: PR#%d", pr.Number)
+			} else {
+				log.Printf("  Not in prMap, will fetch per-worktree")
 			}
 
 			// Skip if already matched by headRefName
@@ -1545,18 +1513,14 @@ func (m *Model) fetchPRData() tea.Cmd {
 			pr, fetchErr := m.git.FetchPRForWorktreeWithError(m.ctx, wt.Path)
 			if pr != nil {
 				worktreePRs[wt.Path] = pr
-				if m.debugLogger != nil {
-					m.debugLogger.Printf("  FetchPRForWorktree returned PR#%d", pr.Number)
-				}
+				log.Printf("  FetchPRForWorktree returned PR#%d", pr.Number)
 			}
 			if fetchErr != nil {
 				worktreeErrors[wt.Path] = fetchErr.Error()
-				if m.debugLogger != nil {
-					m.debugLogger.Printf("  FetchPRForWorktree error: %v", fetchErr)
-				}
+				log.Printf("  FetchPRForWorktree error: %v", fetchErr)
 			}
-			if pr == nil && fetchErr == nil && m.debugLogger != nil {
-				m.debugLogger.Printf("  FetchPRForWorktree returned nil (no PR)")
+			if pr == nil && fetchErr == nil {
+				log.Printf("  FetchPRForWorktree returned nil (no PR)")
 			}
 		}
 
@@ -5510,10 +5474,7 @@ func (m *Model) showInfo(message string, action tea.Cmd) {
 }
 
 func (m *Model) debugf(format string, args ...any) {
-	if m.debugLogger == nil {
-		return
-	}
-	m.debugLogger.Printf(format, args...)
+	log.Printf(format, args...)
 }
 
 // isEscKey checks if the key string represents an escape key.
@@ -5553,9 +5514,6 @@ func (m *Model) persistLastSelected(path string) {
 func (m *Model) Close() {
 	m.persistCurrentSelection()
 	m.debugf("close")
-	if m.debugLogFile != nil {
-		_ = m.debugLogFile.Close()
-	}
 	if m.detailUpdateCancel != nil {
 		m.detailUpdateCancel()
 	}

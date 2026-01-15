@@ -3495,7 +3495,6 @@ func TestFilterPaletteItemsSkipsMRU(t *testing.T) {
 	}
 }
 
-
 func TestWorkspaceNameTruncation(t *testing.T) {
 	tests := []struct {
 		name          string

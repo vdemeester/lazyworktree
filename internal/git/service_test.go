@@ -2,8 +2,6 @@ package git
 
 import (
 	"context"
-	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,17 +80,6 @@ func TestSetGitPager(t *testing.T) {
 		service.SetGitPager("  delta  ")
 		assert.Equal(t, "delta", service.gitPager)
 	})
-}
-
-func TestSetDebugLogger(t *testing.T) {
-	notify := func(_ string, _ string) {}
-	notifyOnce := func(_ string, _ string, _ string) {}
-
-	service := NewService(notify, notifyOnce)
-	logger := log.New(io.Discard, "", 0)
-	service.SetDebugLogger(logger)
-
-	assert.Equal(t, logger, service.debugLogger)
 }
 
 func TestSetGitPagerArgs(t *testing.T) {

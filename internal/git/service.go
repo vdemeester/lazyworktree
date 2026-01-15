@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/chmouel/lazyworktree/internal/commands"
 	"github.com/chmouel/lazyworktree/internal/config"
+	log "github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
@@ -56,7 +56,6 @@ type Service struct {
 	useGitPager  bool
 	gitPagerArgs []string
 	gitPager     string
-	debugLogger  *log.Logger
 }
 
 // NewService constructs a Service and sets up concurrency limits.
@@ -90,11 +89,6 @@ func NewService(notify NotifyFn, notifyOnce NotifyOnceFn) *Service {
 	return s
 }
 
-// SetDebugLogger attaches a logger for debug output.
-func (s *Service) SetDebugLogger(logger *log.Logger) {
-	s.debugLogger = logger
-}
-
 // SetGitPagerArgs sets additional arguments used when formatting diffs.
 func (s *Service) SetGitPagerArgs(args []string) {
 	if len(args) == 0 {
@@ -119,10 +113,7 @@ func (s *Service) isGitPagerAvailable() bool {
 }
 
 func (s *Service) debugf(format string, args ...any) {
-	if s.debugLogger == nil {
-		return
-	}
-	s.debugLogger.Printf(format, args...)
+	log.Printf(format, args...)
 }
 
 func prepareAllowedCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
