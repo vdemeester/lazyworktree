@@ -97,20 +97,13 @@ func (m *Model) renderFooter(layout layoutDims) string {
 		)
 
 	default: // Worktree table (pane 0)
-		sortName := "Path"
-		switch m.sortMode {
-		case sortModeLastActive:
-			sortName = "Active"
-		case sortModeLastSwitched:
-			sortName = "Switched"
-		}
 		hints = []string{
 			m.renderKeyHint("1-3", "Pane"),
+			m.renderKeyHint("c", "Create"),
 			m.renderKeyHint("f", "Filter"),
-			m.renderKeyHint("s", sortName),
 			m.renderKeyHint("d", "Diff"),
 			m.renderKeyHint("D", "Delete"),
-			m.renderKeyHint("p", "PR Info"),
+			m.renderKeyHint("p", "PR"),
 			m.renderKeyHint("S", "Sync"),
 		}
 		// Show "o" key hint only when current worktree has PR info
