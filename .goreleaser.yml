@@ -3,9 +3,9 @@ before:
   hooks:
     - sh -c "mkdir -p completions"
     - sh -c "CGO_ENABLED=0 go build -o completions/lazyworktree ./cmd/lazyworktree"
-    - sh -c "completions/lazyworktree completion bash --code > completions/lazyworktree.bash"
-    - sh -c "completions/lazyworktree completion zsh --code > completions/lazyworktree.zsh"
-    - sh -c "completions/lazyworktree completion fish --code > completions/lazyworktree.fish"
+    - sh -c "completions/lazyworktree completion --code bash > completions/lazyworktree.bash"
+    - sh -c "completions/lazyworktree completion --code zsh > completions/lazyworktree.zsh"
+    - sh -c "completions/lazyworktree completion --code fish > completions/lazyworktree.fish"
     - sh -c "rm -f completions/lazyworktree"
 builds:
   - id: lazyworktree

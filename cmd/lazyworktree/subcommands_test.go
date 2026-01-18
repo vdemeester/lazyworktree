@@ -1,10 +1,9 @@
 package main
 
 import (
-	"os"
 	"testing"
 
-	"github.com/alecthomas/kong"
+	urfavecli "github.com/urfave/cli/v2"
 )
 
 func TestHandleWtCreateValidation(t *testing.T) {
@@ -15,105 +14,97 @@ func TestHandleWtCreateValidation(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name:        "missing both flags",
-			args:        []string{},
-			expectError: true,
-			errorMsg:    "must specify either --from-branch or --from-pr",
-		},
-		{
 			name:        "both flags specified",
-			args:        []string{"--from-branch", "main", "--from-pr", "123"},
+			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--from-pr", "123"},
 			expectError: true,
 			errorMsg:    "mutually exclusive",
 		},
 		{
-			name:        "with-change with from-pr",
-			args:        []string{"--from-pr", "123", "--with-change"},
-			expectError: true,
-			errorMsg:    "--with-change can only be used with --from-branch",
-		},
-		{
 			name:        "valid from-branch",
-			args:        []string{"--from-branch", "main"},
+			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-pr",
-			args:        []string{"--from-pr", "123"},
+			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-branch with with-change",
-			args:        []string{"--from-branch", "main", "--with-change"},
+			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--with-change"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-branch with branch name",
-			args:        []string{"--from-branch", "main", "feature-1"},
+			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--name", "feature-1"},
 			expectError: false,
 		},
 		{
 			name:        "branch name with from-pr",
-			args:        []string{"--from-pr", "123", "my-branch"},
+			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123", "--name", "my-branch"},
 			expectError: true,
-			errorMsg:    "branch name argument cannot be used with --from-pr",
+			errorMsg:    "--name cannot be used with --from-pr",
 		},
 		{
 			name:        "from-branch with branch name and with-change",
-			args:        []string{"--from-branch", "main", "feature-1", "--with-change"},
+			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--name", "feature-1", "--with-change"},
 			expectError: false,
+		},
+		{
+			name:        "no arguments (would use current branch in real scenario)",
+			args:        []string{"lazyworktree", "wt-create"},
+			expectError: false, // Validation won't error, runtime will check current branch
+		},
+		{
+			name:        "branch name only (current branch + explicit name)",
+			args:        []string{"lazyworktree", "wt-create", "--name", "my-feature"},
+			expectError: false,
+		},
+		{
+			name:        "with-change only (current branch + changes)",
+			args:        []string{"lazyworktree", "wt-create", "--with-change"},
+			expectError: false,
+		},
+		{
+			name:        "branch name and with-change (current branch + explicit name + changes)",
+			args:        []string{"lazyworktree", "wt-create", "--name", "my-feature", "--with-change"},
+			expectError: false,
+		},
+		{
+			name:        "from-pr with with-change (invalid)",
+			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123", "--with-change"},
+			expectError: true,
+			errorMsg:    "--with-change cannot be used with --from-pr",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a CLI struct to test validation logic
-			cmd := &WtCreateCmd{}
-
-			// Capture stderr
-			oldStderr := os.Stderr
-			_, w, _ := os.Pipe()
-			os.Stderr = w
-
-			parser, err := kong.New(cmd)
-			if err != nil {
-				_ = w.Close()
-				os.Stderr = oldStderr
-				t.Fatalf("failed to create parser: %v", err)
+			// Create a test app with just the wt-create command
+			// We override the Action to avoid actually executing the command
+			cmd := wtCreateCommand()
+			originalAction := cmd.Action
+			cmd.Action = func(c *urfavecli.Context) error {
+				// Just return nil - we're only testing validation
+				return nil
 			}
 
-			_, err = parser.Parse(tt.args)
-			if err != nil {
-				_ = w.Close()
-				os.Stderr = oldStderr
-				// Kong might handle xor validation, so we check our custom validation
-				if !tt.expectError {
-					t.Logf("Kong parse error (may be expected): %v", err)
-				}
+			app := &urfavecli.App{
+				Name:     "lazyworktree",
+				Commands: []*urfavecli.Command{cmd},
 			}
 
-			// Test validation logic (same as in handleWtCreate)
-			hasError := false
-			switch {
-			case cmd.FromBranch != "" && cmd.FromPR > 0:
-				hasError = true
-			case cmd.FromBranch == "" && cmd.FromPR == 0:
-				hasError = true
-			case cmd.WithChange && cmd.FromPR > 0:
-				hasError = true
-			case cmd.BranchName != "" && cmd.FromPR > 0:
-				hasError = true
-			}
+			err := app.Run(tt.args)
 
-			_ = w.Close()
-			os.Stderr = oldStderr
-
-			if tt.expectError && !hasError {
+			if tt.expectError && err == nil {
 				t.Error("expected validation error but got none")
 			}
-			if !tt.expectError && hasError {
-				t.Error("unexpected validation error")
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
+
+			// Restore original action
+			cmd.Action = originalAction
 		})
 	}
 }
@@ -128,32 +119,32 @@ func TestHandleWtDeleteFlags(t *testing.T) {
 	}{
 		{
 			name:     "default flags",
-			args:     []string{},
+			args:     []string{"lazyworktree", "wt-delete"},
 			noBranch: false,
 			silent:   false,
 		},
 		{
 			name:     "no-branch flag",
-			args:     []string{"--no-branch"},
+			args:     []string{"lazyworktree", "wt-delete", "--no-branch"},
 			noBranch: true,
 			silent:   false,
 		},
 		{
 			name:     "silent flag",
-			args:     []string{"--silent"},
+			args:     []string{"lazyworktree", "wt-delete", "--silent"},
 			noBranch: false,
 			silent:   true,
 		},
 		{
 			name:     "worktree path",
-			args:     []string{"/path/to/worktree"},
+			args:     []string{"lazyworktree", "wt-delete", "/path/to/worktree"},
 			noBranch: false,
 			silent:   false,
 			worktree: "/path/to/worktree",
 		},
 		{
 			name:     "all flags and path",
-			args:     []string{"--no-branch", "--silent", "/path/to/worktree"},
+			args:     []string{"lazyworktree", "wt-delete", "--no-branch", "--silent", "/path/to/worktree"},
 			noBranch: true,
 			silent:   true,
 			worktree: "/path/to/worktree",
@@ -162,26 +153,38 @@ func TestHandleWtDeleteFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := &WtDeleteCmd{}
+			// Create a test app with just the wt-delete command
+			// We override the Action to capture and check flag values
+			cmd := wtDeleteCommand()
+			var capturedNoBranch, capturedSilent bool
+			var capturedWorktree string
 
-			parser, err := kong.New(cmd)
-			if err != nil {
-				t.Fatalf("failed to create parser: %v", err)
+			cmd.Action = func(c *urfavecli.Context) error {
+				capturedNoBranch = c.Bool("no-branch")
+				capturedSilent = c.Bool("silent")
+				if c.NArg() > 0 {
+					capturedWorktree = c.Args().Get(0)
+				}
+				return nil
 			}
 
-			if _, err := parser.Parse(tt.args); err != nil {
+			app := &urfavecli.App{
+				Name:     "lazyworktree",
+				Commands: []*urfavecli.Command{cmd},
+			}
+
+			if err := app.Run(tt.args); err != nil {
 				t.Fatalf("unexpected parse error: %v", err)
 			}
 
-			if cmd.NoBranch != tt.noBranch {
-				t.Errorf("noBranch = %v, want %v", cmd.NoBranch, tt.noBranch)
+			if capturedNoBranch != tt.noBranch {
+				t.Errorf("noBranch = %v, want %v", capturedNoBranch, tt.noBranch)
 			}
-			if cmd.Silent != tt.silent {
-				t.Errorf("silent = %v, want %v", cmd.Silent, tt.silent)
+			if capturedSilent != tt.silent {
+				t.Errorf("silent = %v, want %v", capturedSilent, tt.silent)
 			}
-
-			if cmd.WorktreePath != tt.worktree {
-				t.Errorf("worktreePath = %q, want %q", cmd.WorktreePath, tt.worktree)
+			if capturedWorktree != tt.worktree {
+				t.Errorf("worktreePath = %q, want %q", capturedWorktree, tt.worktree)
 			}
 		})
 	}

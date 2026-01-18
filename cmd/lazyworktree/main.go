@@ -14,6 +14,7 @@ import (
 	"github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/theme"
 	"github.com/chmouel/lazyworktree/internal/utils"
+	urfavecli "github.com/urfave/cli/v2"
 )
 
 var (
@@ -24,97 +25,66 @@ var (
 )
 
 func main() {
-	// Handle special flags that exit early before Kong parsing
-	// This is needed because Kong requires a subcommand when subcommands are defined
-	args := os.Args[1:]
-	for _, arg := range args {
-		if arg == "--version" || arg == "-v" {
-			printVersion()
-			return
-		}
-		if arg == "--show-syntax-themes" {
-			printSyntaxThemes()
-			return
-		}
+	cliApp := &urfavecli.App{
+		Name:                 "lazyworktree",
+		Usage:                "A TUI tool to manage git worktrees",
+		Version:              version,
+		EnableBashCompletion: true,
+
+		Flags: globalFlags(),
+
+		Commands: []*urfavecli.Command{
+			wtCreateCommand(),
+			wtDeleteCommand(),
+			completionCommand(),
+		},
+
+		Before: func(c *urfavecli.Context) error {
+			// Handle early exit flags
+			// Note: --version is handled automatically by urfave/cli
+			if c.Bool("show-syntax-themes") {
+				printSyntaxThemes()
+				os.Exit(0)
+			}
+			return nil
+		},
+
+		Action: runTUI,
+
+		BashComplete: completeGlobalFlags,
 	}
 
-	parseResult, err := ParseArgs(args)
-	if err != nil {
+	if err := cliApp.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+}
 
-	cli := parseResult.CLI
-	ctx := parseResult.Context
-	cmd := parseResult.Command
-	initialFilter := parseResult.InitialFilter
-
-	// If completion command was selected, run it immediately and exit
-	if cmd == "completion" || cmd == "completion <shell>" {
-		if ctx != nil {
-			if err := ctx.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-		}
-		// ctx.Run() should have called ctx.Exit(0), but ensure we exit
-		os.Exit(0)
-	}
-
-	// Handle special flags that exit early (in case they weren't caught above)
-	if cli.Version {
-		printVersion()
-		return
-	}
-	if cli.ShowSyntaxThemes {
-		printSyntaxThemes()
-		return
-	}
-
-	// Handle subcommands
-	if cmd != "" {
-		switch cmd {
-		case "wt-create":
-			handleWtCreate(cli.WtCreate, cli.WorktreeDir, cli.ConfigFile, cli.Config)
-			return
-		case "wt-delete":
-			handleWtDelete(cli.WtDelete, cli.WorktreeDir, cli.ConfigFile, cli.Config)
-			return
-		case "completion":
-			// This should have been handled above, but just in case
-			if ctx != nil {
-				if err := ctx.Run(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-					os.Exit(1)
-				}
-			}
-			return
-		}
-	}
-
-	// Set up debug logging before loading config, so debug output is captured
-	if cli.DebugLog != "" {
-		expanded, err := utils.ExpandPath(cli.DebugLog)
+// runTUI is the default action that launches the TUI when no subcommand is given.
+func runTUI(c *urfavecli.Context) error {
+	// Set up debug logging before loading config
+	if debugLog := c.String("debug-log"); debugLog != "" {
+		expanded, err := utils.ExpandPath(debugLog)
 		if err == nil {
 			if err := log.SetFile(expanded); err != nil {
 				fmt.Fprintf(os.Stderr, "Error opening debug log file %q: %v\n", expanded, err)
 			}
 		} else {
-			if err := log.SetFile(cli.DebugLog); err != nil {
-				fmt.Fprintf(os.Stderr, "Error opening debug log file %q: %v\n", cli.DebugLog, err)
+			if err := log.SetFile(debugLog); err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening debug log file %q: %v\n", debugLog, err)
 			}
 		}
 	}
 
-	cfg, err := config.LoadConfig(cli.ConfigFile)
+	// Load config
+	cfg, err := config.LoadConfig(c.String("config-file"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		cfg = config.DefaultConfig()
 	}
 
 	// If debug log wasn't set via flag, check if it's in the config
-	// If it is, enable logging. If not, disable logging and discard buffer.
-	if cli.DebugLog == "" {
+	if c.String("debug-log") == "" {
 		if cfg.DebugLog != "" {
 			expanded, err := utils.ExpandPath(cfg.DebugLog)
 			path := cfg.DebugLog
@@ -130,40 +100,46 @@ func main() {
 		}
 	}
 
-	if err := applyThemeConfig(cfg, cli.Theme); err != nil {
+	// Apply theme configuration
+	if err := applyThemeConfig(cfg, c.String("theme")); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		_ = log.Close()
-		os.Exit(1)
+		return err
 	}
-	if cli.SearchAutoSelect {
+
+	// Apply search-auto-select flag
+	if c.Bool("search-auto-select") {
 		cfg.SearchAutoSelect = true
 	}
 
-	if err := applyWorktreeDirConfig(cfg, cli.WorktreeDir); err != nil {
+	// Apply worktree directory configuration
+	if err := applyWorktreeDirConfig(cfg, c.String("worktree-dir")); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		_ = log.Close()
-		os.Exit(1)
+		return err
 	}
 
-	if cli.DebugLog != "" {
-		expanded, err := utils.ExpandPath(cli.DebugLog)
+	// Update debug log in config if set via flag
+	if debugLog := c.String("debug-log"); debugLog != "" {
+		expanded, err := utils.ExpandPath(debugLog)
 		if err == nil {
 			cfg.DebugLog = expanded
 		} else {
-			cfg.DebugLog = cli.DebugLog
+			cfg.DebugLog = debugLog
 		}
 	}
 
 	// Apply CLI config overrides (highest precedence)
-	if len(cli.Config) > 0 {
-		if err := cfg.ApplyCLIOverrides(cli.Config); err != nil {
+	if configOverrides := c.StringSlice("config"); len(configOverrides) > 0 {
+		if err := cfg.ApplyCLIOverrides(configOverrides); err != nil {
 			fmt.Fprintf(os.Stderr, "Error applying config overrides: %v\n", err)
 			_ = log.Close()
-			os.Exit(1)
+			return err
 		}
 	}
 
-	model := app.NewModel(cfg, initialFilter)
+	// Launch TUI (no initial filter support as per user request)
+	model := app.NewModel(cfg, "")
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	_, err = p.Run()
@@ -171,22 +147,23 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running app: %v\n", err)
 		_ = log.Close()
-		os.Exit(1)
+		return err
 	}
 
+	// Handle output-selection flag
 	selectedPath := model.GetSelectedPath()
-	if cli.OutputSelection != "" {
-		expanded, err := utils.ExpandPath(cli.OutputSelection)
+	if outputSelection := c.String("output-selection"); outputSelection != "" {
+		expanded, err := utils.ExpandPath(outputSelection)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error expanding output-selection: %v\n", err)
 			_ = log.Close()
-			os.Exit(1)
+			return err
 		}
 		const defaultDirPerms = 0o750
 		if err := os.MkdirAll(filepath.Dir(expanded), defaultDirPerms); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating output-selection dir: %v\n", err)
 			_ = log.Close()
-			os.Exit(1)
+			return err
 		}
 		data := ""
 		if selectedPath != "" {
@@ -196,16 +173,22 @@ func main() {
 		if err := os.WriteFile(expanded, []byte(data), defaultFilePerms); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing output-selection: %v\n", err)
 			_ = log.Close()
-			os.Exit(1)
+			return err
 		}
-		return
+		_ = log.Close()
+		return nil
 	}
+
+	// Print selected path if any
 	if selectedPath != "" {
 		fmt.Println(selectedPath)
 	}
+
 	if err := log.Close(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error closing debug log: %v\n", err)
 	}
+
+	return nil
 }
 
 // applyWorktreeDirConfig applies the worktree directory configuration.
@@ -230,6 +213,7 @@ func applyWorktreeDirConfig(cfg *config.AppConfig, worktreeDirFlag string) error
 	return nil
 }
 
+// printSyntaxThemes prints available syntax themes for delta.
 func printSyntaxThemes() {
 	names := theme.AvailableThemes()
 	sort.Strings(names)

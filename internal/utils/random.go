@@ -1,4 +1,4 @@
-package app
+package utils
 
 import (
 	"crypto/rand"
@@ -52,8 +52,8 @@ var randomNouns = []string{
 	"willow",
 }
 
-// randomBranchName returns a Docker-style adjective-noun name for temporary branches.
-func randomBranchName() string {
+// RandomBranchName returns a Docker-style adjective-noun name for temporary branches.
+func RandomBranchName() string {
 	return fmt.Sprintf("%s-%s", randomWord(randomAdjectives), randomWord(randomNouns))
 }
 

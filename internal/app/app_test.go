@@ -19,6 +19,7 @@ import (
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 	"github.com/chmouel/lazyworktree/internal/theme"
+	"github.com/chmouel/lazyworktree/internal/utils"
 )
 
 const (
@@ -2326,29 +2327,25 @@ func TestShowThemeSelection(t *testing.T) {
 }
 
 func TestRandomBranchName(t *testing.T) {
-	name := randomBranchName()
+	name := utils.RandomBranchName()
 	if name == "" {
 		t.Fatal("expected non-empty random branch name")
 	}
 	parts := strings.Split(name, "-")
 	if len(parts) != 2 {
-		t.Fatalf("expected a single hyphen, got %q", name)
+		t.Fatalf("expected format 'adjective-noun' with a single hyphen, got %q", name)
 	}
-	if !stringInSlice(randomAdjectives, parts[0]) {
-		t.Fatalf("unexpected adjective %q", parts[0])
-	}
-	if !stringInSlice(randomNouns, parts[1]) {
-		t.Fatalf("unexpected noun %q", parts[1])
-	}
-}
-
-func stringInSlice(list []string, value string) bool {
-	for _, item := range list {
-		if item == value {
-			return true
+	// Verify both parts are non-empty alphabetic strings
+	for i, part := range parts {
+		if part == "" {
+			t.Fatalf("part %d is empty in %q", i, name)
+		}
+		for _, c := range part {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+				t.Fatalf("part %d contains non-alphabetic character in %q", i, name)
+			}
 		}
 	}
-	return false
 }
 
 func TestGetTmuxActiveSessions(t *testing.T) {

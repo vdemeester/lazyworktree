@@ -126,19 +126,37 @@ LazyWorktree supports command-line operations for creating and deleting worktree
 
 ### Creating Worktrees
 
-**Create from a branch:**
+**Create from current branch:**
 
 ```bash
-# Create with explicit name
+# Auto-generated name from current branch
+lazyworktree wt-create
+
+# Explicit name
+lazyworktree wt-create my-feature
+
+# With uncommitted changes
+lazyworktree wt-create --with-change
+
+# Explicit name + changes
+lazyworktree wt-create my-feature --with-change
+```
+
+**Create from a specific branch:**
+
+```bash
+# Explicit name
 lazyworktree wt-create --from-branch main my-feature [--with-change] [--silent]
 
-# Create with auto-generated name (sanitised from source branch)
+# Auto-generated name (sanitised from source branch)
 lazyworktree wt-create --from-branch feature/new-feature [--with-change] [--silent]
 ```
 
 The worktree/branch name can be specified explicitly or auto-generated:
-- **Explicit:** `lw wt-create --from-branch main my-feature` creates worktree named "my-feature"
-- **Auto-generated:** `lw wt-create --from-branch feature/cool-thing` creates worktree named "feature-cool-thing"
+- **Current branch + explicit name:** `lw wt-create my-feature`
+- **Specific branch + explicit name:** `lw wt-create --from-branch main my-feature`
+- **Current branch + auto-generated:** `lw wt-create` uses current branch name
+- **Specific branch + auto-generated:** `lw wt-create --from-branch feature/cool-thing` creates "feature-cool-thing"
 - Names are automatically sanitised to lowercase alphanumeric characters with hyphens
 
 **Create from a PR:**

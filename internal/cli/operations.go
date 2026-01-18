@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/git"
@@ -58,9 +59,14 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 		}
 	}
 
-	// Use provided worktree name, or sanitise branch name if not provided
+	// Construct target path based on worktree name
+	repoName := gitSvc.ResolveRepoName(ctx)
+
+	// Generate random name if not provided, or validate user-provided name
 	if worktreeName == "" {
-		worktreeName = utils.SanitizeBranchName(branchName, 100)
+		// Generate random name with retry for uniqueness
+		sanitizedBranch := utils.SanitizeBranchName(branchName, 50)
+		worktreeName = generateUniqueWorktreeName(cfg, repoName, sanitizedBranch)
 	} else {
 		// Validate and sanitise user-provided name
 		sanitised := utils.SanitizeBranchName(worktreeName, 100)
@@ -70,8 +76,6 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 		worktreeName = sanitised
 	}
 
-	// Construct target path
-	repoName := gitSvc.ResolveRepoName(ctx)
 	targetPath := filepath.Join(cfg.WorktreeDir, repoName, worktreeName)
 
 	// Check for path conflicts
@@ -99,12 +103,17 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 		// Create worktree normally
 		args := []string{"git", "worktree", "add"}
 
-		// Only use -b flag if we're creating a new branch from a remote or if local branch doesn't exist
-		if strings.Contains(branchName, "/") {
+		// Determine if we need to create a new branch
+		switch {
+		case strings.Contains(branchName, "/"):
 			// Remote branch - create new local branch with tracking
 			args = append(args, "-b", worktreeName, "--track", targetPath, branchName)
-		} else {
-			// Local branch - check if it already exists
+		case worktreeName != branchName:
+			// Creating a new branch with a different name (e.g., random name)
+			// Always use -b to create the new branch based on the source branch
+			args = append(args, "-b", worktreeName, targetPath, branchName)
+		default:
+			// Worktree name matches branch name - check if branch already exists
 			localBranchExists := gitSvc.RunGit(
 				ctx,
 				[]string{"git", "show-ref", "--verify", fmt.Sprintf("refs/heads/%s", branchName)},
@@ -139,6 +148,28 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 	fmt.Println(targetPath)
 
 	return nil
+}
+
+// generateUniqueWorktreeName generates a unique worktree name with retries.
+// Format: <branch>-<random-adjective>-<random-noun>
+// Retries up to 10 times if path already exists.
+func generateUniqueWorktreeName(cfg *config.AppConfig, repoName, branchName string) string {
+	const maxRetries = 10
+
+	for range maxRetries {
+		randomPart := utils.RandomBranchName()
+		candidate := fmt.Sprintf("%s-%s", branchName, randomPart)
+		targetPath := filepath.Join(cfg.WorktreeDir, repoName, candidate)
+
+		// Check if path exists
+		if _, err := osStat(targetPath); os.IsNotExist(err) {
+			return candidate // Found unique name
+		}
+	}
+
+	// Fallback: append timestamp if all retries fail (extremely unlikely)
+	timestamp := time.Now().Unix()
+	return fmt.Sprintf("%s-%s-%d", branchName, utils.RandomBranchName(), timestamp)
 }
 
 // CreateFromPR creates a worktree from a PR number.

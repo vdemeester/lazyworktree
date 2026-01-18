@@ -350,6 +350,33 @@ func (s *Service) GetMainBranch(ctx context.Context) string {
 	return s.mainBranch
 }
 
+// GetCurrentBranch returns the current branch name from the current working directory.
+// Returns an error if not in a git repository or if HEAD is detached.
+func (s *Service) GetCurrentBranch(ctx context.Context) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Get current branch using git rev-parse --abbrev-ref HEAD
+	branchName := s.RunGit(
+		ctx,
+		[]string{"git", "rev-parse", "--abbrev-ref", "HEAD"},
+		cwd,
+		[]int{0},
+		true,
+		false,
+	)
+
+	branchName = strings.TrimSpace(branchName)
+
+	if branchName == "" || branchName == "HEAD" {
+		return "", fmt.Errorf("not currently on a branch (detached HEAD)")
+	}
+
+	return branchName, nil
+}
+
 // GetMergedBranches returns local branches that have been merged into the specified base branch.
 func (s *Service) GetMergedBranches(ctx context.Context, baseBranch string) []string {
 	output := s.RunGit(ctx, []string{"git", "branch", "--merged", baseBranch}, "", []int{0}, true, false)

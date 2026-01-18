@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chmouel/lazyworktree/internal/models"
+	"github.com/chmouel/lazyworktree/internal/utils"
 )
 
 // showCreateWorktree shows the base selection screen for creating a new worktree.
@@ -38,7 +39,7 @@ func (m *Model) showCreateFromCurrent() tea.Cmd {
 		currentBranch = strings.TrimSpace(currentBranch)
 
 		// Always generate random name as default
-		defaultName := fmt.Sprintf("%s-%s", currentBranch, randomBranchName())
+		defaultName := fmt.Sprintf("%s-%s", currentBranch, utils.RandomBranchName())
 
 		// Get diff if changes exist (for later AI generation)
 		var diff string

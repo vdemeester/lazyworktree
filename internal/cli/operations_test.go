@@ -397,7 +397,8 @@ func TestCreateFromBranch(t *testing.T) {
 	t.Run("path already exists", func(t *testing.T) {
 		repoName := testRepoName
 		branchName := "existing"
-		targetPath := filepath.Join(tmpDir, repoName, branchName)
+		worktreeName := "existing-wt"
+		targetPath := filepath.Join(tmpDir, repoName, worktreeName)
 
 		// Create the path
 		if err := os.MkdirAll(targetPath, 0o750); err != nil {
@@ -411,7 +412,8 @@ func TestCreateFromBranch(t *testing.T) {
 			},
 		}
 
-		err := CreateFromBranch(ctx, svc, cfg, branchName, "", false, false)
+		// Provide explicit worktreeName to avoid random generation
+		err := CreateFromBranch(ctx, svc, cfg, branchName, worktreeName, false, false)
 		if err == nil {
 			t.Fatal("expected error for existing path")
 		}

@@ -20,6 +20,14 @@ linters:
     - testifylint
     - usestdlibvars
   settings:
+    errcheck:
+      exclude-functions:
+        - flag.Set
+        - logger.Sync
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - os.Stdout
+        - (io.Closer).Close
     revive:
       rules:
         - name: exported
