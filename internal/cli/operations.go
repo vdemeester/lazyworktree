@@ -514,7 +514,7 @@ func createWorktreeWithChanges(ctx context.Context, gitSvc gitService, cfg *conf
 	}
 
 	// Get previous stash hash to detect if stash creation succeeded
-	prevStashHash := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, currentWt.Path, []int{0}, true, false))
+	prevStashHash := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, "", []int{0}, true, false))
 
 	// Stash changes with descriptive message
 	stashMessage := fmt.Sprintf("git-wt-create move-current: %s", newBranch)
@@ -528,13 +528,13 @@ func createWorktreeWithChanges(ctx context.Context, gitSvc gitService, cfg *conf
 	}
 
 	// Verify stash was created
-	newStashHash := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, currentWt.Path, []int{0}, true, false))
+	newStashHash := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, "", []int{0}, true, false))
 	if newStashHash == "" || newStashHash == prevStashHash {
 		return fmt.Errorf("failed to create stash for moving changes: no new entry created")
 	}
 
-	// Get the stash reference
-	stashRef := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, currentWt.Path, []int{0}, true, false))
+	// Get the stash reference (run from main repo context, not worktree path, since stashes are stored in main repo)
+	stashRef := strings.TrimSpace(gitSvc.RunGit(ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false))
 	if stashRef == "" || !strings.HasPrefix(stashRef, "stash@{") {
 		// Try to restore stash if we can't get the ref
 		gitSvc.RunCommandChecked(ctx, []string{"git", "stash", "pop"}, currentWt.Path, "Failed to restore stash")

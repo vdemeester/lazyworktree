@@ -189,7 +189,7 @@ func (m *Model) showCreateFromChangesInput(wt *models.WorktreeInfo, currentBranc
 		}
 
 		// Get the stash ref
-		stashRef := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, wt.Path, []int{0}, true, false)
+		stashRef := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false)
 		if stashRef == "" || !strings.HasPrefix(stashRef, "stash@{") {
 			// Try to restore stash if we can't get the ref
 			m.git.RunCommandChecked(m.ctx, []string{"git", "stash", "pop"}, wt.Path, "Failed to restore stash")
@@ -368,7 +368,7 @@ func (m *Model) executeCreateWithChanges(wt *models.WorktreeInfo, currentBranch,
 		}
 
 		// Stash changes with descriptive message
-		prevStashHash := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, wt.Path, []int{0}, true, false)
+		prevStashHash := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, "", []int{0}, true, false)
 		stashMessage := fmt.Sprintf("git-wt-create move-current: %s", newBranch)
 		if !m.git.RunCommandChecked(
 			m.ctx,
@@ -379,13 +379,13 @@ func (m *Model) executeCreateWithChanges(wt *models.WorktreeInfo, currentBranch,
 			return errMsg{err: fmt.Errorf("failed to create stash for moving changes")}
 		}
 
-		newStashHash := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, wt.Path, []int{0}, true, false)
+		newStashHash := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%H"}, "", []int{0}, true, false)
 		if newStashHash == "" || newStashHash == prevStashHash {
 			return errMsg{err: fmt.Errorf("failed to create stash for moving changes: no new entry created")}
 		}
 
 		// Get the stash ref
-		stashRef := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, wt.Path, []int{0}, true, false)
+		stashRef := m.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false)
 		if stashRef == "" || !strings.HasPrefix(stashRef, "stash@{") {
 			// Try to restore stash if we can't get the ref
 			m.git.RunCommandChecked(m.ctx, []string{"git", "stash", "pop"}, wt.Path, "Failed to restore stash")
