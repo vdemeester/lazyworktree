@@ -19,23 +19,22 @@ _See other [Screenshots below](#screenshots)_
 
 ## Features
 
-* **Worktree lifecycle**: Create, rename, remove, absorb, and prune merged worktrees.
-* **Worktree state**: Show dirty files, ahead/behind counts, and divergence from main.
-* **From current branch**: Create from the current branch, optionally carrying over uncommitted changes.
-* **From issue**: Create from a GitHub/GitLab issue with automatic branch naming.
-* **From PR or MR**: Create from an open GitHub/GitLab pull or merge request.
-* **Forge integration**: Show linked PR/MR, CI status, and checks via `gh` or `glab`.
-* **Cherry-picking**: Apply commits from one worktree to another.
-* **Commit inspection**: Browse commit logs with author initials and per-commit file trees.
-* **Status management**: Stage, unstage, commit, edit, and diff files interactively.
-* **Diff viewing**: View diffs in a pager, with optional delta integration.
-* **Terminal multiplexers**: Manage per-worktree tmux or zellij sessions.
-* **Shell integration**: Jump into selected worktrees and return to the last-used one.
-* **Command palette**: Access actions, commands, and sessions with MRU-based navigation.
-* **Custom commands**: Define keybindings, tmux/zellij layouts, and per-repo command workflows.
-* **Automation and hooks**: Run init/terminate commands via `.wt` files with TOFU security.
-* **Automatic branch naming**: Generate branch names from diffs, issues, or PRs via scripts.
-* **LazyGit integration**: Launch lazygit for the selected worktree.
+* Worktree management: Create, rename, remove, absorb, and prune merged worktrees.
+* Powerful creation options:
+  * From current branch: Create from the current branch, optionally carrying over uncommitted changes.
+  * From issue: Create from a GitHub/GitLab issue with automatic branch naming.
+  * From PR or MR: Create from an open GitHub/GitLab pull or merge request.
+* Show linked GitHub PR or Gitlab MR, CI status, and checks.
+* Stage, unstage, commit, edit, and diff files interactively.
+* View diffs in a pager, with optional delta integration.
+* Manage per-worktree Tmux or Zellij sessions.
+* Cherry-pick commits from one worktree to another.
+* Access actions, commands, and sessions with MRU-based navigation via a VSCode-like command palette.
+* Custom commands support. Define keybindings, tmux/zellij layouts, and per-repo command workflows.
+* Automation and hooks: Run init/terminate commands via `.wt` files with TOFU security.
+* Shell integration: Jump into selected worktrees and return to the last-used one.
+* Automatic branch naming: Generate branch names from diffs, issues, or PRs via
+scripts (like LLM tools).
 
 ## Getting Started
 
@@ -153,11 +152,12 @@ lazyworktree wt-create --from-branch feature/new-feature [--with-change] [--sile
 ```
 
 The worktree/branch name can be specified explicitly or auto-generated:
-- **Current branch + explicit name:** `lw wt-create my-feature`
-- **Specific branch + explicit name:** `lw wt-create --from-branch main my-feature`
-- **Current branch + auto-generated:** `lw wt-create` uses current branch name
-- **Specific branch + auto-generated:** `lw wt-create --from-branch feature/cool-thing` creates "feature-cool-thing"
-- Names are automatically sanitised to lowercase alphanumeric characters with hyphens
+
+* **Current branch + explicit name:** `lw wt-create my-feature`
+* **Specific branch + explicit name:** `lw wt-create --from-branch main my-feature`
+* **Current branch + auto-generated:** `lw wt-create` uses current branch name
+* **Specific branch + auto-generated:** `lw wt-create --from-branch feature/cool-thing` creates "feature-cool-thing"
+* Names are automatically sanitised to lowercase alphanumeric characters with hyphens
 
 **Create from a PR:**
 
@@ -520,20 +520,21 @@ custom_themes:
 ```
 
 **Available colour fields:**
-- `background` - Main background colour
-- `accent` - Primary accent colour (highlights, selected items)
-- `accent_fg` - Foreground colour for text on accent background
-- `accent_dim` - Dimmed accent colour (selected rows/panels)
-- `border` - Border colour
-- `border_dim` - Dimmed border colour
-- `muted_fg` - Muted text colour
-- `text_fg` - Primary text colour
-- `success_fg` - Success indicator colour
-- `warn_fg` - Warning indicator colour
-- `error_fg` - Error indicator colour
-- `cyan` - Cyan accent colour
-- `pink` - Pink accent colour
-- `yellow` - Yellow accent colour
+
+* `background` - Main background colour
+* `accent` - Primary accent colour (highlights, selected items)
+* `accent_fg` - Foreground colour for text on accent background
+* `accent_dim` - Dimmed accent colour (selected rows/panels)
+* `border` - Border colour
+* `border_dim` - Dimmed border colour
+* `muted_fg` - Muted text colour
+* `text_fg` - Primary text colour
+* `success_fg` - Success indicator colour
+* `warn_fg` - Warning indicator colour
+* `error_fg` - Error indicator colour
+* `cyan` - Cyan accent colour
+* `pink` - Pink accent colour
+* `yellow` - Yellow accent colour
 
 Colour values must be in hex format (`#RRGGBB` or `#RGB`). When using a `base` theme, only specify colours you want to override. When not using a base, all 14 colour fields are required.
 
