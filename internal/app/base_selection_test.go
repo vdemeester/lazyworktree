@@ -1039,3 +1039,319 @@ func TestExecuteCustomPostCommandError(t *testing.T) {
 		t.Error("expected error from failing command")
 	}
 }
+
+func TestLocalBranchExists(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+
+	// The repo has a 'main' or 'master' branch and 'feature' branch
+	if !m.localBranchExists(repo.branch) {
+		t.Fatalf("expected %s to exist as local branch", repo.branch)
+	}
+
+	if !m.localBranchExists(featureBranch) {
+		t.Fatalf("expected %s to exist as local branch", featureBranch)
+	}
+
+	if m.localBranchExists("nonexistent-branch") {
+		t.Fatal("expected nonexistent-branch to not exist")
+	}
+
+	// Remote branches should not be detected as local
+	if m.localBranchExists("origin/" + repo.branch) {
+		t.Fatal("expected remote branch to not be detected as local")
+	}
+}
+
+func TestShowCheckoutOrCreatePrompt(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	// Show the checkout/create prompt for an existing local branch
+	cmd := m.showCheckoutOrCreatePrompt(repo.branch)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	if m.listScreen == nil || m.currentScreen != screenListSelect {
+		t.Fatal("expected list screen to be active")
+	}
+
+	// Verify we have the checkout and create options
+	if len(m.listScreen.items) != 2 {
+		t.Fatalf("expected 2 options, got %d", len(m.listScreen.items))
+	}
+
+	checkoutFound := false
+	createFound := false
+	for _, item := range m.listScreen.items {
+		if item.id == "checkout" {
+			checkoutFound = true
+			if item.label != "Checkout existing branch" {
+				t.Fatalf("expected label 'Checkout existing branch', got %q", item.label)
+			}
+		}
+		if item.id == "create" {
+			createFound = true
+			if item.label != "Create new branch" {
+				t.Fatalf("expected label 'Create new branch', got %q", item.label)
+			}
+		}
+	}
+	if !checkoutFound {
+		t.Fatal("expected 'checkout' option in prompt")
+	}
+	if !createFound {
+		t.Fatal("expected 'create' option in prompt")
+	}
+
+	// Test selecting "create" leads to branch name input
+	m.listSubmit(selectionItem{id: "create"})
+	if m.inputScreen == nil || m.currentScreen != screenInput {
+		t.Fatal("expected input screen for branch name")
+	}
+	if m.inputScreen.prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", m.inputScreen.prompt)
+	}
+}
+
+func TestShowWorktreeNameForExistingBranch(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	worktreeDir := t.TempDir()
+	cfg := &config.AppConfig{WorktreeDir: worktreeDir}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	// Show the worktree name input for an existing branch
+	cmd := m.showWorktreeNameForExistingBranch(featureBranch)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	if m.inputScreen == nil || m.currentScreen != screenInput {
+		t.Fatal("expected input screen to be active")
+	}
+
+	// Verify suggested name format
+	expected := featureBranch + "-wt"
+	if got := m.inputScreen.input.Value(); got != expected {
+		t.Fatalf("expected suggested name %q, got %q", expected, got)
+	}
+
+	// Verify prompt mentions existing branch
+	if !strings.Contains(m.inputScreen.prompt, featureBranch) {
+		t.Fatalf("expected prompt to mention branch name, got %q", m.inputScreen.prompt)
+	}
+
+	// Test path conflict validation - create the target path first
+	pathBranch := "path-branch"
+	if err := os.MkdirAll(filepath.Join(m.getRepoWorktreeDir(), pathBranch), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if _, ok := m.inputSubmit(pathBranch, false); ok {
+		t.Fatal("expected existing path to be rejected")
+	}
+	if !strings.Contains(m.inputScreen.errorMsg, "Path already exists") {
+		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	}
+}
+
+func TestCheckoutExistingBranchAsync(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	worktreeDir := t.TempDir()
+	cfg := &config.AppConfig{WorktreeDir: worktreeDir}
+	m := NewModel(cfg, "")
+
+	// Use the feature branch that was created in initTestRepo
+	worktreeName := "feature-wt"
+	targetPath := filepath.Join(worktreeDir, worktreeName)
+
+	cmd := m.checkoutExistingBranchAsync(worktreeName, targetPath, featureBranch)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+
+	msg := cmd()
+	loaded, ok := msg.(worktreesLoadedMsg)
+	if !ok {
+		t.Fatalf("expected worktreesLoadedMsg, got %T", msg)
+	}
+
+	if loaded.err != nil {
+		t.Fatalf("unexpected error: %v", loaded.err)
+	}
+
+	// Verify worktree path exists
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Fatalf("expected worktree path to exist: %v", err)
+	}
+
+	// Verify the branch is checked out (not a new branch created)
+	branch := runGit(t, targetPath, "branch", "--show-current")
+	if branch != featureBranch {
+		t.Fatalf("expected branch %s, got %s", featureBranch, branch)
+	}
+
+	// Verify no new branch was created with the worktree name
+	allBranches := runGit(t, repo.dir, "branch", "-a")
+	if strings.Contains(allBranches, worktreeName) {
+		t.Fatalf("unexpected branch %s created; got branches: %s", worktreeName, allBranches)
+	}
+}
+
+func TestBranchSelectionWithLocalBranch(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	// Show base selection and select branch-list
+	m.showBaseSelection(repo.branch)
+
+	// Trigger branch-list selection
+	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	if cmd == nil {
+		t.Fatal("expected command from branch-list selection")
+	}
+
+	// Now we should have a branch selection screen
+	if m.listScreen == nil {
+		t.Fatal("expected branch list screen")
+	}
+
+	// Find and select the feature branch (a local branch)
+	var featureItem *selectionItem
+	for i := range m.listScreen.items {
+		if m.listScreen.items[i].id == featureBranch {
+			featureItem = &m.listScreen.items[i]
+			break
+		}
+	}
+	if featureItem == nil {
+		t.Fatalf("expected to find %s in branch list", featureBranch)
+	}
+
+	// Selecting a local branch should show the checkout/create prompt
+	m.listSubmit(*featureItem)
+	if m.listScreen == nil || m.currentScreen != screenListSelect {
+		t.Fatal("expected checkout/create prompt screen")
+	}
+
+	// Verify it's the checkout/create prompt by checking for the checkout option
+	checkoutFound := false
+	for _, item := range m.listScreen.items {
+		if item.id == "checkout" {
+			checkoutFound = true
+			break
+		}
+	}
+	if !checkoutFound {
+		t.Fatal("expected checkout option in prompt for local branch")
+	}
+}
+
+func TestBranchSelectionWithSlashLocalBranch(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	branchWithSlash := "topic/with-slash"
+	runGit(t, repo.dir, "branch", branchWithSlash)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+
+	// Show base selection and select branch-list
+	m.showBaseSelection(repo.branch)
+
+	// Trigger branch-list selection
+	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	if cmd == nil {
+		t.Fatal("expected command from branch-list selection")
+	}
+
+	// Find and select the slash branch (a local branch)
+	var slashItem *selectionItem
+	for i := range m.listScreen.items {
+		if m.listScreen.items[i].id == branchWithSlash {
+			slashItem = &m.listScreen.items[i]
+			break
+		}
+	}
+	if slashItem == nil {
+		t.Fatalf("expected to find %s in branch list", branchWithSlash)
+	}
+
+	// Selecting a local branch should show the checkout/create prompt
+	m.listSubmit(*slashItem)
+	if m.listScreen == nil || m.currentScreen != screenListSelect {
+		t.Fatal("expected checkout/create prompt screen")
+	}
+
+	checkoutFound := false
+	for _, item := range m.listScreen.items {
+		if item.id == "checkout" {
+			checkoutFound = true
+			break
+		}
+	}
+	if !checkoutFound {
+		t.Fatal("expected checkout option in prompt for local branch with slash")
+	}
+}
+
+func TestBranchSelectionSkipsCheckoutForCheckedOutBranch(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.windowWidth = 120
+	m.windowHeight = 40
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: repo.dir, Branch: repo.branch},
+	}
+
+	// Show base selection and select branch-list
+	m.showBaseSelection(repo.branch)
+
+	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	if cmd == nil {
+		t.Fatal("expected command from branch-list selection")
+	}
+
+	var mainItem *selectionItem
+	for i := range m.listScreen.items {
+		if m.listScreen.items[i].id == repo.branch {
+			mainItem = &m.listScreen.items[i]
+			break
+		}
+	}
+	if mainItem == nil {
+		t.Fatalf("expected to find %s in branch list", repo.branch)
+	}
+
+	// Selecting a branch already checked out should go straight to create input
+	m.listSubmit(*mainItem)
+	if m.inputScreen == nil || m.currentScreen != screenInput {
+		t.Fatal("expected input screen for branch name")
+	}
+	if m.inputScreen.prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", m.inputScreen.prompt)
+	}
+}

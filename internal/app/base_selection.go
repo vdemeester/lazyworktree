@@ -90,6 +90,17 @@ func (m *Model) showBaseSelection(defaultBase string) tea.Cmd {
 				"No branches found.",
 				defaultBase,
 				func(branch string) tea.Cmd {
+					isLocalBranch := m.localBranchExists(branch)
+
+					if isLocalBranch {
+						if m.branchCheckedOutInWorktree(branch) {
+							return m.showBranchNameInput(branch, branch)
+						}
+						// Show checkout vs create prompt for local branches
+						return m.showCheckoutOrCreatePrompt(branch)
+					}
+
+					// For remote branches/tags, use existing flow
 					suggestedName := stripRemotePrefix(branch)
 					return m.showBranchNameInput(branch, suggestedName)
 				},
@@ -338,6 +349,131 @@ func (m *Model) baseRefExists(ref string) bool {
 		true,
 	)
 	return strings.TrimSpace(out) != ""
+}
+
+// localBranchExists checks if a local branch with the given name exists.
+func (m *Model) localBranchExists(branch string) bool {
+	output := m.git.RunGit(
+		m.ctx,
+		[]string{"git", "show-ref", "--verify", fmt.Sprintf("refs/heads/%s", branch)},
+		"",
+		[]int{0, 1},
+		true,
+		true,
+	)
+	return strings.TrimSpace(output) != ""
+}
+
+func (m *Model) branchCheckedOutInWorktree(branch string) bool {
+	for _, wt := range m.worktrees {
+		if wt == nil {
+			continue
+		}
+		if wt.Branch == branch {
+			return true
+		}
+	}
+	return false
+}
+
+// showCheckoutOrCreatePrompt shows a prompt asking whether to checkout an existing
+// local branch or create a new branch based on it.
+func (m *Model) showCheckoutOrCreatePrompt(branch string) tea.Cmd {
+	items := []selectionItem{
+		{id: "checkout", label: "Checkout existing branch", description: "Associate worktree with existing branch"},
+		{id: "create", label: "Create new branch", description: "Create new branch based on this one"},
+	}
+
+	m.listScreen = NewListSelectionScreen(items,
+		fmt.Sprintf("Branch %q exists locally", branch),
+		"Filter...", "No options.", m.windowWidth, m.windowHeight, "", m.theme)
+
+	m.listSubmit = func(item selectionItem) tea.Cmd {
+		if item.id == "checkout" {
+			return m.showWorktreeNameForExistingBranch(branch)
+		}
+		return m.showBranchNameInput(branch, branch)
+	}
+
+	m.currentScreen = screenListSelect
+	return textinput.Blink
+}
+
+// showWorktreeNameForExistingBranch prompts for a worktree name when checking out
+// an existing local branch into a new worktree.
+func (m *Model) showWorktreeNameForExistingBranch(branchName string) tea.Cmd {
+	m.clearListSelection()
+
+	suggested := branchName + "-wt"
+
+	m.inputScreen = NewInputScreen(
+		fmt.Sprintf("Worktree name for existing branch %q", branchName),
+		"my-worktree",
+		suggested,
+		m.theme,
+	)
+
+	m.inputSubmit = func(value string, _ bool) (tea.Cmd, bool) {
+		worktreeName := strings.TrimSpace(value)
+		worktreeName = sanitizeBranchNameFromTitle(worktreeName, "")
+		if worktreeName == "" {
+			m.inputScreen.errorMsg = errBranchEmpty
+			return nil, false
+		}
+
+		targetPath := filepath.Join(m.getRepoWorktreeDir(), worktreeName)
+		if errMsg := m.validateNewWorktreeTarget(worktreeName, targetPath); errMsg != "" {
+			m.inputScreen.errorMsg = errMsg
+			return nil, false
+		}
+
+		// Show loading screen immediately
+		if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
+			return func() tea.Msg { return errMsg{err: err} }, true
+		}
+		m.loading = true
+		m.statusContent = fmt.Sprintf("Checking out %s...", branchName)
+		m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme)
+		m.currentScreen = screenLoading
+
+		return m.checkoutExistingBranchAsync(worktreeName, targetPath, branchName), true
+	}
+
+	m.currentScreen = screenInput
+	return textinput.Blink
+}
+
+// checkoutExistingBranchAsync creates a worktree for an existing local branch
+// without creating a new branch (no -b flag).
+func (m *Model) checkoutExistingBranchAsync(worktreeName, targetPath, branchName string) tea.Cmd {
+	return func() tea.Msg {
+		// Key difference: no "-b" flag when checking out existing branch
+		args := []string{"git", "worktree", "add", targetPath, branchName}
+
+		ok := m.git.RunCommandChecked(
+			m.ctx,
+			args,
+			"",
+			fmt.Sprintf("Failed to checkout branch %s", branchName),
+		)
+		if !ok {
+			return errMsg{err: fmt.Errorf("failed to checkout branch %s", branchName)}
+		}
+
+		env := m.buildCommandEnv(branchName, targetPath)
+		initCmds := m.collectInitCommands()
+
+		after := func() tea.Msg {
+			worktrees, err := m.git.GetWorktrees(m.ctx)
+			return worktreesLoadedMsg{worktrees: worktrees, err: err}
+		}
+
+		cmd := m.runCommandsWithTrust(initCmds, targetPath, env, after)
+		if cmd != nil {
+			return cmd()
+		}
+		return after()
+	}
 }
 
 func sanitizeBranchNameFromTitle(title, fallback string) string {

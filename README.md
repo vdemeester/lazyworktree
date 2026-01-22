@@ -22,6 +22,7 @@ _See other [Screenshots below](#screenshots)_
 * Worktree management: Create, rename, remove, absorb, and prune merged worktrees.
 * Powerful creation options:
   * From current branch: Create from the current branch, optionally carrying over uncommitted changes.
+  * Checkout existing branch: Associate a worktree with an existing local branch, or create a new branch based on it.
   * From issue: Create from a GitHub/GitLab issue with automatic branch naming.
   * From PR or MR: Create from an open GitHub/GitLab pull or merge request.
 * Show linked GitHub PR or Gitlab MR, CI status, and checks.
