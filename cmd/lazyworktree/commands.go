@@ -11,16 +11,17 @@ import (
 	appiCli "github.com/urfave/cli/v3"
 )
 
-// wtCreateCommand returns the wt-create subcommand definition.
-func wtCreateCommand() *appiCli.Command {
+// createCommand returns the create subcommand definition.
+func createCommand() *appiCli.Command {
 	return &appiCli.Command{
-		Name:  "wt-create",
-		Usage: "Create a new worktree",
+		Name:    "create",
+		Aliases: []string{"wt-create"},
+		Usage:   "Create a new worktree",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
-			if err := validateWtCreateFlags(ctx, cmd); err != nil {
+			if err := validateCreateFlags(ctx, cmd); err != nil {
 				return err
 			}
-			return handleWtCreateAction(ctx, cmd)
+			return handleCreateAction(ctx, cmd)
 		},
 		Flags: []appiCli.Flag{
 			&appiCli.StringFlag{
@@ -47,12 +48,13 @@ func wtCreateCommand() *appiCli.Command {
 	}
 }
 
-func wtDeleteCommand() *appiCli.Command {
+func deleteCommand() *appiCli.Command {
 	return &appiCli.Command{
-		Name:      "wt-delete",
+		Name:      "delete",
+		Aliases:   []string{"wt-delete"},
 		Usage:     "Delete a worktree",
 		ArgsUsage: "[worktree-path]",
-		Action:    handleWtDeleteAction,
+		Action:    handleDeleteAction,
 		Flags: []appiCli.Flag{
 			&appiCli.BoolFlag{
 				Name:  "no-branch",
@@ -66,8 +68,8 @@ func wtDeleteCommand() *appiCli.Command {
 	}
 }
 
-// validateWtCreateFlags validates mutual exclusivity rules for wt-create flags.
-func validateWtCreateFlags(ctx context.Context, cmd *appiCli.Command) error {
+// validateCreateFlags validates mutual exclusivity rules for the create subcommand.
+func validateCreateFlags(ctx context.Context, cmd *appiCli.Command) error {
 	fromBranch := cmd.String("from-branch")
 	fromPR := cmd.Int("from-pr")
 	name := cmd.String("name")
@@ -91,8 +93,8 @@ func validateWtCreateFlags(ctx context.Context, cmd *appiCli.Command) error {
 	return nil
 }
 
-// handleWtCreateAction handles the wt-create subcommand action.
-func handleWtCreateAction(ctx context.Context, cmd *appiCli.Command) error {
+// handleCreateAction handles the create subcommand action.
+func handleCreateAction(ctx context.Context, cmd *appiCli.Command) error {
 	// Load config with global flags
 	cfg, err := loadCLIConfig(
 		cmd.String("config-file"),
@@ -151,8 +153,8 @@ func handleWtCreateAction(ctx context.Context, cmd *appiCli.Command) error {
 	return nil
 }
 
-// handleWtDeleteAction handles the wt-delete subcommand action.
-func handleWtDeleteAction(ctx context.Context, cmd *appiCli.Command) error {
+// handleDeleteAction handles the delete subcommand action.
+func handleDeleteAction(ctx context.Context, cmd *appiCli.Command) error {
 	// Load config with global flags
 	cfg, err := loadCLIConfig(
 		cmd.String("config-file"),

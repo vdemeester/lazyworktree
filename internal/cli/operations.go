@@ -263,7 +263,7 @@ func DeleteWorktree(ctx context.Context, gitSvc gitService, cfg *config.AppConfi
 		for _, wt := range nonMainWorktrees {
 			fmt.Fprintf(os.Stderr, "  %s\n", formatWorktreeForList(wt))
 		}
-		fmt.Fprintf(os.Stderr, "\nUsage: lazyworktree wt-delete <worktree-name-or-path>\n")
+		fmt.Fprintf(os.Stderr, "\nUsage: lazyworktree delete <worktree-name-or-path>\n")
 		return nil
 	}
 

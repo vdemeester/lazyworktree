@@ -7,7 +7,7 @@ import (
 	urfavecli "github.com/urfave/cli/v3"
 )
 
-func TestHandleWtCreateValidation(t *testing.T) {
+func TestHandleCreateValidation(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
@@ -16,64 +16,64 @@ func TestHandleWtCreateValidation(t *testing.T) {
 	}{
 		{
 			name:        "both flags specified",
-			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--from-pr", "123"},
+			args:        []string{"lazyworktree", "create", "--from-branch", "main", "--from-pr", "123"},
 			expectError: true,
 			errorMsg:    "mutually exclusive",
 		},
 		{
 			name:        "valid from-branch",
-			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main"},
+			args:        []string{"lazyworktree", "create", "--from-branch", "main"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-pr",
-			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123"},
+			args:        []string{"lazyworktree", "create", "--from-pr", "123"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-branch with with-change",
-			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--with-change"},
+			args:        []string{"lazyworktree", "create", "--from-branch", "main", "--with-change"},
 			expectError: false,
 		},
 		{
 			name:        "valid from-branch with branch name",
-			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--name", "feature-1"},
+			args:        []string{"lazyworktree", "create", "--from-branch", "main", "--name", "feature-1"},
 			expectError: false,
 		},
 		{
 			name:        "branch name with from-pr",
-			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123", "--name", "my-branch"},
+			args:        []string{"lazyworktree", "create", "--from-pr", "123", "--name", "my-branch"},
 			expectError: true,
 			errorMsg:    "--name cannot be used with --from-pr",
 		},
 		{
 			name:        "from-branch with branch name and with-change",
-			args:        []string{"lazyworktree", "wt-create", "--from-branch", "main", "--name", "feature-1", "--with-change"},
+			args:        []string{"lazyworktree", "create", "--from-branch", "main", "--name", "feature-1", "--with-change"},
 			expectError: false,
 		},
 		{
 			name:        "no arguments (would use current branch in real scenario)",
-			args:        []string{"lazyworktree", "wt-create"},
+			args:        []string{"lazyworktree", "create"},
 			expectError: false, // Validation won't error, runtime will check current branch
 		},
 		{
 			name:        "branch name only (current branch + explicit name)",
-			args:        []string{"lazyworktree", "wt-create", "--name", "my-feature"},
+			args:        []string{"lazyworktree", "create", "--name", "my-feature"},
 			expectError: false,
 		},
 		{
 			name:        "with-change only (current branch + changes)",
-			args:        []string{"lazyworktree", "wt-create", "--with-change"},
+			args:        []string{"lazyworktree", "create", "--with-change"},
 			expectError: false,
 		},
 		{
 			name:        "branch name and with-change (current branch + explicit name + changes)",
-			args:        []string{"lazyworktree", "wt-create", "--name", "my-feature", "--with-change"},
+			args:        []string{"lazyworktree", "create", "--name", "my-feature", "--with-change"},
 			expectError: false,
 		},
 		{
 			name:        "from-pr with with-change (invalid)",
-			args:        []string{"lazyworktree", "wt-create", "--from-pr", "123", "--with-change"},
+			args:        []string{"lazyworktree", "create", "--from-pr", "123", "--with-change"},
 			expectError: true,
 			errorMsg:    "--with-change cannot be used with --from-pr",
 		},
@@ -81,9 +81,9 @@ func TestHandleWtCreateValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a test app with just the wt-create command
+			// Create a test app with just the create command
 			// The validation is now part of the Action function
-			cmd := wtCreateCommand()
+			cmd := createCommand()
 
 			app := &urfavecli.Command{
 				Name:     "lazyworktree",
@@ -94,7 +94,7 @@ func TestHandleWtCreateValidation(t *testing.T) {
 			savedAction := cmd.Action
 			cmd.Action = func(ctx context.Context, c *urfavecli.Command) error {
 				// Run validation only
-				if err := validateWtCreateFlags(ctx, c); err != nil {
+				if err := validateCreateFlags(ctx, c); err != nil {
 					return err
 				}
 				return nil
@@ -115,7 +115,7 @@ func TestHandleWtCreateValidation(t *testing.T) {
 	}
 }
 
-func TestHandleWtDeleteFlags(t *testing.T) {
+func TestHandleDeleteFlags(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
@@ -125,32 +125,32 @@ func TestHandleWtDeleteFlags(t *testing.T) {
 	}{
 		{
 			name:     "default flags",
-			args:     []string{"lazyworktree", "wt-delete"},
+			args:     []string{"lazyworktree", "delete"},
 			noBranch: false,
 			silent:   false,
 		},
 		{
 			name:     "no-branch flag",
-			args:     []string{"lazyworktree", "wt-delete", "--no-branch"},
+			args:     []string{"lazyworktree", "delete", "--no-branch"},
 			noBranch: true,
 			silent:   false,
 		},
 		{
 			name:     "silent flag",
-			args:     []string{"lazyworktree", "wt-delete", "--silent"},
+			args:     []string{"lazyworktree", "delete", "--silent"},
 			noBranch: false,
 			silent:   true,
 		},
 		{
 			name:     "worktree path",
-			args:     []string{"lazyworktree", "wt-delete", "/path/to/worktree"},
+			args:     []string{"lazyworktree", "delete", "/path/to/worktree"},
 			noBranch: false,
 			silent:   false,
 			worktree: "/path/to/worktree",
 		},
 		{
 			name:     "all flags and path",
-			args:     []string{"lazyworktree", "wt-delete", "--no-branch", "--silent", "/path/to/worktree"},
+			args:     []string{"lazyworktree", "delete", "--no-branch", "--silent", "/path/to/worktree"},
 			noBranch: true,
 			silent:   true,
 			worktree: "/path/to/worktree",
@@ -159,9 +159,9 @@ func TestHandleWtDeleteFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a test app with just the wt-delete command
+			// Create a test app with just the delete command
 			// We override the Action to capture and check flag values
-			cmd := wtDeleteCommand()
+			cmd := deleteCommand()
 			var capturedNoBranch, capturedSilent bool
 			var capturedWorktree string
 

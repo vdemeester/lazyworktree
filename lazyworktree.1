@@ -102,8 +102,8 @@ Examples: \fB--config=lw.theme=nord\fR, \fB--config=lw.auto_fetch_prs=true\fR
 This has the highest precedence and overrides all other configuration sources.
 .
 .SH SUBCOMMANDS
-.SS wt\-create
-Create a new worktree without launching the TUI.
+.SS create
+Create a new worktree without launching the TUI. Legacy alias: \fBwt-create\fR.
 .
 .PP
 .B Options:
@@ -127,8 +127,8 @@ Carry over uncommitted changes to the new worktree. Works with current branch or
 .B \-\-silent
 Suppress all progress messages to stderr. Only the worktree path is written to stdout. Useful for scripting and automation.
 .
-.SS wt\-delete
-Delete a worktree without launching the TUI.
+.SS delete
+Delete a worktree without launching the TUI. Legacy alias: \fBwt-delete\fR.
 .
 .PP
 Auto-detects the current worktree from the working directory. If not in a worktree, shows a selection list. Automatically deletes the associated branch if the worktree directory name matches the branch name.
@@ -147,47 +147,47 @@ Suppress all progress messages to stderr. Useful for scripting and automation.
 .SS CLI Operations
 Create a worktree from current branch:
 .br
-.B lazyworktree wt\-create
+.B lazyworktree create
 .
 .PP
 Create from current branch with explicit name:
 .br
-.B lazyworktree wt\-create my\-feature
+.B lazyworktree create my\-feature
 .
 .PP
 Create from current branch with changes:
 .br
-.B lazyworktree wt\-create \-\-with\-change
+.B lazyworktree create \-\-with\-change
 .
 .PP
 Create from specific branch with explicit name:
 .br
-.B lazyworktree wt\-create \-\-from\-branch main my\-feature
+.B lazyworktree create \-\-from\-branch main my\-feature
 .
 .PP
 Create from specific branch with auto-generated name:
 .br
-.B lazyworktree wt\-create \-\-from\-branch feature/new\-feature
+.B lazyworktree create \-\-from\-branch feature/new\-feature
 .
 .PP
 Create from PR:
 .br
-.B lazyworktree wt\-create \-\-from\-pr 123
+.B lazyworktree create \-\-from\-pr 123
 .
 .PP
 Delete a worktree (and branch if name matches):
 .br
-.B lazyworktree wt\-delete
+.B lazyworktree delete
 .
 .PP
 Delete a worktree without deleting the branch:
 .br
-.B lazyworktree wt\-delete \-\-no\-branch
+.B lazyworktree delete \-\-no\-branch
 .
 .PP
 Create a worktree silently (for scripting):
 .br
-.B lazyworktree wt\-create \-\-from\-branch feature/new\-feature \-\-silent
+.B lazyworktree create \-\-from\-branch feature/new\-feature \-\-silent
 .
 .SS TUI Launch
 Launch the TUI (default):

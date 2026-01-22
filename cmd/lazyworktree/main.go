@@ -35,8 +35,8 @@ func main() {
 		Flags:                 globalFlags(),
 
 		Commands: []*cli.Command{
-			wtCreateCommand(),
-			wtDeleteCommand(),
+			createCommand(),
+			deleteCommand(),
 		},
 
 		Action: func(ctx context.Context, cmd *cli.Command) error {

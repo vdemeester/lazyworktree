@@ -121,7 +121,7 @@ See [./shell/README.md](./shell/README.md) for more detailed instructions.
 
 ## CLI Usage
 
-LazyWorktree supports command-line operations for creating and deleting worktrees without launching the TUI:
+LazyWorktree supports command-line operations for creating and deleting worktrees without launching the TUI. The legacy `wt-create` and `wt-delete` CLI names still work as aliases for the new `create` and `delete` subcommands.
 
 ### Creating Worktrees
 
@@ -129,46 +129,46 @@ LazyWorktree supports command-line operations for creating and deleting worktree
 
 ```bash
 # Auto-generated name from current branch
-lazyworktree wt-create
+lazyworktree create
 
 # Explicit name
-lazyworktree wt-create my-feature
+lazyworktree create my-feature
 
 # With uncommitted changes
-lazyworktree wt-create --with-change
+lazyworktree create --with-change
 
 # Explicit name + changes
-lazyworktree wt-create my-feature --with-change
+lazyworktree create my-feature --with-change
 ```
 
 **Create from a specific branch:**
 
 ```bash
 # Explicit name
-lazyworktree wt-create --from-branch main my-feature [--with-change] [--silent]
+lazyworktree create --from-branch main my-feature [--with-change] [--silent]
 
 # Auto-generated name (sanitised from source branch)
-lazyworktree wt-create --from-branch feature/new-feature [--with-change] [--silent]
+lazyworktree create --from-branch feature/new-feature [--with-change] [--silent]
 ```
 
 The worktree/branch name can be specified explicitly or auto-generated:
 
-* **Current branch + explicit name:** `lw wt-create my-feature`
-* **Specific branch + explicit name:** `lw wt-create --from-branch main my-feature`
-* **Current branch + auto-generated:** `lw wt-create` uses current branch name
-* **Specific branch + auto-generated:** `lw wt-create --from-branch feature/cool-thing` creates "feature-cool-thing"
+* **Current branch + explicit name:** `lw create my-feature`
+* **Specific branch + explicit name:** `lw create --from-branch main my-feature`
+* **Current branch + auto-generated:** `lw create` uses current branch name
+* **Specific branch + auto-generated:** `lw create --from-branch feature/cool-thing` creates "feature-cool-thing"
 * Names are automatically sanitised to lowercase alphanumeric characters with hyphens
 
 **Create from a PR:**
 
 ```bash
-lazyworktree wt-create --from-pr 123 [--silent]
+lazyworktree create --from-pr 123 [--silent]
 ```
 
 ### Deleting Worktrees
 
 ```bash
-lazyworktree wt-delete [--no-branch] [--silent]
+lazyworktree delete [--no-branch] [--silent]
 ```
 
 Deletes the worktree and associated branch (only if worktree name matches branch name). Use `--no-branch` to skip branch deletion.
