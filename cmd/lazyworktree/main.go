@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 
@@ -40,16 +41,36 @@ func main() {
 		},
 
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			// Handle completion when invoked as "lazyworktree -- --generate-shell-completion"
+			// (zsh completion script passes this when user types "lazyworktree --<TAB>")
+			if slices.Contains(os.Args, "--generate-shell-completion") {
+				outputAllFlags(cmd)
+				return nil
+			}
 			if cmd.Bool("show-syntax-themes") {
 				printSyntaxThemes()
-				os.Exit(0)
-			}
-			if cmd.Bool("generate-shell-completion") {
 				os.Exit(0)
 			}
 			return runTUI(ctx, cmd)
 		},
 		Suggest: true,
+		ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+			args := os.Args
+			argsLen := len(args)
+			lastArg := ""
+			if argsLen > 1 {
+				lastArg = args[argsLen-2]
+			}
+
+			// Handle the "--" case by treating it as a prefix for all flags
+			if lastArg == "--" {
+				outputAllFlags(cmd)
+				return
+			}
+
+			// Delegate to default handler for other cases
+			cli.DefaultCompleteWithFlags(ctx, cmd)
+		},
 	}
 
 	// Update theme flag with available themes list
@@ -267,4 +288,31 @@ func applyThemeConfig(cfg *config.AppConfig, themeName string) error {
 	}
 
 	return nil
+}
+
+// outputAllFlags prints all visible flags in completion format.
+// Used when handling "lazyworktree -- --generate-shell-completion".
+func outputAllFlags(cmd *cli.Command) {
+	for _, flag := range cmd.Flags {
+		if bf, ok := flag.(*cli.BoolFlag); ok && bf.Hidden {
+			continue
+		}
+		if sf, ok := flag.(*cli.StringFlag); ok && sf.Hidden {
+			continue
+		}
+		name := flag.Names()[0]
+		usage := ""
+		if df, ok := flag.(cli.DocGenerationFlag); ok {
+			usage = df.GetUsage()
+		}
+		prefix := "--"
+		if len(name) == 1 {
+			prefix = "-"
+		}
+		if usage != "" {
+			fmt.Printf("%s%s:%s\n", prefix, name, usage)
+		} else {
+			fmt.Printf("%s%s\n", prefix, name)
+		}
+	}
 }

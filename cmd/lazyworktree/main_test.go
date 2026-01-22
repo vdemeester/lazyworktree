@@ -9,6 +9,7 @@ import (
 
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/git"
+	urfavecli "github.com/urfave/cli/v3"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -46,7 +47,23 @@ func TestPrintSyntaxThemes(t *testing.T) {
 	}
 }
 
-// Completion is now handled by kong-completion subcommand, so these tests are no longer needed
+func TestOutputAllFlags(t *testing.T) {
+	out := captureStdout(t, func() {
+		// Create a mock command with flags
+		cmd := &urfavecli.Command{
+			Flags: globalFlags(),
+		}
+		outputAllFlags(cmd)
+	})
+
+	// Verify expected flags are present
+	expectedFlags := []string{"--worktree-dir", "--debug-log", "--theme", "--config"}
+	for _, flag := range expectedFlags {
+		if !strings.Contains(out, flag) {
+			t.Errorf("expected flag %q in output, got %q", flag, out)
+		}
+	}
+}
 
 func TestOutputSelectionWriteFile(t *testing.T) {
 	tmpDir := t.TempDir()

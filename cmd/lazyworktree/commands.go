@@ -5,11 +5,105 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/chmouel/lazyworktree/internal/cli"
 	"github.com/chmouel/lazyworktree/internal/log"
 	appiCli "github.com/urfave/cli/v3"
 )
+
+// handleSubcommandCompletion checks if completion is being requested and outputs flags.
+// Returns true if completion was handled, false otherwise.
+func handleSubcommandCompletion(cmd *appiCli.Command) bool {
+	if !slices.Contains(os.Args, "--generate-shell-completion") {
+		return false
+	}
+	outputSubcommandFlags(cmd)
+	return true
+}
+
+// outputSubcommandFlags prints all visible flags for a subcommand in completion format.
+func outputSubcommandFlags(cmd *appiCli.Command) {
+	for _, flag := range cmd.Flags {
+		if bf, ok := flag.(*appiCli.BoolFlag); ok && bf.Hidden {
+			continue
+		}
+		if sf, ok := flag.(*appiCli.StringFlag); ok && sf.Hidden {
+			continue
+		}
+		name := flag.Names()[0]
+		usage := ""
+		if df, ok := flag.(appiCli.DocGenerationFlag); ok {
+			usage = df.GetUsage()
+		}
+		prefix := "--"
+		if len(name) == 1 {
+			prefix = "-"
+		}
+		if usage != "" {
+			fmt.Printf("%s%s:%s\n", prefix, name, usage)
+		} else {
+			fmt.Printf("%s%s\n", prefix, name)
+		}
+	}
+}
+
+// subcommandShellComplete handles shell completion for subcommands.
+// It handles the "--" case by outputting all flags, and filters flags for partial matches.
+func subcommandShellComplete(_ context.Context, cmd *appiCli.Command) {
+	args := os.Args
+	argsLen := len(args)
+	lastArg := ""
+	if argsLen > 1 {
+		lastArg = args[argsLen-2]
+	}
+
+	// Handle the "--" case by outputting all flags
+	if lastArg == "--" {
+		outputSubcommandFlags(cmd)
+		return
+	}
+
+	// Handle partial flag matches (e.g., --n<TAB>)
+	if strings.HasPrefix(lastArg, "-") {
+		outputSubcommandFlagsFiltered(cmd, lastArg)
+		return
+	}
+
+	// Default: output all flags
+	outputSubcommandFlags(cmd)
+}
+
+// outputSubcommandFlagsFiltered prints flags matching the given prefix.
+func outputSubcommandFlagsFiltered(cmd *appiCli.Command, prefix string) {
+	for _, flag := range cmd.Flags {
+		if bf, ok := flag.(*appiCli.BoolFlag); ok && bf.Hidden {
+			continue
+		}
+		if sf, ok := flag.(*appiCli.StringFlag); ok && sf.Hidden {
+			continue
+		}
+		name := flag.Names()[0]
+		usage := ""
+		if df, ok := flag.(appiCli.DocGenerationFlag); ok {
+			usage = df.GetUsage()
+		}
+		flagPrefix := "--"
+		if len(name) == 1 {
+			flagPrefix = "-"
+		}
+		fullFlag := flagPrefix + name
+		if !strings.HasPrefix(fullFlag, prefix) {
+			continue
+		}
+		if usage != "" {
+			fmt.Printf("%s:%s\n", fullFlag, usage)
+		} else {
+			fmt.Printf("%s\n", fullFlag)
+		}
+	}
+}
 
 // createCommand returns the create subcommand definition.
 func createCommand() *appiCli.Command {
@@ -18,11 +112,15 @@ func createCommand() *appiCli.Command {
 		Aliases: []string{"wt-create"},
 		Usage:   "Create a new worktree",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
+			if handleSubcommandCompletion(cmd) {
+				return nil
+			}
 			if err := validateCreateFlags(ctx, cmd); err != nil {
 				return err
 			}
 			return handleCreateAction(ctx, cmd)
 		},
+		ShellComplete: subcommandShellComplete,
 		Flags: []appiCli.Flag{
 			&appiCli.StringFlag{
 				Name:  "from-branch",
@@ -54,7 +152,13 @@ func deleteCommand() *appiCli.Command {
 		Aliases:   []string{"wt-delete"},
 		Usage:     "Delete a worktree",
 		ArgsUsage: "[worktree-path]",
-		Action:    handleDeleteAction,
+		Action: func(ctx context.Context, cmd *appiCli.Command) error {
+			if handleSubcommandCompletion(cmd) {
+				return nil
+			}
+			return handleDeleteAction(ctx, cmd)
+		},
+		ShellComplete: subcommandShellComplete,
 		Flags: []appiCli.Flag{
 			&appiCli.BoolFlag{
 				Name:  "no-branch",
