@@ -5135,9 +5135,6 @@ func (m *Model) applyLogFilter(reset bool) {
 			sha = sha[:7]
 		}
 		msg := formatCommitMessage(entry.message)
-		if entry.isUnpushed {
-			msg = lipgloss.NewStyle().Foreground(m.theme.Accent).Render(msg)
-		}
 		initials := authorInitials(entry.authorInitials)
 		if entry.isUnpushed || entry.isUnmerged {
 			initials = aheadIndicator(m.config.ShowIcons)
