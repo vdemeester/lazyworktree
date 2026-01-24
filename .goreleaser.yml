@@ -54,6 +54,9 @@ homebrew_casks:
     directory: Casks
     homepage: "https://github.com/chmouel/lazyworktree"
     description: "lazyworktree - A TUI tool to manage git worktrees"
+    caveats: |
+      On first run, macOS may block the binary. To remove the quarantine attribute:
+        xattr -d com.apple.quarantine #{staged_path}/lazyworktree
     dependencies:
       - formula: git
       - formula: git-delta

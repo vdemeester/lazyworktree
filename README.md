@@ -81,6 +81,22 @@ brew tap chmouel/lazyworktree https://github.com/chmouel/lazyworktree
 brew install lazyworktree --cask
 ```
 
+#### macOS Gatekeeper
+
+macOS quarantines binaries downloaded from the internet. On first run you may
+see "Apple could not verify lazyworktree". To resolve this:
+
+**Option 1:** Allow via System Settings
+
+1. Open System Settings > Privacy & Security
+2. Click "Open Anyway" next to the lazyworktree warning
+
+**Option 2:** Remove the quarantine attribute
+
+```bash
+xattr -d com.apple.quarantine /opt/homebrew/bin/lazyworktree
+```
+
 ### [Arch](https://aur.archlinux.org/packages/lazyworktree-bin)
 
 ```shell
