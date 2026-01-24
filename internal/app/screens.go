@@ -64,6 +64,21 @@ var loadingTips = []string{
 	"Use 'r' to refresh the worktree list manually.",
 	"Press 's' to cycle sorting modes.",
 	"Use 'o' to open the related PR/MR in your browser.",
+	"Press 'R' to fetch all remotes.",
+	"Use 'S' to synchronise with upstream (pull then push).",
+	"Press 'P' to push to the upstream branch.",
+	"Use 'p' to fetch PR/MR status from GitHub or GitLab.",
+	"Press 'f' to filter the focused pane.",
+	"Use Tab to cycle to the next pane.",
+	"Press 'A' to absorb a worktree into main (merge + delete).",
+	"Use 'X' to prune merged worktrees automatically.",
+	"Press '!' to run an arbitrary command in the selected worktree.",
+	"Use 'm' to rename a worktree.",
+	"In the Status pane, press 'e' to open a file in your editor.",
+	"In the Status pane, press 's' to stage or unstage files.",
+	"In the Log pane, press 'C' to cherry-pick a commit to another worktree.",
+	"Press Enter on a worktree to jump there and cd into it.",
+	"Generate shell completions with: lazyworktree --completion <shell>.",
 }
 
 // ConfirmScreen displays a modal confirmation prompt with Accept/Cancel buttons.
