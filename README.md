@@ -206,7 +206,6 @@ Deletes the worktree and associated branch (only if worktree name matches branch
 | `!` | Run arbitrary command in selected worktree (with command history) |
 | `p` | Fetch PR/MR status (also refreshes CI checks) |
 | `v` | View CI check logs (select from available checks) |
-| `Ctrl+r` | Restart selected CI job and open in browser (GitHub Actions only, within CI check selection) |
 | `o` | Open PR/MR in browser |
 | `ctrl+p`, `:` | Command palette |
 | `g` | Open LazyGit |
@@ -271,6 +270,15 @@ are sorted alphabetically within each directory level.
 | `g` | Open LazyGit |
 | `ctrl+←`, `ctrl+→` | Jump to previous/next folder |
 | `/` | Search file/directory names (incremental) |
+
+CI Status Pane:
+
+When viewing CI check logs, the status pane shows available checks for the selected worktree's PR/MR.
+
+| Key | Action |
+|--- | --- |
+| `Ctrl+o` | Open selected CI job in browser (within CI check selection) |
+| `Ctrl+r` | Restart selected CI job (GitHub Actions only, within CI check selection) |
 
 **Filter Mode:**
 

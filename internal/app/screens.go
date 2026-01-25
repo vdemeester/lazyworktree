@@ -1181,7 +1181,8 @@ Supported: Letters (a-z, A-Z), numbers (0-9), and hyphens (-). See help for full
 - P: Push to upstream branch (current branch only, requires a clean worktree, prompts to set upstream when missing)
 - p: Fetch PR/MR status from GitHub/GitLab
 - v: View CI check logs (select from available checks)
-- Ctrl+r: Restart selected CI job and open in browser (GitHub Actions only, within CI check selection)
+- Ctrl+o: Open selected CI job in browser (within CI check selection)
+- Ctrl+r: Restart selected CI job (GitHub Actions only, within CI check selection)
 - s: Cycle sort (Path / Last Active / Last Switched)
 
 **{{HELP_BACKGROUND_REFRESH}}Background Refresh**

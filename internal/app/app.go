@@ -957,8 +957,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showInfo(fmt.Sprintf("Failed to restart CI: %v", msg.err), nil)
 			return m, nil
 		}
-		m.showInfo("CI job restarted. Opening in browser...", nil)
-		return m, m.openURLInBrowser(msg.runURL)
+		m.showInfo("CI job restarted successfully", nil)
+		return m, nil
 
 	}
 
@@ -2948,7 +2948,7 @@ func (m *Model) openCICheckSelection() tea.Cmd {
 		"",
 		m.theme,
 	)
-	m.listScreen.footerHint = "Ctrl+r to restart"
+	m.listScreen.footerHint = "Ctrl+o open • Ctrl+r restart"
 
 	// Store checks for later access in submit handler and Ctrl+R rerun
 	checks := cached.checks
@@ -3683,6 +3683,17 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.listSubmit = nil
 			m.listScreenCIChecks = nil
 			m.currentScreen = screenNone
+			return m, nil
+		}
+		// Ctrl+O: Open CI job URL in browser (only when viewing CI checks)
+		if keyStr == "ctrl+o" && m.listScreenCIChecks != nil {
+			if item, ok := m.listScreen.Selected(); ok {
+				var idx int
+				if _, err := fmt.Sscanf(item.id, "%d", &idx); err == nil && idx >= 0 && idx < len(m.listScreenCIChecks) {
+					check := m.listScreenCIChecks[idx]
+					return m, m.openURLInBrowser(check.Link)
+				}
+			}
 			return m, nil
 		}
 		// Ctrl+R: Restart CI job (only when viewing CI checks)
