@@ -220,7 +220,7 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 			yellowStyle := lipgloss.NewStyle().Foreground(m.theme.WarnFg)
 			grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
 
-			for _, check := range cached.checks {
+			for _, check := range sortCIChecks(cached.checks) {
 				var style lipgloss.Style
 				switch check.Conclusion {
 				case "success":

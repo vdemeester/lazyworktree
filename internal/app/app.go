@@ -2890,6 +2890,23 @@ func (m *Model) openPR() tea.Cmd {
 	return m.openURLInBrowser(prURL)
 }
 
+// sortCIChecks sorts CI checks so that GitHub Actions jobs appear first,
+// followed by non-GitHub Actions checks (e.g., Tekton, external status checks).
+func sortCIChecks(checks []*models.CICheck) []*models.CICheck {
+	sorted := make([]*models.CICheck, len(checks))
+	copy(sorted, checks)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		// GitHub Actions links contain "/actions/"
+		iIsGHA := strings.Contains(sorted[i].Link, "/actions/")
+		jIsGHA := strings.Contains(sorted[j].Link, "/actions/")
+		if iIsGHA != jIsGHA {
+			return iIsGHA // GitHub Actions first
+		}
+		return false // Preserve original order within each group
+	})
+	return sorted
+}
+
 // openCICheckSelection opens a selection screen for CI checks on the current worktree.
 func (m *Model) openCICheckSelection() tea.Cmd {
 	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
@@ -2951,7 +2968,7 @@ func (m *Model) openCICheckSelection() tea.Cmd {
 	m.listScreen.footerHint = "Ctrl+o open • Ctrl+r restart"
 
 	// Store checks for later access in submit handler and Ctrl+R rerun
-	checks := cached.checks
+	checks := sortCIChecks(cached.checks)
 	m.listScreenCIChecks = checks
 	m.listSubmit = func(item selectionItem) tea.Cmd {
 		// Keep the selection screen open - don't clear listScreen/listSubmit/currentScreen
