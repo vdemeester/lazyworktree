@@ -831,7 +831,7 @@ branch_name_script: |
 
 ### Light Theme (dracula-light theme)
 
-<img width="1754" height="1134" alt="image" src="https://github.com/user-attachments/assets/d3559158-18f3-4a46-b4d9-2a762b6adae1" />
+<img width="3730" height="2484" alt="image" src="https://github.com/user-attachments/assets/ab19a23a-852c-46c3-a6f4-a27d8519f89a" />
 
 ### Command Palette (dracula theme)
 
