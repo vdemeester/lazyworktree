@@ -202,6 +202,10 @@ type (
 	loadingProgressMsg struct {
 		message string
 	}
+	ciRerunResultMsg struct {
+		runURL string
+		err    error
+	}
 )
 
 type commitLogEntry struct {
@@ -318,6 +322,7 @@ type Model struct {
 	prSelectionSubmit         func(*models.PRInfo) tea.Cmd
 	listScreen                *ListSelectionScreen
 	listSubmit                func(selectionItem) tea.Cmd
+	listScreenCIChecks        []*models.CICheck // CI checks for the current list selection
 	checklistScreen           *ChecklistScreen
 	checklistSubmit           func([]ChecklistItem) tea.Cmd
 	spinner                   spinner.Model
@@ -940,6 +945,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		m.currentScreen = screenCommitFiles
 		return m, nil
+
+	case ciRerunResultMsg:
+		m.loading = false
+		m.loadingOperation = ""
+		if m.currentScreen == screenLoading {
+			m.currentScreen = screenListSelect
+			m.loadingScreen = nil
+		}
+		if msg.err != nil {
+			m.showInfo(fmt.Sprintf("Failed to restart CI: %v", msg.err), nil)
+			return m, nil
+		}
+		m.showInfo("CI job restarted. Opening in browser...", nil)
+		return m, m.openURLInBrowser(msg.runURL)
 
 	}
 
@@ -2929,9 +2948,11 @@ func (m *Model) openCICheckSelection() tea.Cmd {
 		"",
 		m.theme,
 	)
+	m.listScreen.footerHint = "Ctrl+r to restart"
 
-	// Store checks for later access in submit handler
+	// Store checks for later access in submit handler and Ctrl+R rerun
 	checks := cached.checks
+	m.listScreenCIChecks = checks
 	m.listSubmit = func(item selectionItem) tea.Cmd {
 		// Keep the selection screen open - don't clear listScreen/listSubmit/currentScreen
 		// This allows users to view multiple checks without reopening the selection
@@ -3051,6 +3072,109 @@ func extractRunIDFromLink(link string) string {
 	}
 
 	return ""
+}
+
+// extractJobIDFromLink extracts the job ID from a GitHub Actions URL.
+// Example URL: https://github.com/owner/repo/actions/runs/12345678/job/98765432 -> 98765432
+func extractJobIDFromLink(link string) string {
+	if link == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return ""
+	}
+
+	// Check if it's a GitHub Actions URL
+	if !strings.Contains(parsed.Host, "github.com") {
+		return ""
+	}
+
+	// Path should contain /job/<job_id>
+	parts := strings.Split(parsed.Path, "/")
+	for i, part := range parts {
+		if part == "job" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	return ""
+}
+
+// extractRepoFromLink extracts the owner/repo from a GitHub Actions URL.
+// Example URL: https://github.com/owner/repo/actions/runs/12345678 -> owner/repo
+func extractRepoFromLink(link string) string {
+	if link == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return ""
+	}
+
+	// Check if it's a GitHub URL
+	if !strings.Contains(parsed.Host, "github.com") {
+		return ""
+	}
+
+	// Path should be /owner/repo/...
+	parts := strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")
+	if len(parts) >= 2 {
+		return parts[0] + "/" + parts[1]
+	}
+
+	return ""
+}
+
+// rerunCICheck restarts a CI job and returns the run URL.
+func (m *Model) rerunCICheck(check *models.CICheck) tea.Cmd {
+	if m.selectedIndex < 0 || m.selectedIndex >= len(m.filteredWts) {
+		return nil
+	}
+	wt := m.filteredWts[m.selectedIndex]
+
+	// Extract run ID and job ID from the check link
+	runID := extractRunIDFromLink(check.Link)
+	if runID == "" {
+		m.showInfo("Cannot restart: not a GitHub Actions job.", nil)
+		return nil
+	}
+
+	jobID := extractJobIDFromLink(check.Link)
+	repo := extractRepoFromLink(check.Link)
+	if repo == "" {
+		m.showInfo("Cannot restart: unable to determine repository from link.", nil)
+		return nil
+	}
+
+	// Show loading screen
+	m.loading = true
+	m.loadingOperation = "rerun"
+	m.loadingScreen = NewLoadingScreen("Restarting CI job...", m.theme, m.config.IconsEnabled())
+	m.currentScreen = screenLoading
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		defer cancel()
+
+		// Build the gh run rerun command
+		args := []string{"run", "rerun", runID}
+		if jobID != "" {
+			args = append(args, "--job", jobID)
+		}
+		args = append(args, "-R", repo)
+
+		// gh run rerun produces no stdout on success, so we can't check output.
+		// RunGit with silent=false sends a notification on failure.
+		m.git.RunGit(ctx, append([]string{"gh"}, args...), wt.Path, []int{0}, true, false)
+
+		// Construct the run URL
+		runURL := fmt.Sprintf("https://github.com/%s/actions/runs/%s", repo, runID)
+
+		return ciRerunResultMsg{runURL: runURL}
+	}
 }
 
 func (m *Model) showCherryPick() tea.Cmd {
@@ -3557,7 +3681,22 @@ func (m *Model) handleScreenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.listScreen = nil
 			m.listSubmit = nil
+			m.listScreenCIChecks = nil
 			m.currentScreen = screenNone
+			return m, nil
+		}
+		// Ctrl+R: Restart CI job (only when viewing CI checks)
+		if keyStr == "ctrl+r" && m.listScreenCIChecks != nil {
+			if item, ok := m.listScreen.Selected(); ok {
+				var idx int
+				if _, err := fmt.Sscanf(item.id, "%d", &idx); err == nil && idx >= 0 && idx < len(m.listScreenCIChecks) {
+					check := m.listScreenCIChecks[idx]
+					cmd := m.rerunCICheck(check)
+					if cmd != nil {
+						return m, cmd
+					}
+				}
+			}
 			return m, nil
 		}
 		if keyStr == keyEnter {

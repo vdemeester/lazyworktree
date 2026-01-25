@@ -205,6 +205,8 @@ Deletes the worktree and associated branch (only if worktree name matches branch
 | `X` | Prune merged worktrees (refreshes PR data, checks merge status) |
 | `!` | Run arbitrary command in selected worktree (with command history) |
 | `p` | Fetch PR/MR status (also refreshes CI checks) |
+| `v` | View CI check logs (select from available checks) |
+| `Ctrl+r` | Restart selected CI job and open in browser (GitHub Actions only, within CI check selection) |
 | `o` | Open PR/MR in browser |
 | `ctrl+p`, `:` | Command palette |
 | `g` | Open LazyGit |

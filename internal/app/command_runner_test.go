@@ -781,3 +781,151 @@ func TestCICheckSelectionColouredIcons(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractJobIDFromLink(t *testing.T) {
+	tests := []struct {
+		name     string
+		link     string
+		expected string
+	}{
+		{
+			name:     "GitHub Actions URL with job",
+			link:     "https://github.com/owner/repo/actions/runs/12345678/job/98765432",
+			expected: "98765432",
+		},
+		{
+			name:     "GitHub Actions URL without job",
+			link:     "https://github.com/owner/repo/actions/runs/12345678",
+			expected: "",
+		},
+		{
+			name:     "External CI URL",
+			link:     "https://console.tekton.dev/pipelines/runs/12345",
+			expected: "",
+		},
+		{
+			name:     "Empty link",
+			link:     "",
+			expected: "",
+		},
+		{
+			name:     "Invalid URL",
+			link:     "not-a-url",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractJobIDFromLink(tt.link)
+			if result != tt.expected {
+				t.Errorf("extractJobIDFromLink(%q) = %q, want %q", tt.link, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractRepoFromLink(t *testing.T) {
+	tests := []struct {
+		name     string
+		link     string
+		expected string
+	}{
+		{
+			name:     "GitHub Actions URL",
+			link:     "https://github.com/owner/repo/actions/runs/12345678/job/98765432",
+			expected: "owner/repo",
+		},
+		{
+			name:     "GitHub repo URL",
+			link:     "https://github.com/myorg/myrepo",
+			expected: "myorg/myrepo",
+		},
+		{
+			name:     "External CI URL",
+			link:     "https://console.tekton.dev/pipelines/runs/12345",
+			expected: "",
+		},
+		{
+			name:     "Empty link",
+			link:     "",
+			expected: "",
+		},
+		{
+			name:     "Invalid URL",
+			link:     "not-a-url",
+			expected: "",
+		},
+		{
+			name:     "GitHub URL with only owner",
+			link:     "https://github.com/owner",
+			expected: "",
+		},
+		{
+			name:     "GitHub URL with trailing slash",
+			link:     "https://github.com/owner/repo/",
+			expected: "owner/repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractRepoFromLink(tt.link)
+			if result != tt.expected {
+				t.Errorf("extractRepoFromLink(%q) = %q, want %q", tt.link, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestOpenCICheckSelectionStoresChecks(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.filteredWts = []*models.WorktreeInfo{
+		{Path: testWorktreePath, Branch: "feat"},
+	}
+	m.selectedIndex = 0
+	m.setWindowSize(120, 40)
+
+	checks := []*models.CICheck{
+		{Name: "build", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/123/job/456"},
+		{Name: "test", Conclusion: "failure", Link: "https://github.com/owner/repo/actions/runs/123/job/789"},
+	}
+	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+
+	m.openCICheckSelection()
+
+	// Verify listScreenCIChecks is set
+	if m.listScreenCIChecks == nil {
+		t.Fatal("expected listScreenCIChecks to be set")
+	}
+	if len(m.listScreenCIChecks) != 2 {
+		t.Fatalf("expected 2 checks, got %d", len(m.listScreenCIChecks))
+	}
+	if m.listScreenCIChecks[0].Name != "build" {
+		t.Errorf("expected first check to be 'build', got %q", m.listScreenCIChecks[0].Name)
+	}
+}
+
+func TestClearListSelectionClearsCIChecks(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.listScreenCIChecks = []*models.CICheck{
+		{Name: "build"},
+	}
+	m.listScreen = &ListSelectionScreen{}
+	m.currentScreen = screenListSelect
+
+	m.clearListSelection()
+
+	if m.listScreenCIChecks != nil {
+		t.Error("expected listScreenCIChecks to be nil after clearListSelection")
+	}
+	if m.listScreen != nil {
+		t.Error("expected listScreen to be nil after clearListSelection")
+	}
+}

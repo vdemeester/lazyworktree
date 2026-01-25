@@ -556,6 +556,7 @@ func (m *Model) createWorktreeFromBase(newBranch, targetPath, baseRef string) te
 func (m *Model) clearListSelection() {
 	m.listScreen = nil
 	m.listSubmit = nil
+	m.listScreenCIChecks = nil
 	if m.currentScreen == screenListSelect {
 		m.currentScreen = screenNone
 	}
