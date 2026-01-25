@@ -25,6 +25,7 @@ _See other [Screenshots below](#screenshots)_
   * Checkout existing branch: Associate a worktree with an existing local branch, or create a new branch based on it.
   * From issue: Create from a GitHub/GitLab issue with automatic branch naming.
   * From PR or MR: Create from an open GitHub/GitLab pull or merge request.
+* Show CI logs from GitHub Actions.
 * Show linked GitHub PR or Gitlab MR, CI status, and checks.
 * Stage, unstage, commit, edit, and diff files interactively.
 * View diffs in a pager, with optional delta integration.
@@ -439,7 +440,7 @@ ci_script_pager: |
   s/.*[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:[0-9]{2}:[0-9]{2})\.[0-9]+Z[[:space:]]*/\1 /;
   t;
   s/.*UNKNOWN STEP[[:space:]]+//' | \
-  tee /tmp/.ci.${LW_CI_JOB_NAME_CLEAN}-${LW_CI_STARTED_AT}.md |
+   tee /tmp/.ci.${LW_CI_JOB_NAME_CLEAN}-${LW_CI_STARTED_AT}.md |
   less --use-color -q --wordwrap -qcR -P 'Press q to exit..'
 ```
 
