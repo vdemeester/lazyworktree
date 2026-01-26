@@ -613,14 +613,22 @@ func (m *Model) handleNavigationDown(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case 1:
 		// Check if we're navigating CI checks
 		ciChecks, hasCIChecks := m.getCIChecksForCurrentWorktree()
+		wasReset := false
 		// Reset if CI checks are no longer available or index is out of bounds
 		if !hasCIChecks || (hasCIChecks && m.ciCheckIndex >= len(ciChecks)) {
 			if m.ciCheckIndex >= 0 {
 				m.ciCheckIndex = -1
 				m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
+				wasReset = true
 			}
 		}
-		if hasCIChecks && m.ciCheckIndex >= 0 {
+
+		switch {
+		case len(m.statusTreeFlat) == 0 && hasCIChecks && m.ciCheckIndex == -1 && !wasReset:
+			// No commit changes but CI checks are available, navigate to first CI check
+			m.ciCheckIndex = 0
+			m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
+		case hasCIChecks && m.ciCheckIndex >= 0:
 			// Navigate CI checks
 			if m.ciCheckIndex < len(ciChecks)-1 {
 				m.ciCheckIndex++
@@ -634,7 +642,7 @@ func (m *Model) handleNavigationDown(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.rebuildStatusContentWithHighlight()
 				}
 			}
-		} else {
+		default:
 			// Navigate through status tree items
 			if len(m.statusTreeFlat) > 0 {
 				if m.statusTreeIndex < len(m.statusTreeFlat)-1 {
@@ -664,11 +672,13 @@ func (m *Model) handleNavigationUp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case 1:
 		// Check if we're navigating CI checks
 		ciChecks, hasCIChecks := m.getCIChecksForCurrentWorktree()
+		wasReset := false
 		// Reset if CI checks are no longer available or index is out of bounds
 		if !hasCIChecks || (hasCIChecks && m.ciCheckIndex >= len(ciChecks)) {
 			if m.ciCheckIndex >= 0 {
 				m.ciCheckIndex = -1
 				m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
+				wasReset = true
 			}
 		}
 		switch {
@@ -678,6 +688,10 @@ func (m *Model) handleNavigationUp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.ciCheckIndex--
 				m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
 			}
+		case hasCIChecks && m.ciCheckIndex == -1 && len(m.statusTreeFlat) == 0 && !wasReset:
+			// No commit changes but CI checks available, wrap to last CI check
+			m.ciCheckIndex = len(ciChecks) - 1
+			m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
 		case hasCIChecks && m.ciCheckIndex == -1 && m.statusTreeIndex == 0:
 			// At top of file tree, wrap to last CI check
 			m.ciCheckIndex = len(ciChecks) - 1
