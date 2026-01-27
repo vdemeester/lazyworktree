@@ -1131,6 +1131,12 @@ func (m *Model) startFilter(target filterTarget) tea.Cmd {
 }
 
 func (m *Model) updateTable() {
+	// Save currently selected worktree's path to preserve selection across re-sorts
+	var selectedPath string
+	if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
+		selectedPath = m.filteredWts[m.selectedIndex].Path
+	}
+
 	// Filter worktrees
 	query := strings.ToLower(strings.TrimSpace(m.filterQuery))
 	m.filteredWts = []*models.WorktreeInfo{}
@@ -1224,16 +1230,26 @@ func (m *Model) updateTable() {
 	}
 
 	m.worktreeTable.SetRows(rows)
-	if len(m.filteredWts) > 0 && m.selectedIndex >= len(m.filteredWts) {
-		m.selectedIndex = len(m.filteredWts) - 1
-	}
+
+	// Restore selection by path to preserve selection across re-sorts
 	if len(m.filteredWts) > 0 {
-		cursor := max(m.worktreeTable.Cursor(), 0)
-		if cursor >= len(m.filteredWts) {
-			cursor = len(m.filteredWts) - 1
+		newIndex := 0
+		if selectedPath != "" {
+			for i, wt := range m.filteredWts {
+				if wt.Path == selectedPath {
+					newIndex = i
+					break
+				}
+			}
 		}
-		m.selectedIndex = cursor
-		m.worktreeTable.SetCursor(cursor)
+		// Clamp to valid range
+		if newIndex >= len(m.filteredWts) {
+			newIndex = len(m.filteredWts) - 1
+		}
+		m.selectedIndex = newIndex
+		m.worktreeTable.SetCursor(newIndex)
+	} else {
+		m.selectedIndex = 0
 	}
 	m.updateWorktreeArrows()
 }

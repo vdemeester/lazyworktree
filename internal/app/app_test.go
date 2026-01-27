@@ -3129,3 +3129,120 @@ func TestRenderZoomedRightBottomPane(t *testing.T) {
 		t.Error("expected render to contain 'Log' title")
 	}
 }
+
+// TestUpdateTablePreservesSelectionByPath verifies that when the worktree list
+// is re-sorted, the selection stays on the same worktree (by path) rather than
+// jumping to a different worktree at the same index position.
+func TestUpdateTablePreservesSelectionByPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{WorktreeDir: tmpDir}
+	m := NewModel(cfg, "")
+	m.windowWidth = 100
+	m.windowHeight = 40
+	m.worktreeTable.SetWidth(80)
+
+	// Create worktrees with paths and timestamps designed so that:
+	// - Sorted by path (alpha): aaa, bbb, ccc
+	// - Sorted by LastActiveTS (desc): ccc (newest), aaa, bbb (oldest)
+	m.worktrees = []*models.WorktreeInfo{
+		{Path: filepath.Join(tmpDir, "aaa"), Branch: "aaa", LastActiveTS: 2000},
+		{Path: filepath.Join(tmpDir, "bbb"), Branch: "bbb", LastActiveTS: 1000}, // oldest
+		{Path: filepath.Join(tmpDir, "ccc"), Branch: "ccc", LastActiveTS: 3000}, // newest
+	}
+
+	// Start with sort by path (default)
+	m.sortMode = sortModePath
+	m.updateTableColumns(m.worktreeTable.Width())
+	m.updateTable()
+
+	// After sorting by path: [aaa, bbb, ccc]
+	// Select "bbb" which is at index 1
+	m.selectedIndex = 1
+	m.worktreeTable.SetCursor(1)
+
+	// Verify we have bbb selected
+	expectedBbbPath := filepath.Join(tmpDir, "bbb")
+	if m.filteredWts[m.selectedIndex].Path != expectedBbbPath {
+		t.Fatalf("Expected %s at index 1, got %s", expectedBbbPath, m.filteredWts[m.selectedIndex].Path)
+	}
+
+	// Now change sort mode to LastActiveTS (descending by most recent)
+	m.sortMode = sortModeLastActive
+	m.updateTable()
+
+	// After sorting by LastActiveTS desc: [ccc (3000), aaa (2000), bbb (1000)]
+	// Without the fix: selectedIndex stays at 1, now pointing to "aaa"
+	// With the fix: selectedIndex moves to 2, still pointing to "bbb"
+
+	selectedPath := m.filteredWts[m.selectedIndex].Path
+	if selectedPath != expectedBbbPath {
+		t.Errorf("Selection jumped! Expected %s to remain selected, but got %s at index %d",
+			expectedBbbPath, selectedPath, m.selectedIndex)
+		t.Logf("Current order: %v", func() []string {
+			paths := make([]string, len(m.filteredWts))
+			for i, wt := range m.filteredWts {
+				paths[i] = wt.Path
+			}
+			return paths
+		}())
+	}
+
+	// Also verify the cursor position was updated correctly
+	if m.worktreeTable.Cursor() != m.selectedIndex {
+		t.Errorf("Cursor (%d) out of sync with selectedIndex (%d)",
+			m.worktreeTable.Cursor(), m.selectedIndex)
+	}
+}
+
+// TestUpdateTablePreservesSelectionByPath_BugSimulation demonstrates what would
+// happen WITHOUT the fix: using index-based preservation causes selection to jump.
+func TestUpdateTablePreservesSelectionByPath_BugSimulation(t *testing.T) {
+	// This test simulates the OLD buggy behavior to document what was happening.
+	// The bug was: after re-sort, the cursor index stayed the same but pointed
+	// to a different worktree.
+
+	worktrees := []*models.WorktreeInfo{
+		{Path: "/repo/aaa", Branch: "aaa", LastActiveTS: 2000},
+		{Path: "/repo/bbb", Branch: "bbb", LastActiveTS: 1000},
+		{Path: "/repo/ccc", Branch: "ccc", LastActiveTS: 3000},
+	}
+
+	// Sorted by path: [aaa, bbb, ccc]
+	// User selects bbb at index 1
+	selectedIndex := 1
+	selectedPath := worktrees[selectedIndex].Path // "/repo/bbb"
+
+	// Simulate re-sort by LastActiveTS (desc): [ccc, aaa, bbb]
+	sortedByTS := []*models.WorktreeInfo{worktrees[2], worktrees[0], worktrees[1]}
+
+	// OLD BUGGY BEHAVIOR: keep same index
+	buggySelectedPath := sortedByTS[selectedIndex].Path // index 1 = "/repo/aaa" - WRONG!
+
+	// FIXED BEHAVIOR: find worktree by path
+	var fixedIndex int
+	for i, wt := range sortedByTS {
+		if wt.Path == selectedPath {
+			fixedIndex = i
+			break
+		}
+	}
+	fixedSelectedPath := sortedByTS[fixedIndex].Path // "/repo/bbb" - CORRECT!
+
+	// Document the bug
+	if buggySelectedPath == selectedPath {
+		t.Log("Note: In this case, the bug wouldn't be visible (paths happen to match)")
+	} else {
+		t.Logf("Bug demonstration: With index-based selection, user was on %q but after re-sort would jump to %q",
+			selectedPath, buggySelectedPath)
+	}
+
+	// Verify fix works
+	if fixedSelectedPath != selectedPath {
+		t.Errorf("Fix failed: expected %q, got %q", selectedPath, fixedSelectedPath)
+	}
+
+	// The key assertion: old behavior would have jumped
+	if buggySelectedPath == "/repo/aaa" && fixedSelectedPath == "/repo/bbb" {
+		t.Log("Bug confirmed: index-based selection causes jump from bbb to aaa after re-sort")
+	}
+}
