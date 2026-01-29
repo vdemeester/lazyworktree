@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
@@ -79,8 +81,7 @@ func (m *Model) beginPush(wt *models.WorktreeInfo, args []string) tea.Cmd {
 	m.loading = true
 	m.loadingOperation = "push"
 	m.statusContent = "Pushing to upstream..."
-	m.loadingScreen = NewLoadingScreen("Pushing to upstream...", m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen("Pushing to upstream...")
 	return m.runPush(wt, args)
 }
 
@@ -89,8 +90,7 @@ func (m *Model) beginSync(wt *models.WorktreeInfo, pullArgs, pushArgs []string) 
 	m.loading = true
 	m.loadingOperation = "sync"
 	m.statusContent = "Synchronising with upstream..."
-	m.loadingScreen = NewLoadingScreen("Synchronising with upstream...", m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen("Synchronising with upstream...")
 	return m.runSync(wt, pullArgs, pushArgs)
 }
 
@@ -101,7 +101,7 @@ func (m *Model) isBehindBase(wt *models.WorktreeInfo) bool {
 	}
 	// Check if current branch is behind the base branch
 	// Use git merge-base to find common ancestor, then check if we're behind
-	mergeBase := m.git.RunGit(m.ctx, []string{
+	mergeBase := m.services.git.RunGit(m.ctx, []string{
 		"git", "merge-base", "HEAD", wt.PR.BaseBranch,
 	}, wt.Path, []int{0, 1}, true, false)
 
@@ -110,7 +110,7 @@ func (m *Model) isBehindBase(wt *models.WorktreeInfo) bool {
 	}
 
 	// Check if there are commits in base that aren't in HEAD
-	behindCount := m.git.RunGit(m.ctx, []string{
+	behindCount := m.services.git.RunGit(m.ctx, []string{
 		"git", "rev-list", "--count", fmt.Sprintf("HEAD..%s", wt.PR.BaseBranch),
 	}, wt.Path, []int{0}, true, false)
 
@@ -123,17 +123,16 @@ func (m *Model) showSyncChoice(wt *models.WorktreeInfo) tea.Cmd {
 	// Store the worktree for later use in confirm/cancel handlers
 	savedWt := wt
 
-	m.confirmScreen = NewConfirmScreen(
+	confirmScreen := appscreen.NewConfirmScreen(
 		fmt.Sprintf("Branch behind %s\n\nUpdate from base branch?\n(This will merge/rebase latest %s into your branch.\nChoose 'No' for normal sync: pull + push)",
 			wt.PR.BaseBranch, wt.PR.BaseBranch),
 		m.theme,
 	)
-	m.confirmAction = func() tea.Cmd {
+	confirmScreen.OnConfirm = func() tea.Cmd {
 		// User chose YES: update from base
 		return m.updateFromBase(savedWt)
 	}
-	// Store cancel action for normal sync
-	m.confirmCancel = func() tea.Cmd {
+	confirmScreen.OnCancel = func() tea.Cmd {
 		// User chose NO: do normal sync (pull + push)
 		if savedWt.HasUpstream {
 			remote, branch, ok := m.validatedUpstream(savedWt, "synchronise")
@@ -146,7 +145,7 @@ func (m *Model) showSyncChoice(wt *models.WorktreeInfo) tea.Cmd {
 			return m.beginSync(savedWt, []string{remote, branch}, []string{"-u", remote, fmt.Sprintf("HEAD:%s", branch)})
 		})
 	}
-	m.currentScreen = screenConfirm
+	m.ui.screenManager.Push(confirmScreen)
 	return nil
 }
 
@@ -155,8 +154,7 @@ func (m *Model) updateFromBase(wt *models.WorktreeInfo) tea.Cmd {
 	m.loading = true
 	m.loadingOperation = "sync"
 	m.statusContent = fmt.Sprintf("Updating from %s...", wt.PR.BaseBranch)
-	m.loadingScreen = NewLoadingScreen(fmt.Sprintf("Updating from %s...", wt.PR.BaseBranch), m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen(fmt.Sprintf("Updating from %s...", wt.PR.BaseBranch))
 
 	// Use gh pr update-branch with --rebase if merge_method is rebase
 	args := []string{"gh", "pr", "update-branch"}
@@ -171,7 +169,7 @@ func (m *Model) updateFromBase(wt *models.WorktreeInfo) tea.Cmd {
 	// Clear cache so status pane refreshes
 	m.deleteDetailsCache(wt.Path)
 
-	cmd := m.commandRunner(args[0], args[1:]...)
+	cmd := m.commandRunner(m.ctx, args[0], args[1:]...)
 	cmd.Dir = wt.Path
 
 	return func() tea.Msg {
@@ -188,21 +186,28 @@ func (m *Model) updateFromBase(wt *models.WorktreeInfo) tea.Cmd {
 func (m *Model) showUpstreamInput(wt *models.WorktreeInfo, onSubmit func(remote, branch string) tea.Cmd) tea.Cmd {
 	defaultUpstream := fmt.Sprintf("origin/%s", wt.Branch)
 	prompt := fmt.Sprintf("Set upstream for '%s' (remote/branch)", wt.Branch)
-	m.inputScreen = NewInputScreen(prompt, defaultUpstream, defaultUpstream, m.theme, m.config.IconsEnabled())
-	m.inputSubmit = func(value string, checked bool) (tea.Cmd, bool) {
+
+	inputScr := appscreen.NewInputScreen(prompt, defaultUpstream, defaultUpstream, m.theme, m.config.IconsEnabled())
+
+	inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 		remote, branch, ok := parseUpstreamRef(value)
 		if !ok {
-			m.inputScreen.errorMsg = "Please provide upstream as remote/branch."
-			return nil, false
+			inputScr.ErrorMsg = "Please provide upstream as remote/branch."
+			return nil
 		}
 		if branch != wt.Branch {
-			m.inputScreen.errorMsg = fmt.Sprintf("Upstream branch must match %q.", wt.Branch)
-			return nil, false
+			inputScr.ErrorMsg = fmt.Sprintf("Upstream branch must match %q.", wt.Branch)
+			return nil
 		}
-		m.inputScreen.errorMsg = ""
-		return onSubmit(remote, branch), true
+		inputScr.ErrorMsg = ""
+		return onSubmit(remote, branch)
 	}
-	m.currentScreen = screenInput
+
+	inputScr.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(inputScr)
 	return textinput.Blink
 }
 
@@ -266,7 +271,7 @@ func (m *Model) runPush(wt *models.WorktreeInfo, args []string) tea.Cmd {
 	m.deleteDetailsCache(wt.Path)
 
 	cmdArgs := append([]string{"push"}, args...)
-	c := m.commandRunner("git", cmdArgs...)
+	c := m.commandRunner(m.ctx, "git", cmdArgs...)
 	c.Dir = wt.Path
 	c.Env = envVars
 
@@ -291,7 +296,7 @@ func (m *Model) runSync(wt *models.WorktreeInfo, pullArgs, pushArgs []string) te
 	m.deleteDetailsCache(wt.Path)
 
 	pullCmdArgs := append([]string{"pull"}, m.syncPullArgs(pullArgs)...)
-	pullCmd := m.commandRunner("git", pullCmdArgs...)
+	pullCmd := m.commandRunner(m.ctx, "git", pullCmdArgs...)
 	pullCmd.Dir = wt.Path
 	pullCmd.Env = envVars
 
@@ -307,7 +312,7 @@ func (m *Model) runSync(wt *models.WorktreeInfo, pullArgs, pushArgs []string) te
 		}
 
 		pushCmdArgs := append([]string{"push"}, pushArgs...)
-		pushCmd := m.commandRunner("git", pushCmdArgs...)
+		pushCmd := m.commandRunner(m.ctx, "git", pushCmdArgs...)
 		pushCmd.Dir = wt.Path
 		pushCmd.Env = envVars
 

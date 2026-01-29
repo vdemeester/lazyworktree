@@ -614,41 +614,6 @@ func behindIndicator(showIcons bool) string {
 	return "↓"
 }
 
-func arrowUp(showIcons bool) string {
-	if !showIcons {
-		return "Up"
-	}
-	return uiIcon(UIIconAhead)
-}
-
-func arrowDown(showIcons bool) string {
-	if !showIcons {
-		return "Down"
-	}
-	return uiIcon(UIIconBehind)
-}
-
-func arrowLeft(showIcons bool) string {
-	if !showIcons {
-		return "Left"
-	}
-	return uiIcon(UIIconArrowLeft)
-}
-
-func arrowRight(showIcons bool) string {
-	if !showIcons {
-		return "Right"
-	}
-	return uiIcon(UIIconArrowRight)
-}
-
-func arrowPair(showIcons bool) string {
-	if !showIcons {
-		return "Up/Down"
-	}
-	return arrowUp(true) + arrowDown(true)
-}
-
 func disclosureIndicator(collapsed, showIcons bool) string {
 	if !showIcons {
 		if collapsed {

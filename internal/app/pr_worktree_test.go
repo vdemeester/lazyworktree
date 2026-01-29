@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -18,8 +19,7 @@ func TestCreateFromPRResultMsgSuccess(t *testing.T) {
 	m := NewModel(cfg, "")
 	m.setWindowSize(120, 40)
 	m.loading = true
-	m.currentScreen = screenLoading
-	m.loadingScreen = NewLoadingScreen("Creating worktree...", m.theme, m.config.IconsEnabled())
+	m.setLoadingScreen("Creating worktree...")
 
 	targetPath := filepath.Join(cfg.WorktreeDir, "pr-123")
 	msg := createFromPRResultMsg{
@@ -35,11 +35,8 @@ func TestCreateFromPRResultMsgSuccess(t *testing.T) {
 	if m.loading {
 		t.Error("Expected loading to be false after successful creation")
 	}
-	if m.currentScreen == screenLoading {
-		t.Error("Expected currentScreen to change from screenLoading")
-	}
-	if m.loadingScreen != nil {
-		t.Error("Expected loadingScreen to be cleared")
+	if m.ui.screenManager.Type() == appscreen.TypeLoading {
+		t.Error("Expected loading screen to be cleared")
 	}
 
 	// Should return command to run init commands and refresh worktrees
@@ -62,8 +59,7 @@ func TestCreateFromPRResultMsgError(t *testing.T) {
 	m := NewModel(cfg, "")
 	m.setWindowSize(120, 40)
 	m.loading = true
-	m.currentScreen = screenLoading
-	m.loadingScreen = NewLoadingScreen("Creating worktree...", m.theme, m.config.IconsEnabled())
+	m.setLoadingScreen("Creating worktree...")
 	m.pendingSelectWorktreePath = "/some/path"
 
 	msg := createFromPRResultMsg{
@@ -79,8 +75,8 @@ func TestCreateFromPRResultMsgError(t *testing.T) {
 	if m.loading {
 		t.Error("Expected loading to be false after error")
 	}
-	if m.currentScreen == screenLoading {
-		t.Error("Expected currentScreen to change from screenLoading")
+	if m.ui.screenManager.Type() == appscreen.TypeLoading {
+		t.Error("Expected loading screen to be cleared")
 	}
 
 	// Should clear pending selection on error
@@ -94,17 +90,15 @@ func TestCreateFromPRResultMsgError(t *testing.T) {
 	}
 
 	// Should show info screen with error message
-	if m.currentScreen != screenInfo {
-		t.Fatalf("Expected screenInfo to be shown, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("Expected info screen to be shown, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil {
-		t.Fatal("Expected infoScreen to be set")
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Failed to create worktree from PR/MR #456") {
+		t.Errorf("Expected error message about PR #456, got %q", infoScr.Message)
 	}
-	if !strings.Contains(m.infoScreen.message, "Failed to create worktree from PR/MR #456") {
-		t.Errorf("Expected error message about PR #456, got %q", m.infoScreen.message)
-	}
-	if !strings.Contains(m.infoScreen.message, "failed to checkout branch") {
-		t.Errorf("Expected error details in message, got %q", m.infoScreen.message)
+	if !strings.Contains(infoScr.Message, "failed to checkout branch") {
+		t.Errorf("Expected error details in message, got %q", infoScr.Message)
 	}
 }
 
@@ -139,11 +133,11 @@ func TestHandleWorktreesLoadedSelectsPendingPath(t *testing.T) {
 	// Should have selected the pending worktree
 	// Since we record access for pending worktrees (newly created), it will be sorted to top (index 0)
 	// when using the default sortModeLastSwitched
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 (pr-789 sorted to top), got %d", m.selectedIndex)
+	if m.data.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to be 0 (pr-789 sorted to top), got %d", m.data.selectedIndex)
 	}
-	if m.worktreeTable.Cursor() != 0 {
-		t.Errorf("Expected table cursor to be 0, got %d", m.worktreeTable.Cursor())
+	if m.ui.worktreeTable.Cursor() != 0 {
+		t.Errorf("Expected table cursor to be 0, got %d", m.ui.worktreeTable.Cursor())
 	}
 
 	// Should clear pending selection after applying it
@@ -184,8 +178,8 @@ func TestHandleWorktreesLoadedPendingPathNotFound(t *testing.T) {
 	}
 
 	// Selection should remain at initial position (0)
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to remain 0, got %d", m.selectedIndex)
+	if m.data.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to remain 0, got %d", m.data.selectedIndex)
 	}
 }
 
@@ -196,7 +190,7 @@ func TestHandleWorktreesLoadedNoPendingPath(t *testing.T) {
 	}
 	m := NewModel(cfg, "")
 	m.setWindowSize(120, 40)
-	m.selectedIndex = 1
+	m.data.selectedIndex = 1
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, "main")
 	wt2Path := filepath.Join(cfg.WorktreeDir, "feature")
@@ -214,8 +208,8 @@ func TestHandleWorktreesLoadedNoPendingPath(t *testing.T) {
 	_, _ = m.handleWorktreesLoaded(msg)
 
 	// Should not change selection when no pending path
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be reset to 0, got %d", m.selectedIndex)
+	if m.data.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to be reset to 0, got %d", m.data.selectedIndex)
 	}
 }
 
@@ -235,12 +229,8 @@ func TestHandleOpenPRsLoadedAsyncCreation(t *testing.T) {
 	msg := openPRsLoadedMsg{prs: prs}
 	_ = m.handleOpenPRsLoaded(msg)
 
-	// Should show PR selection screen
-	if m.currentScreen != screenPRSelect {
-		t.Fatalf("Expected screenPRSelect, got %v", m.currentScreen)
-	}
-	if m.prSelectionScreen == nil {
-		t.Fatal("Expected prSelectionScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypePRSelect {
+		t.Fatalf("Expected TypePRSelect, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -253,7 +243,7 @@ func TestCreateFromPRResultMsgWithInitCommands(t *testing.T) {
 	m := NewModel(cfg, "")
 	m.setWindowSize(120, 40)
 	m.loading = true
-	m.currentScreen = screenLoading
+	m.setLoadingScreen("Creating worktree...")
 
 	targetPath := filepath.Join(cfg.WorktreeDir, "pr-555")
 	msg := createFromPRResultMsg{
@@ -317,8 +307,8 @@ func TestHandleWorktreesLoadedPreservesCursorOnNoPending(t *testing.T) {
 	}
 
 	// Set initial cursor position
-	m.worktreeTable.SetCursor(2)
-	m.selectedIndex = 2
+	m.ui.worktreeTable.SetCursor(2)
+	m.data.selectedIndex = 2
 
 	// Reload worktrees without pending selection
 	msg := worktreesLoadedMsg{
@@ -330,7 +320,7 @@ func TestHandleWorktreesLoadedPreservesCursorOnNoPending(t *testing.T) {
 
 	// Cursor should be reset by updateTable, not preserved
 	// This is the expected behavior based on the code
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 after reload, got %d", m.selectedIndex)
+	if m.data.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to be 0 after reload, got %d", m.data.selectedIndex)
 	}
 }

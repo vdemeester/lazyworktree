@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chmouel/lazyworktree/internal/app/services"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -16,7 +17,7 @@ func TestStatusUpdatedMsgUpdatesWorktreeStatus(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
-	m.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
+	m.data.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
 	m.updateTable()
 
 	msg := statusUpdatedMsg{
@@ -30,7 +31,7 @@ func TestStatusUpdatedMsgUpdatesWorktreeStatus(t *testing.T) {
 
 	_, _ = m.Update(msg)
 
-	wt := m.worktrees[0]
+	wt := m.data.worktrees[0]
 	if !wt.Dirty {
 		t.Fatal("expected worktree to be dirty")
 	}
@@ -57,15 +58,15 @@ func TestRefreshDetails(t *testing.T) {
 
 	// Test with worktrees
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
-	m.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
-	m.filteredWts = m.worktrees
-	m.worktreeTable.SetWidth(100)
+	m.data.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
+	m.data.filteredWts = m.data.worktrees
+	m.ui.worktreeTable.SetWidth(100)
 	m.updateTable()
-	m.updateTableColumns(m.worktreeTable.Width())
+	m.updateTableColumns(m.ui.worktreeTable.Width())
 
 	// Set cursor to valid position
-	if len(m.worktreeTable.Rows()) > 0 {
-		m.worktreeTable.SetCursor(0)
+	if len(m.ui.worktreeTable.Rows()) > 0 {
+		m.ui.worktreeTable.SetCursor(0)
 		// Add something to cache
 		m.resetDetailsCache()
 		m.setDetailsCache(wtPath, &detailsCacheEntry{})
@@ -85,14 +86,14 @@ func TestRefreshDetailsInvalidCursor(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
-	m.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
-	m.filteredWts = m.worktrees
-	m.worktreeTable.SetWidth(100)
+	m.data.worktrees = []*models.WorktreeInfo{{Path: wtPath, Branch: "main"}}
+	m.data.filteredWts = m.data.worktrees
+	m.ui.worktreeTable.SetWidth(100)
 	m.updateTable()
-	m.updateTableColumns(m.worktreeTable.Width())
+	m.updateTableColumns(m.ui.worktreeTable.Width())
 
 	// Set cursor to invalid position
-	m.worktreeTable.SetCursor(999)
+	m.ui.worktreeTable.SetCursor(999)
 
 	cmd := m.refreshDetails()
 	if cmd != nil {
@@ -141,7 +142,7 @@ func TestIsUnderGitWatchRoot(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up git watch roots
-	m.gitWatchRoots = []string{
+	m.services.watch.Roots = []string{
 		"/tmp/git/refs",
 		"/tmp/git/logs",
 		"/tmp/git/worktrees",
@@ -181,7 +182,7 @@ func TestIsUnderGitWatchRoot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := m.isUnderGitWatchRoot(tt.path)
+			result := m.services.watch.IsUnderRoot(tt.path)
 			if result != tt.expected {
 				t.Errorf("isUnderGitWatchRoot(%q) = %v, want %v", tt.path, result, tt.expected)
 			}
@@ -195,15 +196,15 @@ func TestMaybeWatchNewDir(t *testing.T) {
 
 	// Set up git watch roots
 	watchRoot := t.TempDir()
-	m.gitWatchRoots = []string{watchRoot}
-	m.gitWatchPaths = make(map[string]struct{})
+	m.services.watch.Roots = []string{watchRoot}
+	m.services.watch.Paths = make(map[string]struct{})
 
 	// Test with path not under watch root (should return early)
 	otherPath := filepath.Join(t.TempDir(), "other")
 	if err := os.MkdirAll(otherPath, 0o750); err != nil { //nolint:gosec // test directory permissions
 		t.Fatalf("failed to create test dir: %v", err)
 	}
-	m.maybeWatchNewDir(otherPath)
+	m.services.watch.MaybeWatchNewDir(otherPath)
 	// Should return early without calling addGitWatchDir
 
 	// Test with non-directory (should return early after stat)
@@ -211,7 +212,7 @@ func TestMaybeWatchNewDir(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("test"), 0o600); err != nil { //nolint:gosec // test file permissions
 		t.Fatalf("failed to create test file: %v", err)
 	}
-	m.maybeWatchNewDir(filePath)
+	m.services.watch.MaybeWatchNewDir(filePath)
 	// Should return early because it's not a directory
 
 	// Note: Testing with actual directory would require initializing the watcher,
@@ -223,23 +224,23 @@ func TestSignalGitWatch(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up git watch channels
-	m.gitWatchEvents = make(chan struct{}, 1)
-	m.gitWatchDone = make(chan struct{})
+	m.services.watch.Events = make(chan struct{}, 1)
+	m.services.watch.Done = make(chan struct{})
 
 	// Signal should send to channel
-	m.signalGitWatch()
+	m.services.watch.Signal()
 
 	// Verify event was sent (non-blocking check)
 	select {
-	case <-m.gitWatchEvents:
+	case <-m.services.watch.Events:
 		// Good, event was sent
 	default:
 		t.Error("expected event to be sent to gitWatchEvents channel")
 	}
 
 	// Test with closed done channel
-	close(m.gitWatchDone)
-	m.signalGitWatch()
+	close(m.services.watch.Done)
+	m.services.watch.Signal()
 	// Should return early without sending
 }
 
@@ -248,13 +249,13 @@ func TestShouldRefreshGitEventDebounce(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	now := time.Now()
-	if !m.shouldRefreshGitEvent(now) {
+	if !m.services.watch.ShouldRefresh(now) {
 		t.Fatal("expected first refresh to pass")
 	}
-	if m.shouldRefreshGitEvent(now.Add(gitWatchDebounce / 2)) {
+	if m.services.watch.ShouldRefresh(now.Add(services.GitWatchDebounce / 2)) {
 		t.Fatal("expected debounce to block refresh")
 	}
-	if !m.shouldRefreshGitEvent(now.Add(gitWatchDebounce + time.Millisecond)) {
+	if !m.services.watch.ShouldRefresh(now.Add(services.GitWatchDebounce + time.Millisecond)) {
 		t.Fatal("expected refresh after debounce window")
 	}
 }

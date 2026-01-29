@@ -16,15 +16,15 @@ func TestDetermineCurrentWorktreePrefersSelection(t *testing.T) {
 
 	main := &models.WorktreeInfo{Path: "/tmp/main", Branch: "main", IsMain: true}
 	feature := &models.WorktreeInfo{Path: "/tmp/feature", Branch: "feature"}
-	m.worktrees = []*models.WorktreeInfo{main, feature}
-	m.filteredWts = m.worktrees
+	m.data.worktrees = []*models.WorktreeInfo{main, feature}
+	m.data.filteredWts = m.data.worktrees
 
 	rows := []table.Row{
 		{"main"},
 		{"feature"},
 	}
-	m.worktreeTable.SetRows(rows)
-	m.worktreeTable.SetCursor(1)
+	m.ui.worktreeTable.SetRows(rows)
+	m.ui.worktreeTable.SetCursor(1)
 
 	got := m.determineCurrentWorktree()
 	if got != feature {

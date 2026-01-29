@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -509,47 +510,99 @@ func withCwd(t *testing.T, dir string) {
 func TestShowBaseSelection(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	cmd := m.showBaseSelection(mainWorktreeName)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || m.currentScreen != screenListSelect {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected list screen to be active")
 	}
 
-	m.listSubmit(selectionItem{id: "freeform"})
-	if m.inputScreen == nil || m.currentScreen != screenInput {
-		t.Fatal("expected input screen to be active")
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	if listScreen.OnSelect == nil {
+		t.Fatal("expected OnSelect callback to be set")
 	}
-	if m.inputScreen.prompt != "Base ref" {
-		t.Fatalf("expected base ref prompt, got %q", m.inputScreen.prompt)
+	listScreen.OnSelect(appscreen.SelectionItem{ID: "freeform"})
+
+	// Input screen should now be pushed to screen manager
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatalf("expected input screen to be active, got type %v", m.ui.screenManager.Type())
+	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if inputScr.Prompt != "Base ref" {
+		t.Fatalf("expected base ref prompt, got %q", inputScr.Prompt)
+	}
+}
+
+func TestHandleScreenKeyKeepsNewScreenOnSelection(t *testing.T) {
+	repo := initTestRepo(t)
+	withCwd(t, repo.dir)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
+
+	cmd := m.showBaseSelection(repo.branch)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatal("expected list screen to be active")
+	}
+
+	baseScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	idx := -1
+	for i, item := range baseScreen.Items {
+		if item.ID == "branch-list" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		t.Fatal("expected branch-list option in base selection")
+	}
+	baseScreen.Cursor = idx
+
+	_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if !m.ui.screenManager.IsActive() {
+		t.Fatal("expected a screen to remain active after selection")
+	}
+	if m.ui.screenManager.Current() == baseScreen {
+		t.Fatal("expected selection to open a new screen")
+	}
+	if m.ui.screenManager.StackDepth() == 0 {
+		t.Fatal("expected previous screen to remain on the stack")
 	}
 }
 
 func TestShowBaseSelectionFromPROption(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	cmd := m.showBaseSelection(mainWorktreeName)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || m.currentScreen != screenListSelect {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected list screen to be active")
 	}
 
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
 	// Verify the from-pr option exists
 	found := false
-	for _, item := range m.listScreen.items {
-		if item.id == "from-pr" {
+	for _, item := range listScreen.Items {
+		if item.ID == "from-pr" {
 			found = true
-			if item.label != "Create from PR/MR" {
-				t.Fatalf("expected label 'Create from PR/MR', got %q", item.label)
+			if item.Label != "Create from PR/MR" {
+				t.Fatalf("expected label 'Create from PR/MR', got %q", item.Label)
 			}
 			break
 		}
@@ -559,7 +612,7 @@ func TestShowBaseSelectionFromPROption(t *testing.T) {
 	}
 
 	// Verify selecting from-pr returns a command (the async PR fetch)
-	resultCmd := m.listSubmit(selectionItem{id: "from-pr"})
+	resultCmd := listScreen.OnSelect(appscreen.SelectionItem{ID: "from-pr"})
 	if resultCmd == nil {
 		t.Fatal("expected command from from-pr selection")
 	}
@@ -573,25 +626,32 @@ func TestShowFreeformBaseInputValidation(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	m.showFreeformBaseInput(repo.branch)
-	if _, ok := m.inputSubmit(" ", false); ok {
-		t.Fatal("expected empty base ref to be rejected")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatal("expected input screen to be active")
 	}
-	if m.inputScreen.errorMsg != "Base ref cannot be empty." {
-		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+
+	// Test empty base ref validation
+	inputScr.OnSubmit(" ", false)
+	if inputScr.ErrorMsg != "Base ref cannot be empty." {
+		t.Fatalf("unexpected error: %q", inputScr.ErrorMsg)
 	}
 
-	if _, ok := m.inputSubmit("missing-ref", false); ok {
-		t.Fatal("expected invalid base ref to be rejected")
-	}
-	if m.inputScreen.errorMsg != "Base ref not found." {
-		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	// Test invalid base ref validation
+	inputScr.OnSubmit("missing-ref", false)
+	if inputScr.ErrorMsg != "Base ref not found." {
+		t.Fatalf("unexpected error: %q", inputScr.ErrorMsg)
 	}
 
-	if _, ok := m.inputSubmit(repo.branch, false); ok {
-		t.Fatal("expected base ref flow to keep screen open")
+	// Test valid base ref - should push branch name input
+	inputScr.OnSubmit(repo.branch, false)
+	// A new input screen should be pushed for branch name
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatal("expected branch name input screen to be shown")
 	}
-	if m.inputScreen == nil || m.inputScreen.prompt != "Create worktree: branch name" {
-		t.Fatal("expected branch name input to be shown")
+	branchInputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if branchInputScr.Prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", branchInputScr.Prompt)
 	}
 }
 
@@ -601,8 +661,8 @@ func TestShowBranchSelection(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	selected := ""
 	cmd := m.showBranchSelection("Pick", "Filter...", "None", repo.branch, func(branch string) tea.Cmd {
@@ -613,16 +673,22 @@ func TestShowBranchSelection(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || len(m.listScreen.items) == 0 {
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatal("expected list screen to be active")
+	}
+
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	if len(listScreen.Items) == 0 {
 		t.Fatal("expected branch list to be populated")
 	}
-	if m.listScreen.items[0].id != repo.branch {
-		t.Fatalf("expected preferred branch first, got %q", m.listScreen.items[0].id)
+	if listScreen.Items[0].ID != repo.branch {
+		t.Fatalf("expected preferred branch first, got %q", listScreen.Items[0].ID)
 	}
 
 	remoteFound := false
-	for _, item := range m.listScreen.items {
-		if item.description == "remote" {
+	for _, item := range listScreen.Items {
+		if item.Description == "remote" {
 			remoteFound = true
 			break
 		}
@@ -631,7 +697,7 @@ func TestShowBranchSelection(t *testing.T) {
 		t.Fatal("expected a remote branch entry")
 	}
 
-	m.listSubmit(m.listScreen.items[0])
+	listScreen.OnSelect(listScreen.Items[0])
 	if selected != repo.branch {
 		t.Fatalf("expected %q to be selected, got %q", repo.branch, selected)
 	}
@@ -643,29 +709,39 @@ func TestShowCommitSelection(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	cmd := m.showCommitSelection(repo.branch)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || len(m.listScreen.items) == 0 {
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatal("expected list screen to be active")
+	}
+
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	if len(listScreen.Items) == 0 {
 		t.Fatal("expected commit list to be populated")
 	}
 
-	item := m.listScreen.items[0]
-	if item.description == "" {
+	item := listScreen.Items[0]
+	if item.Description == "" {
 		t.Fatal("expected commit item to include date")
 	}
 
-	m.listSubmit(item)
-	if m.inputScreen == nil || m.inputScreen.prompt != "Create worktree: branch name" {
+	listScreen.OnSelect(item)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("expected branch name input to be shown")
+	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if inputScr.Prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", inputScr.Prompt)
 	}
 
 	expected := sanitizeBranchNameFromTitle(repo.commit.subject, repo.commit.shortHash)
-	if got := m.inputScreen.input.Value(); got != expected {
+	if got := inputScr.Input.Value(); got != expected {
 		t.Fatalf("expected branch name %q, got %q", expected, got)
 	}
 }
@@ -679,38 +755,40 @@ func TestShowCommitSelectionShowsInfoOnBranchNameScriptError(t *testing.T) {
 		BranchNameScript: "false",
 	}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	cmd := m.showCommitSelection(repo.branch)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || len(m.listScreen.items) == 0 {
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatal("expected list screen to be active")
+	}
+
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	if len(listScreen.Items) == 0 {
 		t.Fatal("expected commit list to be populated")
 	}
 
-	item := m.listScreen.items[0]
-	if cmd := m.listSubmit(item); cmd != nil {
+	item := listScreen.Items[0]
+	if cmd := listScreen.OnSelect(item); cmd != nil {
 		t.Fatal("expected nil command on script error")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected info screen, got %v", m.currentScreen)
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Branch name script error") {
-		t.Fatalf("expected branch name script error modal, got %#v", m.infoScreen)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Branch name script error") {
+		t.Fatalf("expected branch name script error modal, got %q", infoScr.Message)
 	}
 
-	_, action := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if action != nil {
-		_ = action()
-	}
-
-	if m.currentScreen != screenInput {
-		t.Fatalf("expected input screen, got %v", m.currentScreen)
-	}
-	if m.inputScreen == nil {
-		t.Fatal("expected input screen to be set")
+	// After dismissing the info screen, we should be back at the list selection
+	m.ui.screenManager.Pop()
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatalf("expected list screen after dismissing error, got %v", m.ui.screenManager.Type())
 	}
 }
 
@@ -720,29 +798,32 @@ func TestShowBranchNameInputValidation(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{{Branch: "demo"}}
+	m.data.worktrees = []*models.WorktreeInfo{{Branch: "demo"}}
 
 	m.showBranchNameInput(repo.branch, "demo")
-	if got := m.inputScreen.input.Value(); got != "demo-1" {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatal("expected input screen to be active")
+	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+
+	if got := inputScr.Input.Value(); got != "demo-1" {
 		t.Fatalf("expected suggested branch name, got %q", got)
 	}
 
-	if _, ok := m.inputSubmit("demo", false); ok {
-		t.Fatal("expected duplicate branch to be rejected")
-	}
-	if !strings.Contains(m.inputScreen.errorMsg, "already exists") {
-		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	// Test duplicate branch validation
+	inputScr.OnSubmit("demo", false)
+	if !strings.Contains(inputScr.ErrorMsg, "already exists") {
+		t.Fatalf("unexpected error: %q", inputScr.ErrorMsg)
 	}
 
+	// Test existing path validation
 	pathBranch := "path-branch"
 	if err := os.MkdirAll(filepath.Join(m.getRepoWorktreeDir(), pathBranch), 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if _, ok := m.inputSubmit(pathBranch, false); ok {
-		t.Fatal("expected existing path to be rejected")
-	}
-	if !strings.Contains(m.inputScreen.errorMsg, "Path already exists") {
-		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	inputScr.OnSubmit(pathBranch, false)
+	if !strings.Contains(inputScr.ErrorMsg, "Path already exists") {
+		t.Fatalf("unexpected error: %q", inputScr.ErrorMsg)
 	}
 }
 
@@ -752,7 +833,7 @@ func TestSuggestBranchName(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{{Branch: "demo"}}
+	m.data.worktrees = []*models.WorktreeInfo{{Branch: "demo"}}
 
 	if got := m.suggestBranchName("demo"); got != "demo-1" {
 		t.Fatalf("expected demo-1, got %q", got)
@@ -817,16 +898,10 @@ func TestCreateWorktreeFromBase(t *testing.T) {
 func TestClearListSelection(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.listScreen = &ListSelectionScreen{}
-	m.listSubmit = func(selectionItem) tea.Cmd { return nil }
-	m.currentScreen = screenListSelect
 
 	m.clearListSelection()
-	if m.listScreen != nil || m.listSubmit != nil {
-		t.Fatal("expected list selection to be cleared")
-	}
-	if m.currentScreen != screenNone {
-		t.Fatalf("expected screenNone, got %v", m.currentScreen)
+	if m.ui.screenManager.IsActive() {
+		t.Fatalf("expected no screen, got %v", m.ui.screenManager.Type())
 	}
 }
 
@@ -855,8 +930,8 @@ func TestShowBaseBranchForCustomCreateMenu(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	menu := &config.CustomCreateMenu{
 		Label:       "Test Menu",
@@ -869,18 +944,19 @@ func TestShowBaseBranchForCustomCreateMenu(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil {
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected list screen to be set")
 	}
 
-	// Simulate selecting a branch
-	if len(m.listScreen.items) > 0 {
-		m.listSubmit(m.listScreen.items[0])
-		// After branch selection, pendingCustomBaseRef and pendingCustomMenu should be set
-		if m.pendingCustomBaseRef == "" {
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
+	if len(listScreen.Items) > 0 {
+		listScreen.OnSelect(listScreen.Items[0])
+		if m.pending.CustomBaseRef == "" {
 			t.Error("expected pendingCustomBaseRef to be set")
 		}
-		if m.pendingCustomMenu == nil {
+		if m.pending.CustomMenu == nil {
 			t.Error("expected pendingCustomMenu to be set")
 		}
 	}
@@ -892,7 +968,7 @@ func TestExecuteCustomCreateCommand(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: repo.dir, Branch: repo.branch, IsMain: true},
 	}
 
@@ -907,10 +983,10 @@ func TestExecuteCustomCreateCommand(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Errorf("expected screenLoading, got %v", m.currentScreen)
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
+		t.Errorf("expected loading screen, got %v", m.ui.screenManager.Type())
 	}
-	if m.loadingScreen == nil {
+	if m.loadingScreen() == nil {
 		t.Error("expected loading screen to be set")
 	}
 
@@ -934,7 +1010,7 @@ func TestExecuteCustomCreateCommandError(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: repo.dir, Branch: repo.branch, IsMain: true},
 	}
 
@@ -962,7 +1038,7 @@ func TestExecuteCustomCreateCommandNoOutput(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: repo.dir, Branch: repo.branch, IsMain: true},
 	}
 
@@ -1001,10 +1077,10 @@ func TestExecuteCustomPostCommand(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Errorf("expected screenLoading, got %v", m.currentScreen)
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
+		t.Errorf("expected loading screen, got %v", m.ui.screenManager.Type())
 	}
-	if m.loadingScreen == nil {
+	if m.loadingScreen() == nil {
 		t.Error("expected loading screen to be set")
 	}
 
@@ -1072,36 +1148,37 @@ func TestShowCheckoutOrCreatePrompt(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
-	// Show the checkout/create prompt for an existing local branch
 	cmd := m.showCheckoutOrCreatePrompt(repo.branch)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.listScreen == nil || m.currentScreen != screenListSelect {
+
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected list screen to be active")
 	}
 
-	// Verify we have the checkout and create options
-	if len(m.listScreen.items) != 2 {
-		t.Fatalf("expected 2 options, got %d", len(m.listScreen.items))
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
+	if len(listScreen.Items) != 2 {
+		t.Fatalf("expected 2 options, got %d", len(listScreen.Items))
 	}
 
 	checkoutFound := false
 	createFound := false
-	for _, item := range m.listScreen.items {
-		if item.id == "checkout" {
+	for _, item := range listScreen.Items {
+		if item.ID == "checkout" {
 			checkoutFound = true
-			if item.label != "Checkout existing branch" {
-				t.Fatalf("expected label 'Checkout existing branch', got %q", item.label)
+			if item.Label != "Checkout existing branch" {
+				t.Fatalf("expected label 'Checkout existing branch', got %q", item.Label)
 			}
 		}
-		if item.id == "create" {
+		if item.ID == "create" {
 			createFound = true
-			if item.label != "Create new branch" {
-				t.Fatalf("expected label 'Create new branch', got %q", item.label)
+			if item.Label != "Create new branch" {
+				t.Fatalf("expected label 'Create new branch', got %q", item.Label)
 			}
 		}
 	}
@@ -1112,13 +1189,13 @@ func TestShowCheckoutOrCreatePrompt(t *testing.T) {
 		t.Fatal("expected 'create' option in prompt")
 	}
 
-	// Test selecting "create" leads to branch name input
-	m.listSubmit(selectionItem{id: "create"})
-	if m.inputScreen == nil || m.currentScreen != screenInput {
+	listScreen.OnSelect(appscreen.SelectionItem{ID: "create"})
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("expected input screen for branch name")
 	}
-	if m.inputScreen.prompt != "Create worktree: branch name" {
-		t.Fatalf("expected branch name prompt, got %q", m.inputScreen.prompt)
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if inputScr.Prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", inputScr.Prompt)
 	}
 }
 
@@ -1129,27 +1206,28 @@ func TestShowWorktreeNameForExistingBranch(t *testing.T) {
 	worktreeDir := t.TempDir()
 	cfg := &config.AppConfig{WorktreeDir: worktreeDir}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
 	// Show the worktree name input for an existing branch
 	cmd := m.showWorktreeNameForExistingBranch(featureBranch)
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.inputScreen == nil || m.currentScreen != screenInput {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("expected input screen to be active")
 	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
 
 	// Verify suggested name format
 	expected := featureBranch + "-wt"
-	if got := m.inputScreen.input.Value(); got != expected {
+	if got := inputScr.Input.Value(); got != expected {
 		t.Fatalf("expected suggested name %q, got %q", expected, got)
 	}
 
 	// Verify prompt mentions existing branch
-	if !strings.Contains(m.inputScreen.prompt, featureBranch) {
-		t.Fatalf("expected prompt to mention branch name, got %q", m.inputScreen.prompt)
+	if !strings.Contains(inputScr.Prompt, featureBranch) {
+		t.Fatalf("expected prompt to mention branch name, got %q", inputScr.Prompt)
 	}
 
 	// Test path conflict validation - create the target path first
@@ -1157,11 +1235,9 @@ func TestShowWorktreeNameForExistingBranch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(m.getRepoWorktreeDir(), pathBranch), 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if _, ok := m.inputSubmit(pathBranch, false); ok {
-		t.Fatal("expected existing path to be rejected")
-	}
-	if !strings.Contains(m.inputScreen.errorMsg, "Path already exists") {
-		t.Fatalf("unexpected error: %q", m.inputScreen.errorMsg)
+	inputScr.OnSubmit(pathBranch, false)
+	if !strings.Contains(inputScr.ErrorMsg, "Path already exists") {
+		t.Fatalf("unexpected error: %q", inputScr.ErrorMsg)
 	}
 }
 
@@ -1216,28 +1292,27 @@ func TestBranchSelectionWithLocalBranch(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
-	// Show base selection and select branch-list
 	m.showBaseSelection(repo.branch)
 
-	// Trigger branch-list selection
-	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	cmd := listScreen.OnSelect(appscreen.SelectionItem{ID: "branch-list"})
 	if cmd == nil {
 		t.Fatal("expected command from branch-list selection")
 	}
 
-	// Now we should have a branch selection screen
-	if m.listScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected branch list screen")
 	}
 
-	// Find and select the feature branch (a local branch)
-	var featureItem *selectionItem
-	for i := range m.listScreen.items {
-		if m.listScreen.items[i].id == featureBranch {
-			featureItem = &m.listScreen.items[i]
+	listScreen = m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
+	var featureItem *appscreen.SelectionItem
+	for i := range listScreen.Items {
+		if listScreen.Items[i].ID == featureBranch {
+			featureItem = &listScreen.Items[i]
 			break
 		}
 	}
@@ -1245,16 +1320,15 @@ func TestBranchSelectionWithLocalBranch(t *testing.T) {
 		t.Fatalf("expected to find %s in branch list", featureBranch)
 	}
 
-	// Selecting a local branch should show the checkout/create prompt
-	m.listSubmit(*featureItem)
-	if m.listScreen == nil || m.currentScreen != screenListSelect {
+	listScreen.OnSelect(*featureItem)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected checkout/create prompt screen")
 	}
 
-	// Verify it's the checkout/create prompt by checking for the checkout option
+	listScreen = m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
 	checkoutFound := false
-	for _, item := range m.listScreen.items {
-		if item.id == "checkout" {
+	for _, item := range listScreen.Items {
+		if item.ID == "checkout" {
 			checkoutFound = true
 			break
 		}
@@ -1273,23 +1347,23 @@ func TestBranchSelectionWithSlashLocalBranch(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
 
-	// Show base selection and select branch-list
 	m.showBaseSelection(repo.branch)
 
-	// Trigger branch-list selection
-	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	cmd := listScreen.OnSelect(appscreen.SelectionItem{ID: "branch-list"})
 	if cmd == nil {
 		t.Fatal("expected command from branch-list selection")
 	}
 
-	// Find and select the slash branch (a local branch)
-	var slashItem *selectionItem
-	for i := range m.listScreen.items {
-		if m.listScreen.items[i].id == branchWithSlash {
-			slashItem = &m.listScreen.items[i]
+	listScreen = m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
+	var slashItem *appscreen.SelectionItem
+	for i := range listScreen.Items {
+		if listScreen.Items[i].ID == branchWithSlash {
+			slashItem = &listScreen.Items[i]
 			break
 		}
 	}
@@ -1297,15 +1371,15 @@ func TestBranchSelectionWithSlashLocalBranch(t *testing.T) {
 		t.Fatalf("expected to find %s in branch list", branchWithSlash)
 	}
 
-	// Selecting a local branch should show the checkout/create prompt
-	m.listSubmit(*slashItem)
-	if m.listScreen == nil || m.currentScreen != screenListSelect {
+	listScreen.OnSelect(*slashItem)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
 		t.Fatal("expected checkout/create prompt screen")
 	}
 
+	listScreen = m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
 	checkoutFound := false
-	for _, item := range m.listScreen.items {
-		if item.id == "checkout" {
+	for _, item := range listScreen.Items {
+		if item.ID == "checkout" {
 			checkoutFound = true
 			break
 		}
@@ -1321,24 +1395,26 @@ func TestBranchSelectionSkipsCheckoutForCheckedOutBranch(t *testing.T) {
 
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.windowWidth = 120
-	m.windowHeight = 40
-	m.worktrees = []*models.WorktreeInfo{
+	m.view.WindowWidth = 120
+	m.view.WindowHeight = 40
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: repo.dir, Branch: repo.branch},
 	}
 
-	// Show base selection and select branch-list
 	m.showBaseSelection(repo.branch)
 
-	cmd := m.listSubmit(selectionItem{id: "branch-list"})
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	cmd := listScreen.OnSelect(appscreen.SelectionItem{ID: "branch-list"})
 	if cmd == nil {
 		t.Fatal("expected command from branch-list selection")
 	}
 
-	var mainItem *selectionItem
-	for i := range m.listScreen.items {
-		if m.listScreen.items[i].id == repo.branch {
-			mainItem = &m.listScreen.items[i]
+	listScreen = m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+
+	var mainItem *appscreen.SelectionItem
+	for i := range listScreen.Items {
+		if listScreen.Items[i].ID == repo.branch {
+			mainItem = &listScreen.Items[i]
 			break
 		}
 	}
@@ -1346,12 +1422,12 @@ func TestBranchSelectionSkipsCheckoutForCheckedOutBranch(t *testing.T) {
 		t.Fatalf("expected to find %s in branch list", repo.branch)
 	}
 
-	// Selecting a branch already checked out should go straight to create input
-	m.listSubmit(*mainItem)
-	if m.inputScreen == nil || m.currentScreen != screenInput {
+	listScreen.OnSelect(*mainItem)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("expected input screen for branch name")
 	}
-	if m.inputScreen.prompt != "Create worktree: branch name" {
-		t.Fatalf("expected branch name prompt, got %q", m.inputScreen.prompt)
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if inputScr.Prompt != "Create worktree: branch name" {
+		t.Fatalf("expected branch name prompt, got %q", inputScr.Prompt)
 	}
 }

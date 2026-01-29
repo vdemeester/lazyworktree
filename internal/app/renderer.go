@@ -1,10 +1,10 @@
 package app
 
 import (
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/chmouel/lazyworktree/internal/app/screen"
 )
 
 // View renders the active screen for the Bubble Tea program.
@@ -14,7 +14,7 @@ func (m *Model) View() string {
 	}
 
 	// Wait for window size before rendering full UI
-	if m.windowWidth == 0 || m.windowHeight == 0 {
+	if m.view.WindowWidth == 0 || m.view.WindowHeight == 0 {
 		return "Loading..."
 	}
 
@@ -27,7 +27,7 @@ func (m *Model) View() string {
 	body := m.renderBody(layout)
 
 	// Truncate body to fit, leaving room for header and footer
-	maxBodyLines := m.windowHeight - 2 // 1 for header, 1 for footer
+	maxBodyLines := m.view.WindowHeight - 2 // 1 for header, 1 for footer
 	if layout.filterHeight > 0 {
 		maxBodyLines--
 	}
@@ -41,75 +41,35 @@ func (m *Model) View() string {
 
 	baseView := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
-	// Handle Modal Overlays
-	switch m.currentScreen {
-	case screenPalette:
-		if m.paletteScreen != nil {
-			return m.overlayPopup(baseView, m.paletteScreen.View(), 3)
-		}
-	case screenPRSelect:
-		if m.prSelectionScreen != nil {
-			return m.overlayPopup(baseView, m.prSelectionScreen.View(), 2)
-		}
-	case screenIssueSelect:
-		if m.issueSelectionScreen != nil {
-			return m.overlayPopup(baseView, m.issueSelectionScreen.View(), 2)
-		}
-	case screenListSelect:
-		if m.listScreen != nil {
-			return m.overlayPopup(baseView, m.listScreen.View(), 2)
-		}
-	case screenChecklist:
-		if m.checklistScreen != nil {
-			return m.overlayPopup(baseView, m.checklistScreen.View(), 2)
-		}
-	case screenHelp:
-		if m.helpScreen != nil {
-			// Center the help popup
-			// Help screen has fixed/capped size logic in NewHelpScreen/SetSize
-			// We can pass 0,0 to use its internal defaults or a specific size
-			// In SetSize below we'll ensure it has a good "popup" size
-			return m.overlayPopup(baseView, m.helpScreen.View(), 4)
-		}
-	case screenCommit:
-		if m.commitScreen != nil {
+	// New path: render screens from screen manager
+	if m.ui.screenManager.IsActive() {
+		scr := m.ui.screenManager.Current()
+		switch scr.Type() {
+		case screen.TypeWelcome, screen.TypeTrust:
+			// Full-screen replacement for welcome/trust screens
+			content := scr.View()
+			if m.view.WindowWidth > 0 && m.view.WindowHeight > 0 {
+				return lipgloss.Place(m.view.WindowWidth, m.view.WindowHeight, lipgloss.Center, lipgloss.Center, content)
+			}
+			return content
+		case screen.TypeCommit:
 			// Resize viewport to fit window
-			vpWidth := int(float64(m.windowWidth) * 0.95)
-			vpHeight := int(float64(m.windowHeight) * 0.85)
-			if vpWidth < 80 {
-				vpWidth = 80
+			if cs, ok := scr.(*screen.CommitScreen); ok {
+				vpWidth := max(80, int(float64(m.view.WindowWidth)*0.95))
+				vpHeight := max(20, int(float64(m.view.WindowHeight)*0.85))
+				cs.Viewport.Width = vpWidth
+				cs.Viewport.Height = vpHeight
 			}
-			if vpHeight < 20 {
-				vpHeight = 20
-			}
-			m.commitScreen.viewport.Width = vpWidth
-			m.commitScreen.viewport.Height = vpHeight
-			return m.overlayPopup(baseView, m.commitScreen.View(), 2)
+			return m.overlayPopup(baseView, scr.View(), 2)
+		case screen.TypePRSelect:
+			// PR selection screen with 2-margin popup
+			return m.overlayPopup(baseView, scr.View(), 2)
+		case screen.TypePalette:
+			return m.overlayPopup(baseView, scr.View(), 3)
+		default:
+			// Default: overlay popup
+			return m.overlayPopup(baseView, scr.View(), 3)
 		}
-	case screenConfirm:
-		if m.confirmScreen != nil {
-			return m.overlayPopup(baseView, m.confirmScreen.View(), 5)
-		}
-	case screenInfo:
-		if m.infoScreen != nil {
-			return m.overlayPopup(baseView, m.infoScreen.View(), 5)
-		}
-	case screenInput:
-		if m.inputScreen != nil {
-			return m.overlayPopup(baseView, m.inputScreen.View(), 5)
-		}
-	case screenLoading:
-		if m.loadingScreen != nil {
-			return m.overlayPopup(baseView, m.loadingScreen.View(), 5)
-		}
-	case screenCommitFiles:
-		if m.commitFilesScreen != nil {
-			return m.overlayPopup(baseView, m.commitFilesScreen.View(), 2)
-		}
-	}
-
-	if m.currentScreen != screenNone {
-		return m.renderScreen()
 	}
 
 	return baseView
@@ -147,68 +107,6 @@ func (m *Model) overlayPopup(base, popup string, marginTop int) string {
 	}
 
 	return strings.Join(baseLines, "\n")
-}
-
-// renderScreen renders special screens that don't use overlays.
-func (m *Model) renderScreen() string {
-	switch m.currentScreen {
-	case screenCommit:
-		if m.commitScreen == nil {
-			m.commitScreen = NewCommitScreen(commitMeta{}, "", "", m.git.UseGitPager(), m.theme)
-		}
-		return m.commitScreen.View()
-	case screenConfirm:
-		if m.confirmScreen != nil {
-			return m.confirmScreen.View()
-		}
-	case screenInfo:
-		if m.infoScreen != nil {
-			return m.infoScreen.View()
-		}
-	case screenTrust:
-		if m.trustScreen == nil {
-			return ""
-		}
-		return m.trustScreen.View()
-	case screenWelcome:
-		if m.welcomeScreen == nil {
-			cwd, _ := os.Getwd()
-			m.welcomeScreen = NewWelcomeScreen(cwd, m.getRepoWorktreeDir(), m.theme)
-		}
-		content := m.welcomeScreen.View()
-		if m.windowWidth > 0 && m.windowHeight > 0 {
-			return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, content)
-		}
-		return content
-	case screenPalette:
-		if m.paletteScreen != nil {
-			content := m.paletteScreen.View()
-			if m.windowWidth > 0 && m.windowHeight > 0 {
-				content = lipgloss.NewStyle().MarginTop(3).Render(content)
-				return lipgloss.Place(
-					m.windowWidth,
-					m.windowHeight,
-					lipgloss.Center,
-					lipgloss.Top,
-					content,
-				)
-			}
-			return content
-		}
-	case screenInput:
-		if m.inputScreen != nil {
-			content := m.inputScreen.View()
-			if m.windowWidth > 0 && m.windowHeight > 0 {
-				return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, content)
-			}
-			return content
-		}
-	case screenListSelect:
-		if m.listScreen != nil {
-			return m.listScreen.View()
-		}
-	}
-	return ""
 }
 
 // truncateToHeight ensures output doesn't exceed maxLines.

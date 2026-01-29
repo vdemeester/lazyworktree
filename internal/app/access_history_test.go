@@ -24,7 +24,7 @@ func TestRecordAccess(t *testing.T) {
 	m.recordAccess(testAccessWorktreePath)
 
 	// Verify access was recorded
-	ts, ok := m.accessHistory[testAccessWorktreePath]
+	ts, ok := m.data.accessHistory[testAccessWorktreePath]
 	if !ok {
 		t.Fatalf("expected access to be recorded for path %s", testAccessWorktreePath)
 	}
@@ -45,8 +45,8 @@ func TestRecordAccessEmptyPath(t *testing.T) {
 
 	// Record access with empty path - should be ignored
 	m.recordAccess("")
-	if len(m.accessHistory) != 0 {
-		t.Fatalf("expected empty path to be ignored, got %d entries", len(m.accessHistory))
+	if len(m.data.accessHistory) != 0 {
+		t.Fatalf("expected empty path to be ignored, got %d entries", len(m.data.accessHistory))
 	}
 }
 
@@ -59,8 +59,8 @@ func TestLoadAccessHistoryEmptyFile(t *testing.T) {
 
 	// Load when no history file exists
 	m.loadAccessHistory()
-	if len(m.accessHistory) != 0 {
-		t.Fatalf("expected empty history, got %d entries", len(m.accessHistory))
+	if len(m.data.accessHistory) != 0 {
+		t.Fatalf("expected empty history, got %d entries", len(m.data.accessHistory))
 	}
 }
 
@@ -81,15 +81,15 @@ func TestSaveAndLoadAccessHistory(t *testing.T) {
 	m2.repoKey = testRepoKey
 	m2.loadAccessHistory()
 
-	if len(m2.accessHistory) != 2 {
-		t.Fatalf("expected 2 entries after load, got %d", len(m2.accessHistory))
+	if len(m2.data.accessHistory) != 2 {
+		t.Fatalf("expected 2 entries after load, got %d", len(m2.data.accessHistory))
 	}
 
 	// Verify both paths are present
-	if _, ok := m2.accessHistory[testAccessWorktreePath]; !ok {
+	if _, ok := m2.data.accessHistory[testAccessWorktreePath]; !ok {
 		t.Fatal("expected feature-1 to be in loaded history")
 	}
-	if _, ok := m2.accessHistory["/home/user/worktrees/feature-2"]; !ok {
+	if _, ok := m2.data.accessHistory["/home/user/worktrees/feature-2"]; !ok {
 		t.Fatal("expected feature-2 to be in loaded history")
 	}
 }
@@ -147,8 +147,8 @@ func TestLoadAccessHistoryInvalidJSON(t *testing.T) {
 
 	// Should not crash and should return empty history
 	m.loadAccessHistory()
-	if len(m.accessHistory) != 0 {
-		t.Fatalf("expected empty history on invalid JSON, got %d entries", len(m.accessHistory))
+	if len(m.data.accessHistory) != 0 {
+		t.Fatalf("expected empty history on invalid JSON, got %d entries", len(m.data.accessHistory))
 	}
 }
 
@@ -161,12 +161,12 @@ func TestRecordAccessUpdatesExisting(t *testing.T) {
 
 	// Record first access
 	m.recordAccess(testAccessWorktreePath)
-	firstTS := m.accessHistory[testAccessWorktreePath]
+	firstTS := m.data.accessHistory[testAccessWorktreePath]
 
 	// Wait a bit and record again
 	time.Sleep(50 * time.Millisecond)
 	m.recordAccess(testAccessWorktreePath)
-	secondTS := m.accessHistory[testAccessWorktreePath]
+	secondTS := m.data.accessHistory[testAccessWorktreePath]
 
 	// Second timestamp should be greater or equal
 	if secondTS < firstTS {
@@ -184,7 +184,7 @@ func TestSortByLastSwitched(t *testing.T) {
 
 	// Create worktrees with different LastSwitchedTS
 	now := time.Now().Unix()
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/worktrees/a", Branch: "a", LastSwitchedTS: now - 100},
 		{Path: "/worktrees/b", Branch: "b", LastSwitchedTS: now - 50},
 		{Path: "/worktrees/c", Branch: "c", LastSwitchedTS: now},
@@ -199,17 +199,17 @@ func TestSortByLastSwitched(t *testing.T) {
 	m.updateTable()
 
 	// After sorting by LastSwitchedTS (descending), order should be: c, b, a
-	if len(m.filteredWts) != 3 {
-		t.Fatalf("expected 3 filtered worktrees, got %d", len(m.filteredWts))
+	if len(m.data.filteredWts) != 3 {
+		t.Fatalf("expected 3 filtered worktrees, got %d", len(m.data.filteredWts))
 	}
-	if m.filteredWts[0].Branch != "c" {
-		t.Fatalf("expected first worktree to be 'c', got %q", m.filteredWts[0].Branch)
+	if m.data.filteredWts[0].Branch != "c" {
+		t.Fatalf("expected first worktree to be 'c', got %q", m.data.filteredWts[0].Branch)
 	}
-	if m.filteredWts[1].Branch != "b" {
-		t.Fatalf("expected second worktree to be 'b', got %q", m.filteredWts[1].Branch)
+	if m.data.filteredWts[1].Branch != "b" {
+		t.Fatalf("expected second worktree to be 'b', got %q", m.data.filteredWts[1].Branch)
 	}
-	if m.filteredWts[2].Branch != "a" {
-		t.Fatalf("expected third worktree to be 'a', got %q", m.filteredWts[2].Branch)
+	if m.data.filteredWts[2].Branch != "a" {
+		t.Fatalf("expected third worktree to be 'a', got %q", m.data.filteredWts[2].Branch)
 	}
 }
 
@@ -254,7 +254,7 @@ func TestPersistLastSelectedRecordsAccess(t *testing.T) {
 	m.persistLastSelected(testAccessWorktreePath)
 
 	// Verify access was recorded
-	ts, ok := m.accessHistory[testAccessWorktreePath]
+	ts, ok := m.data.accessHistory[testAccessWorktreePath]
 	if !ok {
 		t.Fatalf("expected persistLastSelected to record access for path %s", testAccessWorktreePath)
 	}

@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/chmouel/lazyworktree/internal/app/screen"
 	log "github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/models"
 	"github.com/chmouel/lazyworktree/internal/utils"
@@ -36,10 +36,7 @@ func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cm
 	// Don't clear loading screen if we're in the middle of push/sync operations
 	if m.loadingOperation != "push" && m.loadingOperation != "sync" {
 		m.loading = false
-		if m.currentScreen == screenLoading {
-			m.currentScreen = screenNone
-			m.loadingScreen = nil
-		}
+		m.clearLoadingScreen()
 	}
 	if msg.err != nil {
 		m.showInfo(fmt.Sprintf("Error loading worktrees: %v", msg.err), nil)
@@ -47,13 +44,13 @@ func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cm
 	}
 
 	// Preserve PR state across worktree reload to prevent race condition
-	prStateMap := extractPRState(m.worktrees)
-	m.worktrees = msg.worktrees
-	restorePRState(m.worktrees, prStateMap)
+	prStateMap := extractPRState(m.data.worktrees)
+	m.data.worktrees = msg.worktrees
+	restorePRState(m.data.worktrees, prStateMap)
 
 	// Populate LastSwitchedTS from access history
-	for _, wt := range m.worktrees {
-		if ts, ok := m.accessHistory[wt.Path]; ok {
+	for _, wt := range m.data.worktrees {
+		if ts, ok := m.data.accessHistory[wt.Path]; ok {
 			wt.LastSwitchedTS = ts
 		}
 	}
@@ -64,9 +61,9 @@ func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cm
 	if m.pendingSelectWorktreePath != "" {
 		m.recordAccess(m.pendingSelectWorktreePath)
 		// Update the LastSwitchedTS for this worktree before sorting
-		for _, wt := range m.worktrees {
+		for _, wt := range m.data.worktrees {
 			if wt.Path == m.pendingSelectWorktreePath {
-				wt.LastSwitchedTS = m.accessHistory[wt.Path]
+				wt.LastSwitchedTS = m.data.accessHistory[wt.Path]
 				break
 			}
 		}
@@ -77,31 +74,38 @@ func (m *Model) handleWorktreesLoaded(msg worktreesLoadedMsg) (tea.Model, tea.Cm
 
 	if m.pendingSelectWorktreePath != "" {
 		// Find and select the worktree in the filtered list
-		for i, wt := range m.filteredWts {
+		for i, wt := range m.data.filteredWts {
 			if wt.Path == m.pendingSelectWorktreePath {
-				m.worktreeTable.SetCursor(i)
-				m.selectedIndex = i
+				m.ui.worktreeTable.SetCursor(i)
+				m.data.selectedIndex = i
 				break
 			}
 		}
 		m.pendingSelectWorktreePath = ""
 	}
 	m.saveCache()
-	if len(m.worktrees) == 0 {
+	if len(m.data.worktrees) == 0 {
 		cwd, _ := os.Getwd()
-		m.welcomeScreen = NewWelcomeScreen(cwd, m.getRepoWorktreeDir(), m.theme)
-		m.currentScreen = screenWelcome
+		ws := screen.NewWelcomeScreen(cwd, m.getRepoWorktreeDir(), m.theme)
+		ws.OnRefresh = func() tea.Cmd {
+			return m.refreshWorktrees()
+		}
+		ws.OnQuit = func() tea.Cmd {
+			m.quitting = true
+			m.stopGitWatcher()
+			return tea.Quit
+		}
+		m.ui.screenManager.Push(ws)
 		return m, nil
 	}
-	if m.currentScreen == screenWelcome {
-		m.currentScreen = screenNone
-		m.welcomeScreen = nil
+	// Clear welcome screen if worktrees were found
+	if m.ui.screenManager.Type() == screen.TypeWelcome {
+		m.ui.screenManager.Pop()
 	}
 	cmds := []tea.Cmd{}
 	if m.config.AutoFetchPRs && !m.prDataLoaded {
 		m.loading = true
-		m.loadingScreen = NewLoadingScreen("Fetching PR data...", m.theme, m.config.IconsEnabled())
-		m.currentScreen = screenLoading
+		m.setLoadingScreen("Fetching PR data...")
 		cmds = append(cmds, m.fetchPRData())
 	} else if cmd := m.updateDetailsView(); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -121,18 +125,18 @@ func (m *Model) handleCachedWorktrees(msg cachedWorktreesMsg) (tea.Model, tea.Cm
 		return m, nil
 	}
 	// Preserve PR state across worktree reload to prevent race condition
-	prStateMap := extractPRState(m.worktrees)
-	m.worktrees = msg.worktrees
-	restorePRState(m.worktrees, prStateMap)
+	prStateMap := extractPRState(m.data.worktrees)
+	m.data.worktrees = msg.worktrees
+	restorePRState(m.data.worktrees, prStateMap)
 	// Populate LastSwitchedTS from access history
-	for _, wt := range m.worktrees {
-		if ts, ok := m.accessHistory[wt.Path]; ok {
+	for _, wt := range m.data.worktrees {
+		if ts, ok := m.data.accessHistory[wt.Path]; ok {
 			wt.LastSwitchedTS = ts
 		}
 	}
 	m.updateTable()
-	if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
-		m.infoContent = m.buildInfoContent(m.filteredWts[m.selectedIndex])
+	if m.data.selectedIndex >= 0 && m.data.selectedIndex < len(m.data.filteredWts) {
+		m.infoContent = m.buildInfoContent(m.data.filteredWts[m.data.selectedIndex])
 	}
 	m.statusContent = loadingRefreshWorktrees
 	return m, nil
@@ -143,9 +147,9 @@ func (m *Model) handlePruneResult(msg pruneResultMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err == nil && msg.worktrees != nil {
 		// Preserve PR state across worktree reload to prevent race condition
-		prStateMap := extractPRState(m.worktrees)
-		m.worktrees = msg.worktrees
-		restorePRState(m.worktrees, prStateMap)
+		prStateMap := extractPRState(m.data.worktrees)
+		m.data.worktrees = msg.worktrees
+		restorePRState(m.data.worktrees, prStateMap)
 		m.updateTable()
 		m.saveCache()
 	}
@@ -160,8 +164,7 @@ func (m *Model) handlePruneResult(msg pruneResultMsg) (tea.Model, tea.Cmd) {
 // handleAbsorbResult processes absorb merge result message.
 func (m *Model) handleAbsorbResult(msg absorbMergeResultMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.infoScreen = NewInfoScreen(fmt.Sprintf("Absorb failed\n\n%s", msg.err.Error()), m.theme)
-		m.currentScreen = screenInfo
+		m.showInfo(fmt.Sprintf("Absorb failed\n\n%s", msg.err.Error()), nil)
 		return m, nil
 	}
 	cmd := m.deleteWorktreeCmd(&models.WorktreeInfo{Path: msg.path, Branch: msg.branch})
@@ -186,15 +189,12 @@ func (m *Model) handlePRMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handlePRDataLoaded processes PR data loaded message.
 func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
-	if m.currentScreen == screenLoading {
-		m.currentScreen = screenNone
-		m.loadingScreen = nil
-	}
+	m.clearLoadingScreen()
 	if msg.err == nil {
 		log.Printf("handlePRDataLoaded: prMap has %d entries, worktreePRs has %d entries, worktreeErrors has %d entries",
 			len(msg.prMap), len(msg.worktreePRs), len(msg.worktreeErrors))
 
-		for _, wt := range m.worktrees {
+		for _, wt := range m.data.worktrees {
 			// Clear previous status
 			wt.PRFetchError = ""
 			wt.PRFetchStatus = models.PRFetchStatusNoPR
@@ -249,7 +249,7 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 		m.prDataLoaded = true
 		// Update columns before rows to include the PR column
-		m.updateTableColumns(m.worktreeTable.Width())
+		m.updateTableColumns(m.ui.worktreeTable.Width())
 		m.updateTable()
 
 		// If we were triggered from showPruneMerged, run the merged check now
@@ -271,13 +271,10 @@ func (m *Model) handlePRDataLoaded(msg prDataLoadedMsg) (tea.Model, tea.Cmd) {
 // handleCIStatusLoaded processes CI status loaded message.
 func (m *Model) handleCIStatusLoaded(msg ciStatusLoadedMsg) (tea.Model, tea.Cmd) {
 	if msg.err == nil && msg.checks != nil {
-		m.ciCache[msg.branch] = &ciCacheEntry{
-			checks:    msg.checks,
-			fetchedAt: time.Now(),
-		}
+		m.cache.ciCache.Set(msg.branch, msg.checks)
 		// Refresh info content to show CI status
-		if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
-			wt := m.filteredWts[m.selectedIndex]
+		if m.data.selectedIndex >= 0 && m.data.selectedIndex < len(m.data.filteredWts) {
+			wt := m.data.filteredWts[m.data.selectedIndex]
 			if wt.Branch == msg.branch {
 				m.infoContent = m.buildInfoContent(wt)
 			}
@@ -299,8 +296,8 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 	}
 
 	// Show PR selection screen
-	m.prSelectionScreen = NewPRSelectionScreen(msg.prs, m.windowWidth, m.windowHeight, m.theme, m.config.IconsEnabled())
-	m.prSelectionSubmit = func(pr *models.PRInfo) tea.Cmd {
+	prScr := screen.NewPRSelectionScreen(msg.prs, m.view.WindowWidth, m.view.WindowHeight, m.theme, m.config.IconsEnabled())
+	prScr.OnSelect = func(pr *models.PRInfo) tea.Cmd {
 		// Get AI-generated title (if configured)
 		generatedTitle := ""
 		scriptErr := ""
@@ -345,46 +342,46 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 
 		if scriptErr != "" {
 			m.showInfo(scriptErr, func() tea.Msg {
-				m.inputScreen = NewInputScreen(
+				inputScr := screen.NewInputScreen(
 					fmt.Sprintf("Create worktree from PR #%d (branch: %s)", pr.Number, pr.Branch),
 					"Worktree name",
 					suggested,
 					m.theme,
 					m.config.IconsEnabled(),
 				)
-				m.inputSubmit = func(value string, checked bool) (tea.Cmd, bool) {
+
+				inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 					newBranch := strings.TrimSpace(value)
 					newBranch = sanitizeBranchNameFromTitle(newBranch, "")
 					if newBranch == "" {
-						m.inputScreen.errorMsg = errBranchEmpty
-						return nil, false
+						inputScr.ErrorMsg = errBranchEmpty
+						return nil
 					}
 
 					targetPath := filepath.Join(m.getRepoWorktreeDir(), newBranch)
 					if errMsg := m.validateNewWorktreeTarget(newBranch, targetPath); errMsg != "" {
-						m.inputScreen.errorMsg = errMsg
-						return nil, false
+						inputScr.ErrorMsg = errMsg
+						return nil
 					}
 
 					// Validate that PR has a branch
 					if pr.Branch == "" {
-						m.inputScreen.errorMsg = errPRBranchMissing
-						return nil, false
+						inputScr.ErrorMsg = errPRBranchMissing
+						return nil
 					}
 
-					m.inputScreen.errorMsg = ""
+					inputScr.ErrorMsg = ""
 					if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
-						return func() tea.Msg { return errMsg{err: err} }, true
+						return func() tea.Msg { return errMsg{err: err} }
 					}
 
 					// Create worktree from PR branch (can take time, so do it async with a loading pulse)
 					m.loading = true
 					m.statusContent = fmt.Sprintf("Creating worktree from PR/MR #%d...", pr.Number)
-					m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-					m.currentScreen = screenLoading
+					m.setLoadingScreen(m.statusContent)
 					m.pendingSelectWorktreePath = targetPath
 					return func() tea.Msg {
-						ok := m.git.CreateWorktreeFromPR(m.ctx, pr.Number, pr.Branch, newBranch, targetPath)
+						ok := m.services.git.CreateWorktreeFromPR(m.ctx, pr.Number, pr.Branch, newBranch, targetPath)
 						if !ok {
 							return createFromPRResultMsg{
 								prNumber:   pr.Number,
@@ -399,55 +396,60 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 							targetPath: targetPath,
 							err:        nil,
 						}
-					}, true
+					}
 				}
-				m.currentScreen = screenInput
+
+				inputScr.OnCancel = func() tea.Cmd {
+					return nil
+				}
+
+				m.ui.screenManager.Push(inputScr)
 				return nil
 			})
 			return nil
 		}
 
 		// Show input screen with generated name
-		m.inputScreen = NewInputScreen(
+		inputScr := screen.NewInputScreen(
 			fmt.Sprintf("Create worktree from PR #%d (branch: %s)", pr.Number, pr.Branch),
 			"Worktree name",
 			suggested,
 			m.theme,
 			m.config.IconsEnabled(),
 		)
-		m.inputSubmit = func(value string, checked bool) (tea.Cmd, bool) {
+
+		inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 			newBranch := strings.TrimSpace(value)
 			newBranch = sanitizeBranchNameFromTitle(newBranch, "")
 			if newBranch == "" {
-				m.inputScreen.errorMsg = errBranchEmpty
-				return nil, false
+				inputScr.ErrorMsg = errBranchEmpty
+				return nil
 			}
 
 			targetPath := filepath.Join(m.getRepoWorktreeDir(), newBranch)
 			if errMsg := m.validateNewWorktreeTarget(newBranch, targetPath); errMsg != "" {
-				m.inputScreen.errorMsg = errMsg
-				return nil, false
+				inputScr.ErrorMsg = errMsg
+				return nil
 			}
 
 			// Validate that PR has a branch
 			if pr.Branch == "" {
-				m.inputScreen.errorMsg = errPRBranchMissing
-				return nil, false
+				inputScr.ErrorMsg = errPRBranchMissing
+				return nil
 			}
 
-			m.inputScreen.errorMsg = ""
+			inputScr.ErrorMsg = ""
 			if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
-				return func() tea.Msg { return errMsg{err: err} }, true
+				return func() tea.Msg { return errMsg{err: err} }
 			}
 
 			// Create worktree from PR branch (can take time, so do it async with a loading pulse)
 			m.loading = true
 			m.statusContent = fmt.Sprintf("Creating worktree from PR/MR #%d...", pr.Number)
-			m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-			m.currentScreen = screenLoading
+			m.setLoadingScreen(m.statusContent)
 			m.pendingSelectWorktreePath = targetPath
 			return func() tea.Msg {
-				ok := m.git.CreateWorktreeFromPR(m.ctx, pr.Number, pr.Branch, pr.Branch, targetPath)
+				ok := m.services.git.CreateWorktreeFromPR(m.ctx, pr.Number, pr.Branch, pr.Branch, targetPath)
 				if !ok {
 					return createFromPRResultMsg{
 						prNumber:   pr.Number,
@@ -457,12 +459,20 @@ func (m *Model) handleOpenPRsLoaded(msg openPRsLoadedMsg) tea.Cmd {
 					}
 				}
 				return createFromPRResultMsg{prNumber: pr.Number, branch: pr.Branch, targetPath: targetPath}
-			}, true
+			}
 		}
-		m.currentScreen = screenInput
+
+		inputScr.OnCancel = func() tea.Cmd {
+			return nil
+		}
+
+		m.ui.screenManager.Push(inputScr)
 		return textinput.Blink
 	}
-	m.currentScreen = screenPRSelect
+	prScr.OnCancel = func() tea.Cmd {
+		return nil
+	}
+	m.ui.screenManager.Push(prScr)
 	return textinput.Blink
 }
 
@@ -478,18 +488,15 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 		return nil
 	}
 
-	// Show issue selection screen
-	m.issueSelectionScreen = NewIssueSelectionScreen(msg.issues, m.windowWidth, m.windowHeight, m.theme, m.config.IconsEnabled())
-	m.issueSelectionSubmit = func(issue *models.IssueInfo) tea.Cmd {
-		// Show base branch selection
-		defaultBase := m.git.GetMainBranch(m.ctx)
+	issueScr := screen.NewIssueSelectionScreen(msg.issues, m.view.WindowWidth, m.view.WindowHeight, m.theme, m.config.IconsEnabled())
+	issueScr.OnSelect = func(issue *models.IssueInfo) tea.Cmd {
+		defaultBase := m.services.git.GetMainBranch(m.ctx)
 		return m.showBranchSelection(
 			fmt.Sprintf("Select base branch for issue #%d", issue.Number),
 			"Filter branches...",
 			"No branches found.",
 			defaultBase,
 			func(baseBranch string) tea.Cmd {
-				// Get AI-generated title (if configured)
 				generatedTitle := ""
 				scriptErr := ""
 
@@ -499,7 +506,6 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 					if template == "" {
 						template = "issue-{number}-{title}"
 					}
-					// Pass empty string for generatedTitle since we're getting it now
 					suggestedName := utils.GenerateIssueWorktreeName(issue, template, "")
 
 					if aiTitle, err := runBranchNameScript(
@@ -517,7 +523,6 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 					}
 				}
 
-				// Apply template with both original and generated titles
 				template := m.config.IssueBranchNameTemplate
 				if template == "" {
 					template = "issue-{number}-{title}"
@@ -525,7 +530,6 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 
 				defaultName := utils.GenerateIssueWorktreeName(issue, template, generatedTitle)
 
-				// Suggest branch name (check for duplicates)
 				suggested := strings.TrimSpace(defaultName)
 				if suggested != "" {
 					suggested = m.suggestBranchName(suggested)
@@ -542,41 +546,40 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 					return nil
 				}
 
-				// Show input screen with generated name
-				m.inputScreen = NewInputScreen(
+				inputScr := screen.NewInputScreen(
 					fmt.Sprintf("Create worktree from issue #%d", issue.Number),
 					"Worktree name",
 					suggested,
 					m.theme,
 					m.config.IconsEnabled(),
 				)
-				m.inputSubmit = func(value string, checked bool) (tea.Cmd, bool) {
+
+				inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 					newBranch := strings.TrimSpace(value)
 					newBranch = sanitizeBranchNameFromTitle(newBranch, "")
 					if newBranch == "" {
-						m.inputScreen.errorMsg = errBranchEmpty
-						return nil, false
+						inputScr.ErrorMsg = errBranchEmpty
+						return nil
 					}
 
 					targetPath := filepath.Join(m.getRepoWorktreeDir(), newBranch)
 					if errMsg := m.validateNewWorktreeTarget(newBranch, targetPath); errMsg != "" {
-						m.inputScreen.errorMsg = errMsg
-						return nil, false
+						inputScr.ErrorMsg = errMsg
+						return nil
 					}
 
-					m.inputScreen.errorMsg = ""
+					inputScr.ErrorMsg = ""
 					if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
-						return func() tea.Msg { return errMsg{err: err} }, true
+						return func() tea.Msg { return errMsg{err: err} }
 					}
 
 					// Create worktree from base branch (can take time, so do it async with a loading pulse)
 					m.loading = true
 					m.statusContent = fmt.Sprintf("Creating worktree from issue #%d...", issue.Number)
-					m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-					m.currentScreen = screenLoading
+					m.setLoadingScreen(m.statusContent)
 					m.pendingSelectWorktreePath = targetPath
 					return func() tea.Msg {
-						ok := m.git.RunCommandChecked(
+						ok := m.services.git.RunCommandChecked(
 							m.ctx,
 							[]string{"git", "worktree", "add", "-b", newBranch, targetPath, baseBranch},
 							"",
@@ -591,14 +594,19 @@ func (m *Model) handleOpenIssuesLoaded(msg openIssuesLoadedMsg) tea.Cmd {
 							}
 						}
 						return createFromIssueResultMsg{issueNumber: issue.Number, branch: newBranch, targetPath: targetPath}
-					}, true
+					}
 				}
-				m.currentScreen = screenInput
+
+				inputScr.OnCancel = func() tea.Cmd {
+					return nil
+				}
+
+				m.ui.screenManager.Push(inputScr)
 				return textinput.Blink
 			},
 		)
 	}
-	m.currentScreen = screenIssueSelect
+	m.ui.screenManager.Push(issueScr)
 	return textinput.Blink
 }
 

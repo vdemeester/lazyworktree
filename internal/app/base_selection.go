@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/utils"
 )
@@ -48,7 +49,7 @@ func (m *Model) showBaseSelection(defaultBase string) tea.Cmd {
 	hasChanges := false
 	currentWt := m.determineCurrentWorktree()
 	if currentWt != nil {
-		statusRaw := m.git.RunGit(m.ctx, []string{"git", "status", "--porcelain"}, currentWt.Path, []int{0}, true, false)
+		statusRaw := m.services.git.RunGit(m.ctx, []string{"git", "status", "--porcelain"}, currentWt.Path, []int{0}, true, false)
 		hasChanges = strings.TrimSpace(statusRaw) != ""
 	}
 
@@ -78,12 +79,31 @@ func (m *Model) showBaseSelection(defaultBase string) tea.Cmd {
 
 	title := "Select base for new worktree"
 
-	m.listScreen = NewListSelectionScreen(items, title, "Filter options...", "No base options available.", m.windowWidth, m.windowHeight, "", m.theme)
-	m.listSubmit = func(item selectionItem) tea.Cmd {
+	screenItems := make([]appscreen.SelectionItem, len(items))
+	for i, item := range items {
+		screenItems[i] = appscreen.SelectionItem{
+			ID:          item.id,
+			Label:       item.label,
+			Description: item.description,
+		}
+	}
+
+	listScreen := appscreen.NewListSelectionScreen(
+		screenItems,
+		title,
+		"Filter options...",
+		"No base options available.",
+		m.view.WindowWidth,
+		m.view.WindowHeight,
+		"",
+		m.theme,
+	)
+
+	listScreen.OnSelect = func(item appscreen.SelectionItem) tea.Cmd {
 		switch {
-		case item.id == "from-current":
+		case item.ID == "from-current":
 			return m.showCreateFromCurrent()
-		case item.id == "branch-list":
+		case item.ID == "branch-list":
 			return m.showBranchSelection(
 				"Select base branch",
 				"Filter branches...",
@@ -96,25 +116,23 @@ func (m *Model) showBaseSelection(defaultBase string) tea.Cmd {
 						if m.branchCheckedOutInWorktree(branch) {
 							return m.showBranchNameInput(branch, branch)
 						}
-						// Show checkout vs create prompt for local branches
 						return m.showCheckoutOrCreatePrompt(branch)
 					}
 
-					// For remote branches/tags, use existing flow
 					suggestedName := stripRemotePrefix(branch)
 					return m.showBranchNameInput(branch, suggestedName)
 				},
 			)
-		case item.id == "commit-list":
+		case item.ID == "commit-list":
 			return m.showCommitSelection(defaultBase)
-		case item.id == "freeform":
+		case item.ID == "freeform":
 			return m.showFreeformBaseInput(defaultBase)
-		case item.id == "from-pr":
+		case item.ID == "from-pr":
 			return m.showCreateFromPR()
-		case item.id == "from-issue":
+		case item.ID == "from-issue":
 			return m.showCreateFromIssue()
-		case strings.HasPrefix(item.id, "custom-"):
-			idxStr := strings.TrimPrefix(item.id, "custom-")
+		case strings.HasPrefix(item.ID, "custom-"):
+			idxStr := strings.TrimPrefix(item.ID, "custom-")
 			var idx int
 			if _, err := fmt.Sscanf(idxStr, "%d", &idx); err == nil {
 				if idx >= 0 && idx < len(m.config.CustomCreateMenus) {
@@ -127,37 +145,73 @@ func (m *Model) showBaseSelection(defaultBase string) tea.Cmd {
 		}
 	}
 
-	m.currentScreen = screenListSelect
+	listScreen.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(listScreen)
 	return textinput.Blink
 }
 
 func (m *Model) showFreeformBaseInput(defaultBase string) tea.Cmd {
 	m.clearListSelection()
-	m.inputScreen = NewInputScreen("Base ref", defaultBase, defaultBase, m.theme, m.config.IconsEnabled())
-	m.inputSubmit = func(baseVal string, checked bool) (tea.Cmd, bool) {
+
+	inputScr := appscreen.NewInputScreen("Base ref", defaultBase, defaultBase, m.theme, m.config.IconsEnabled())
+
+	inputScr.OnSubmit = func(baseVal string, _ bool) tea.Cmd {
 		baseRef := strings.TrimSpace(baseVal)
 		if baseRef == "" {
-			m.inputScreen.errorMsg = "Base ref cannot be empty."
-			return nil, false
+			inputScr.ErrorMsg = "Base ref cannot be empty."
+			return nil
 		}
 		if !m.baseRefExists(baseRef) {
-			m.inputScreen.errorMsg = "Base ref not found."
-			return nil, false
+			inputScr.ErrorMsg = "Base ref not found."
+			return nil
 		}
-		m.inputScreen.errorMsg = ""
-		return m.showBranchNameInput(baseRef, ""), false
+		inputScr.ErrorMsg = ""
+		return m.showBranchNameInput(baseRef, "")
 	}
-	m.currentScreen = screenInput
+
+	inputScr.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(inputScr)
 	return textinput.Blink
 }
 
 func (m *Model) showBranchSelection(title, placeholder, noResults, preferred string, onSelect func(string) tea.Cmd) tea.Cmd {
 	items := m.branchSelectionItems(preferred)
-	m.listScreen = NewListSelectionScreen(items, title, placeholder, noResults, m.windowWidth, m.windowHeight, preferred, m.theme)
-	m.listSubmit = func(item selectionItem) tea.Cmd {
-		return onSelect(item.id)
+
+	screenItems := make([]appscreen.SelectionItem, len(items))
+	for i, item := range items {
+		screenItems[i] = appscreen.SelectionItem{
+			ID:          item.id,
+			Label:       item.label,
+			Description: item.description,
+		}
 	}
-	m.currentScreen = screenListSelect
+
+	listScreen := appscreen.NewListSelectionScreen(
+		screenItems,
+		title,
+		placeholder,
+		noResults,
+		m.view.WindowWidth,
+		m.view.WindowHeight,
+		preferred,
+		m.theme,
+	)
+
+	listScreen.OnSelect = func(item appscreen.SelectionItem) tea.Cmd {
+		return onSelect(item.ID)
+	}
+
+	listScreen.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(listScreen)
 	return textinput.Blink
 }
 
@@ -169,7 +223,7 @@ func stripRemotePrefix(branch string) string {
 }
 
 func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
-	raw := m.git.RunGit(
+	raw := m.services.git.RunGit(
 		m.ctx,
 		[]string{
 			"git", "log",
@@ -192,17 +246,35 @@ func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
 	title := fmt.Sprintf("Select commit from %q", baseBranch)
 	noResults := fmt.Sprintf("No commits found on %s.", baseBranch)
 
-	m.listScreen = NewListSelectionScreen(items, title, "Filter commits...", noResults, m.windowWidth, m.windowHeight, "", m.theme)
-	m.listSubmit = func(item selectionItem) tea.Cmd {
-		m.clearListSelection()
-		commit, ok := commitLookup[item.id]
+	screenItems := make([]appscreen.SelectionItem, len(items))
+	for i, item := range items {
+		screenItems[i] = appscreen.SelectionItem{
+			ID:          item.id,
+			Label:       item.label,
+			Description: item.description,
+		}
+	}
+
+	listScreen := appscreen.NewListSelectionScreen(
+		screenItems,
+		title,
+		"Filter commits...",
+		noResults,
+		m.view.WindowWidth,
+		m.view.WindowHeight,
+		"",
+		m.theme,
+	)
+
+	listScreen.OnSelect = func(item appscreen.SelectionItem) tea.Cmd {
+		commit, ok := commitLookup[item.ID]
 		if !ok {
-			commit = commitOption{fullHash: item.id}
+			commit = commitOption{fullHash: item.ID}
 		}
 
 		var commitMessage string
 		if strings.TrimSpace(m.config.BranchNameScript) != "" {
-			commitMessage = m.commitLog(item.id)
+			commitMessage = m.commitLog(item.ID)
 		}
 
 		defaultName := ""
@@ -225,7 +297,7 @@ func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
 
 		if scriptErr != "" {
 			m.showInfo(scriptErr, func() tea.Msg {
-				cmd := m.showBranchNameInput(item.id, defaultName)
+				cmd := m.showBranchNameInput(item.ID, defaultName)
 				if cmd != nil {
 					return cmd()
 				}
@@ -233,9 +305,14 @@ func (m *Model) showCommitSelection(baseBranch string) tea.Cmd {
 			})
 			return nil
 		}
-		return m.showBranchNameInput(item.id, defaultName)
+		return m.showBranchNameInput(item.ID, defaultName)
 	}
-	m.currentScreen = screenListSelect
+
+	listScreen.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(listScreen)
 	return textinput.Blink
 }
 
@@ -245,46 +322,52 @@ func (m *Model) showBranchNameInput(baseRef, defaultName string) tea.Cmd {
 	if suggested != "" {
 		suggested = m.suggestBranchName(suggested)
 	}
-	m.inputScreen = NewInputScreen("Create worktree: branch name", "feature/my-branch", suggested, m.theme, m.config.IconsEnabled())
-	m.inputSubmit = func(value string, checked bool) (tea.Cmd, bool) {
+
+	inputScr := appscreen.NewInputScreen("Create worktree: branch name", "feature/my-branch", suggested, m.theme, m.config.IconsEnabled())
+
+	inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 		newBranch := strings.TrimSpace(value)
 		newBranch = sanitizeBranchNameFromTitle(newBranch, "")
 		if newBranch == "" {
-			m.inputScreen.errorMsg = errBranchEmpty
-			return nil, false
+			inputScr.ErrorMsg = errBranchEmpty
+			return nil
 		}
 
 		targetPath := filepath.Join(m.getRepoWorktreeDir(), newBranch)
 		if errMsg := m.validateNewWorktreeTarget(newBranch, targetPath); errMsg != "" {
-			m.inputScreen.errorMsg = errMsg
-			return nil, false
+			inputScr.ErrorMsg = errMsg
+			return nil
 		}
 
-		// Show loading screen immediately (before returning from inputSubmit)
+		// Show loading screen immediately
 		if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
-			return func() tea.Msg { return errMsg{err: err} }, true
+			return func() tea.Msg { return errMsg{err: err} }
 		}
 		m.loading = true
 		m.statusContent = fmt.Sprintf("Creating worktree from %s...", baseRef)
-		m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-		m.currentScreen = screenLoading
+		m.setLoadingScreen(m.statusContent)
 
-		return m.createWorktreeFromBaseAsync(newBranch, targetPath, baseRef), true
+		return m.createWorktreeFromBaseAsync(newBranch, targetPath, baseRef)
 	}
-	m.currentScreen = screenInput
+
+	inputScr.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(inputScr)
 	return textinput.Blink
 }
 
 func (m *Model) suggestBranchName(baseName string) string {
 	existing := make(map[string]struct{})
-	for _, wt := range m.worktrees {
+	for _, wt := range m.data.worktrees {
 		if wt.Branch == "" || wt.Branch == "(detached)" {
 			continue
 		}
 		existing[wt.Branch] = struct{}{}
 	}
 
-	raw := m.git.RunGit(
+	raw := m.services.git.RunGit(
 		m.ctx,
 		[]string{
 			"git", "for-each-ref",
@@ -324,7 +407,7 @@ func suggestBranchNameWithExisting(baseName string, existing map[string]struct{}
 }
 
 func (m *Model) commitLog(hash string) string {
-	return m.git.RunGit(
+	return m.services.git.RunGit(
 		m.ctx,
 		[]string{"git", "show", "--quiet", "--pretty=format:%s%n%b", hash},
 		"",
@@ -340,7 +423,7 @@ func (m *Model) baseRefExists(ref string) bool {
 		return false
 	}
 	refQuery := fmt.Sprintf("%s^{commit}", ref)
-	out := m.git.RunGit(
+	out := m.services.git.RunGit(
 		m.ctx,
 		[]string{"git", "rev-parse", "--verify", refQuery},
 		"",
@@ -353,7 +436,7 @@ func (m *Model) baseRefExists(ref string) bool {
 
 // localBranchExists checks if a local branch with the given name exists.
 func (m *Model) localBranchExists(branch string) bool {
-	output := m.git.RunGit(
+	output := m.services.git.RunGit(
 		m.ctx,
 		[]string{"git", "show-ref", "--verify", fmt.Sprintf("refs/heads/%s", branch)},
 		"",
@@ -365,7 +448,7 @@ func (m *Model) localBranchExists(branch string) bool {
 }
 
 func (m *Model) branchCheckedOutInWorktree(branch string) bool {
-	for _, wt := range m.worktrees {
+	for _, wt := range m.data.worktrees {
 		if wt == nil {
 			continue
 		}
@@ -384,18 +467,38 @@ func (m *Model) showCheckoutOrCreatePrompt(branch string) tea.Cmd {
 		{id: "create", label: "Create new branch", description: "Create new branch based on this one"},
 	}
 
-	m.listScreen = NewListSelectionScreen(items,
-		fmt.Sprintf("Branch %q exists locally", branch),
-		"Filter...", "No options.", m.windowWidth, m.windowHeight, "", m.theme)
+	screenItems := make([]appscreen.SelectionItem, len(items))
+	for i, item := range items {
+		screenItems[i] = appscreen.SelectionItem{
+			ID:          item.id,
+			Label:       item.label,
+			Description: item.description,
+		}
+	}
 
-	m.listSubmit = func(item selectionItem) tea.Cmd {
-		if item.id == "checkout" {
+	listScreen := appscreen.NewListSelectionScreen(
+		screenItems,
+		fmt.Sprintf("Branch %q exists locally", branch),
+		"Filter...",
+		"No options.",
+		m.view.WindowWidth,
+		m.view.WindowHeight,
+		"",
+		m.theme,
+	)
+
+	listScreen.OnSelect = func(item appscreen.SelectionItem) tea.Cmd {
+		if item.ID == "checkout" {
 			return m.showWorktreeNameForExistingBranch(branch)
 		}
 		return m.showBranchNameInput(branch, branch)
 	}
 
-	m.currentScreen = screenListSelect
+	listScreen.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(listScreen)
 	return textinput.Blink
 }
 
@@ -406,7 +509,7 @@ func (m *Model) showWorktreeNameForExistingBranch(branchName string) tea.Cmd {
 
 	suggested := branchName + "-wt"
 
-	m.inputScreen = NewInputScreen(
+	inputScr := appscreen.NewInputScreen(
 		fmt.Sprintf("Worktree name for existing branch %q", branchName),
 		"my-worktree",
 		suggested,
@@ -414,33 +517,36 @@ func (m *Model) showWorktreeNameForExistingBranch(branchName string) tea.Cmd {
 		m.config.IconsEnabled(),
 	)
 
-	m.inputSubmit = func(value string, _ bool) (tea.Cmd, bool) {
+	inputScr.OnSubmit = func(value string, _ bool) tea.Cmd {
 		worktreeName := strings.TrimSpace(value)
 		worktreeName = sanitizeBranchNameFromTitle(worktreeName, "")
 		if worktreeName == "" {
-			m.inputScreen.errorMsg = errBranchEmpty
-			return nil, false
+			inputScr.ErrorMsg = errBranchEmpty
+			return nil
 		}
 
 		targetPath := filepath.Join(m.getRepoWorktreeDir(), worktreeName)
 		if errMsg := m.validateNewWorktreeTarget(worktreeName, targetPath); errMsg != "" {
-			m.inputScreen.errorMsg = errMsg
-			return nil, false
+			inputScr.ErrorMsg = errMsg
+			return nil
 		}
 
 		// Show loading screen immediately
 		if err := m.ensureWorktreeDir(m.getRepoWorktreeDir()); err != nil {
-			return func() tea.Msg { return errMsg{err: err} }, true
+			return func() tea.Msg { return errMsg{err: err} }
 		}
 		m.loading = true
 		m.statusContent = fmt.Sprintf("Checking out %s...", branchName)
-		m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-		m.currentScreen = screenLoading
+		m.setLoadingScreen(m.statusContent)
 
-		return m.checkoutExistingBranchAsync(worktreeName, targetPath, branchName), true
+		return m.checkoutExistingBranchAsync(worktreeName, targetPath, branchName)
 	}
 
-	m.currentScreen = screenInput
+	inputScr.OnCancel = func() tea.Cmd {
+		return nil
+	}
+
+	m.ui.screenManager.Push(inputScr)
 	return textinput.Blink
 }
 
@@ -451,7 +557,7 @@ func (m *Model) checkoutExistingBranchAsync(worktreeName, targetPath, branchName
 		// Key difference: no "-b" flag when checking out existing branch
 		args := []string{"git", "worktree", "add", targetPath, branchName}
 
-		ok := m.git.RunCommandChecked(
+		ok := m.services.git.RunCommandChecked(
 			m.ctx,
 			args,
 			"",
@@ -465,7 +571,7 @@ func (m *Model) checkoutExistingBranchAsync(worktreeName, targetPath, branchName
 		initCmds := m.collectInitCommands()
 
 		after := func() tea.Msg {
-			worktrees, err := m.git.GetWorktrees(m.ctx)
+			worktrees, err := m.services.git.GetWorktrees(m.ctx)
 			return worktreesLoadedMsg{worktrees: worktrees, err: err}
 		}
 
@@ -498,7 +604,7 @@ func (m *Model) createWorktreeFromBaseAsync(newBranch, targetPath, baseRef strin
 		}
 		args = append(args, targetPath, baseRef)
 
-		ok := m.git.RunCommandChecked(
+		ok := m.services.git.RunCommandChecked(
 			m.ctx,
 			args,
 			"",
@@ -514,7 +620,7 @@ func (m *Model) createWorktreeFromBaseAsync(newBranch, targetPath, baseRef strin
 		// Run init commands with trust checks, passing after callback
 		after := func() tea.Msg {
 			// If there's a custom menu with post-command, run it
-			if m.pendingCustomMenu != nil && m.pendingCustomMenu.PostCommand != "" {
+			if m.pending.CustomMenu != nil && m.pending.CustomMenu.PostCommand != "" {
 				return customPostCommandPendingMsg{
 					targetPath: targetPath,
 					env:        env,
@@ -522,7 +628,7 @@ func (m *Model) createWorktreeFromBaseAsync(newBranch, targetPath, baseRef strin
 			}
 
 			// Otherwise just reload worktrees
-			worktrees, err := m.git.GetWorktrees(m.ctx)
+			worktrees, err := m.services.git.GetWorktrees(m.ctx)
 			return worktreesLoadedMsg{
 				worktrees: worktrees,
 				err:       err,
@@ -547,23 +653,16 @@ func (m *Model) createWorktreeFromBase(newBranch, targetPath, baseRef string) te
 	// Show loading screen while creating worktree (can take time, so do it async with a loading pulse)
 	m.loading = true
 	m.statusContent = fmt.Sprintf("Creating worktree from %s...", baseRef)
-	m.loadingScreen = NewLoadingScreen(m.statusContent, m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen(m.statusContent)
 
 	return m.createWorktreeFromBaseAsync(newBranch, targetPath, baseRef)
 }
 
 func (m *Model) clearListSelection() {
-	m.listScreen = nil
-	m.listSubmit = nil
-	m.listScreenCIChecks = nil
-	if m.currentScreen == screenListSelect {
-		m.currentScreen = screenNone
-	}
 }
 
 func (m *Model) branchSelectionItems(preferred string) []selectionItem {
-	raw := m.git.RunGit(
+	raw := m.services.git.RunGit(
 		m.ctx,
 		[]string{
 			"git", "for-each-ref",
@@ -747,8 +846,8 @@ func (m *Model) executeCustomCreateCommand(menu *config.CustomCreateMenu) tea.Cm
 
 	// Get main worktree path for command execution
 	mainWorktreePath := ""
-	if len(m.worktrees) > 0 {
-		for _, wt := range m.worktrees {
+	if len(m.data.worktrees) > 0 {
+		for _, wt := range m.data.worktrees {
 			if wt.IsMain {
 				mainWorktreePath = wt.Path
 				break
@@ -762,8 +861,7 @@ func (m *Model) executeCustomCreateCommand(menu *config.CustomCreateMenu) tea.Cm
 	}
 
 	// Non-interactive mode: capture stdout directly
-	m.loadingScreen = NewLoadingScreen(fmt.Sprintf("Running: %s", menu.Label), m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen(fmt.Sprintf("Running: %s", menu.Label))
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
@@ -821,7 +919,7 @@ func (m *Model) executeCustomCreateCommandInteractive(menu *config.CustomCreateM
 	wrappedCmd := fmt.Sprintf("%s > %s", menu.Command, tmpPath)
 
 	// #nosec G204 -- user-configured command from trusted config
-	c := m.commandRunner("bash", "-c", wrappedCmd)
+	c := m.commandRunner(m.ctx, "bash", "-c", wrappedCmd)
 	c.Dir = workDir
 
 	return m.execProcess(c, func(err error) tea.Msg {
@@ -865,8 +963,8 @@ func (m *Model) showBaseBranchForCustomCreateMenu(menu *config.CustomCreateMenu)
 		"",
 		func(branch string) tea.Cmd {
 			// Store base branch and menu for later use
-			m.pendingCustomBaseRef = branch
-			m.pendingCustomMenu = menu
+			m.pending.CustomBaseRef = branch
+			m.pending.CustomMenu = menu
 			// Now run the command
 			return m.executeCustomCreateCommand(menu)
 		},
@@ -875,8 +973,7 @@ func (m *Model) showBaseBranchForCustomCreateMenu(menu *config.CustomCreateMenu)
 
 // executeCustomPostCommand runs a non-interactive post-creation command in the new worktree directory.
 func (m *Model) executeCustomPostCommand(script, targetPath string, env map[string]string) tea.Cmd {
-	m.loadingScreen = NewLoadingScreen("Running post-creation command...", m.theme, m.config.IconsEnabled())
-	m.currentScreen = screenLoading
+	m.setLoadingScreen("Running post-creation command...")
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
@@ -917,7 +1014,7 @@ func (m *Model) executeCustomPostCommandInteractive(script, targetPath string, e
 	}
 
 	// #nosec G204 -- user-configured command from trusted config
-	c := m.commandRunner("bash", "-c", script)
+	c := m.commandRunner(m.ctx, "bash", "-c", script)
 	c.Dir = targetPath
 	c.Env = envList
 

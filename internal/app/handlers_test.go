@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
+	"github.com/chmouel/lazyworktree/internal/app/services"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -33,20 +36,20 @@ func TestHandlePageDownUpOnStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(10, 2)
-	m.statusViewport.SetContent(strings.Repeat("line\n", 10))
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(10, 2)
+	m.ui.statusViewport.SetContent(strings.Repeat("line\n", 10))
 
-	start := m.statusViewport.YOffset
+	start := m.ui.statusViewport.YOffset
 	_, _ = m.handlePageDown(tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.statusViewport.YOffset <= start {
-		t.Fatalf("expected YOffset to increase, got %d", m.statusViewport.YOffset)
+	if m.ui.statusViewport.YOffset <= start {
+		t.Fatalf("expected YOffset to increase, got %d", m.ui.statusViewport.YOffset)
 	}
 
-	m.statusViewport.YOffset = 2
+	m.ui.statusViewport.YOffset = 2
 	_, _ = m.handlePageUp(tea.KeyMsg{Type: tea.KeyPgUp})
-	if m.statusViewport.YOffset >= 2 {
-		t.Fatalf("expected YOffset to decrease, got %d", m.statusViewport.YOffset)
+	if m.ui.statusViewport.YOffset >= 2 {
+		t.Fatalf("expected YOffset to decrease, got %d", m.ui.statusViewport.YOffset)
 	}
 }
 
@@ -55,11 +58,11 @@ func TestHandleEnterKeySelectsWorktree(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt"), Branch: testFeat},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleEnterKey()
 	if m.selectedPath == "" {
@@ -76,19 +79,19 @@ func TestFilterEnterClosesWithoutSelecting(t *testing.T) {
 		SortMode:    "path",
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
+	m.view.FocusedPane = 0
 
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "b-worktree"), Branch: testFeat},
 		{Path: filepath.Join(cfg.WorktreeDir, "a-worktree"), Branch: testFeat},
 	}
-	m.filterQuery = testFeat
-	m.filterInput.SetValue(testFeat)
+	m.services.filter.FilterQuery = testFeat
+	m.ui.filterInput.SetValue(testFeat)
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
-	m.worktreeTable.SetCursor(1)
-	m.selectedIndex = 1
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
+	m.ui.worktreeTable.SetCursor(1)
+	m.data.selectedIndex = 1
 
 	updated, cmd := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyEnter})
 	updatedModel, ok := updated.(*Model)
@@ -100,7 +103,7 @@ func TestFilterEnterClosesWithoutSelecting(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command to be returned")
 	}
-	if m.showingFilter {
+	if m.view.ShowingFilter {
 		t.Fatal("expected filter to be closed")
 	}
 	if m.selectedPath != "" {
@@ -117,17 +120,17 @@ func TestFilterAltNPMovesSelectionAndFills(t *testing.T) {
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
 	wt2Path := filepath.Join(cfg.WorktreeDir, testWt2)
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feat-one"},
 		{Path: wt2Path, Branch: "feat-two"},
 	}
-	m.filterQuery = testFeat
-	m.filterInput.SetValue(testFeat)
+	m.services.filter.FilterQuery = testFeat
+	m.ui.filterInput.SetValue(testFeat)
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
-	m.worktreeTable.SetCursor(0)
-	m.selectedIndex = 0
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
+	m.ui.worktreeTable.SetCursor(0)
+	m.data.selectedIndex = 0
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true})
 	updatedModel, ok := updated.(*Model)
@@ -136,11 +139,11 @@ func TestFilterAltNPMovesSelectionAndFills(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.filterInput.Value() != testWt2 || m.filterQuery != testWt2 {
-		t.Fatalf("expected filter query to match selected worktree, got %q", m.filterQuery)
+	if m.ui.filterInput.Value() != testWt2 || m.services.filter.FilterQuery != testWt2 {
+		t.Fatalf("expected filter query to match selected worktree, got %q", m.services.filter.FilterQuery)
 	}
-	if len(m.filteredWts) != 1 || m.filteredWts[0].Path != wt2Path {
-		t.Fatalf("expected filtered worktree %q, got %v", wt2Path, m.filteredWts)
+	if len(m.data.filteredWts) != 1 || m.data.filteredWts[0].Path != wt2Path {
+		t.Fatalf("expected filtered worktree %q, got %v", wt2Path, m.data.filteredWts)
 	}
 
 	updated, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true})
@@ -150,11 +153,11 @@ func TestFilterAltNPMovesSelectionAndFills(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.filterInput.Value() != testWt1 || m.filterQuery != testWt1 {
-		t.Fatalf("expected filter query to match selected worktree, got %q", m.filterQuery)
+	if m.ui.filterInput.Value() != testWt1 || m.services.filter.FilterQuery != testWt1 {
+		t.Fatalf("expected filter query to match selected worktree, got %q", m.services.filter.FilterQuery)
 	}
-	if len(m.filteredWts) != 1 || m.filteredWts[0].Path != wt1Path {
-		t.Fatalf("expected filtered worktree %q, got %v", wt1Path, m.filteredWts)
+	if len(m.data.filteredWts) != 1 || m.data.filteredWts[0].Path != wt1Path {
+		t.Fatalf("expected filtered worktree %q, got %v", wt1Path, m.data.filteredWts)
 	}
 }
 
@@ -167,17 +170,17 @@ func TestFilterArrowKeysNavigateWithoutFilling(t *testing.T) {
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
 	wt2Path := filepath.Join(cfg.WorktreeDir, testWt2)
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feat-one"},
 		{Path: wt2Path, Branch: "feat-two"},
 	}
-	m.filterQuery = testFeat
-	m.filterInput.SetValue(testFeat)
+	m.services.filter.FilterQuery = testFeat
+	m.ui.filterInput.SetValue(testFeat)
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
-	m.worktreeTable.SetCursor(0)
-	m.selectedIndex = 0
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
+	m.ui.worktreeTable.SetCursor(0)
+	m.data.selectedIndex = 0
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyDown})
 	updatedModel, ok := updated.(*Model)
@@ -186,8 +189,8 @@ func TestFilterArrowKeysNavigateWithoutFilling(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.filterInput.Value() != testFeat || m.filterQuery != testFeat {
-		t.Fatalf("expected filter query unchanged, got %q", m.filterQuery)
+	if m.ui.filterInput.Value() != testFeat || m.services.filter.FilterQuery != testFeat {
+		t.Fatalf("expected filter query unchanged, got %q", m.services.filter.FilterQuery)
 	}
 
 	updated, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyUp})
@@ -197,8 +200,8 @@ func TestFilterArrowKeysNavigateWithoutFilling(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.filterInput.Value() != testFeat || m.filterQuery != testFeat {
-		t.Fatalf("expected filter query unchanged, got %q", m.filterQuery)
+	if m.ui.filterInput.Value() != testFeat || m.services.filter.FilterQuery != testFeat {
+		t.Fatalf("expected filter query unchanged, got %q", m.services.filter.FilterQuery)
 	}
 }
 
@@ -211,17 +214,17 @@ func TestFilterEmptyEnterSelectsCurrent(t *testing.T) {
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
 	wt2Path := filepath.Join(cfg.WorktreeDir, testWt2)
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feat-one"},
 		{Path: wt2Path, Branch: "feat-two"},
 	}
-	m.filterQuery = ""
-	m.filterInput.SetValue("")
+	m.services.filter.FilterQuery = ""
+	m.ui.filterInput.SetValue("")
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
-	m.worktreeTable.SetCursor(1)
-	m.selectedIndex = 1
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
+	m.ui.worktreeTable.SetCursor(1)
+	m.data.selectedIndex = 1
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyEnter})
 	updatedModel, ok := updated.(*Model)
@@ -230,11 +233,11 @@ func TestFilterEmptyEnterSelectsCurrent(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.showingFilter {
+	if m.view.ShowingFilter {
 		t.Fatal("expected filter to be closed")
 	}
-	if m.selectedIndex != 1 {
-		t.Fatalf("expected selectedIndex to remain 1, got %d", m.selectedIndex)
+	if m.data.selectedIndex != 1 {
+		t.Fatalf("expected selectedIndex to remain 1, got %d", m.data.selectedIndex)
 	}
 }
 
@@ -246,14 +249,14 @@ func TestFilterCtrlCExitsFilter(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, testWt1)
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feat-one"},
 	}
-	m.filterQuery = "something"
-	m.filterInput.SetValue("something")
+	m.services.filter.FilterQuery = "something"
+	m.ui.filterInput.SetValue("something")
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlC})
 	updatedModel, ok := updated.(*Model)
@@ -262,10 +265,10 @@ func TestFilterCtrlCExitsFilter(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.showingFilter {
+	if m.view.ShowingFilter {
 		t.Fatal("expected filter to be closed after Ctrl+C")
 	}
-	if m.filterInput.Focused() {
+	if m.ui.filterInput.Focused() {
 		t.Fatal("expected filter input to be blurred")
 	}
 }
@@ -276,17 +279,17 @@ func TestSearchWorktreeSelectsMatch(t *testing.T) {
 		SortMode:    "path",
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
+	m.view.FocusedPane = 0
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, "alpha")
 	wt2Path := filepath.Join(cfg.WorktreeDir, "beta")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feat-one"},
 		{Path: wt2Path, Branch: "feat-two"},
 	}
 	m.updateTable()
-	m.worktreeTable.SetCursor(0)
-	m.selectedIndex = 0
+	m.ui.worktreeTable.SetCursor(0)
+	m.data.selectedIndex = 0
 
 	updated, _ := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	updatedModel, ok := updated.(*Model)
@@ -297,8 +300,8 @@ func TestSearchWorktreeSelectsMatch(t *testing.T) {
 
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 
-	if m.worktreeTable.Cursor() != 1 {
-		t.Fatalf("expected cursor to move to match, got %d", m.worktreeTable.Cursor())
+	if m.ui.worktreeTable.Cursor() != 1 {
+		t.Fatalf("expected cursor to move to match, got %d", m.ui.worktreeTable.Cursor())
 	}
 }
 
@@ -307,8 +310,8 @@ func TestFilterStatusNarrowsList(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 	m.setStatusFiles([]StatusFile{
 		{Filename: "app.go", Status: ".M"},
 		{Filename: "README.md", Status: ".M"},
@@ -326,11 +329,11 @@ func TestFilterStatusNarrowsList(t *testing.T) {
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
-	if len(m.statusFiles) != 1 {
-		t.Fatalf("expected 1 filtered status file, got %d", len(m.statusFiles))
+	if len(m.data.statusFiles) != 1 {
+		t.Fatalf("expected 1 filtered status file, got %d", len(m.data.statusFiles))
 	}
-	if m.statusFiles[0].Filename != testReadme {
-		t.Fatalf("expected %s, got %q", testReadme, m.statusFiles[0].Filename)
+	if m.data.statusFiles[0].Filename != testReadme {
+		t.Fatalf("expected %s, got %q", testReadme, m.data.statusFiles[0].Filename)
 	}
 }
 
@@ -339,8 +342,8 @@ func TestHandleCachedWorktreesUpdatesState(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.selectedIndex = 0
-	m.worktreeTable.SetWidth(80)
+	m.data.selectedIndex = 0
+	m.ui.worktreeTable.SetWidth(80)
 
 	msg := cachedWorktreesMsg{
 		worktrees: []*models.WorktreeInfo{
@@ -352,8 +355,8 @@ func TestHandleCachedWorktreesUpdatesState(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command")
 	}
-	if len(m.worktrees) != 1 {
-		t.Fatalf("expected worktrees to be set, got %d", len(m.worktrees))
+	if len(m.data.worktrees) != 1 {
+		t.Fatalf("expected worktrees to be set, got %d", len(m.data.worktrees))
 	}
 	if m.statusContent != loadingRefreshWorktrees {
 		t.Fatalf("unexpected status content: %q", m.statusContent)
@@ -369,13 +372,13 @@ func TestHandlePRDataLoadedUpdatesTable(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "feature"},
 	}
-	m.filteredWts = m.worktrees
-	m.worktreeTable.SetCursor(0)
+	m.data.filteredWts = m.data.worktrees
+	m.ui.worktreeTable.SetCursor(0)
 
 	msg := prDataLoadedMsg{
 		prMap: map[string]*models.PRInfo{
@@ -390,13 +393,13 @@ func TestHandlePRDataLoadedUpdatesTable(t *testing.T) {
 	if !m.prDataLoaded {
 		t.Fatal("expected prDataLoaded to be true")
 	}
-	if m.worktrees[0].PR == nil {
+	if m.data.worktrees[0].PR == nil {
 		t.Fatal("expected PR info to be applied to worktree")
 	}
-	if len(m.worktreeTable.Columns()) != 4 {
-		t.Fatalf("expected 4 columns after PR data, got %d", len(m.worktreeTable.Columns()))
+	if len(m.ui.worktreeTable.Columns()) != 4 {
+		t.Fatalf("expected 4 columns after PR data, got %d", len(m.ui.worktreeTable.Columns()))
 	}
-	rows := m.worktreeTable.Rows()
+	rows := m.ui.worktreeTable.Rows()
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 row after PR data, got %d", len(rows))
 	}
@@ -415,13 +418,13 @@ func TestHandlePRDataLoadedOmitsIconWhenDisabled(t *testing.T) {
 	cfg.WorktreeDir = t.TempDir()
 	cfg.IconSet = "none"
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "feature"},
 	}
-	m.filteredWts = m.worktrees
-	m.worktreeTable.SetCursor(0)
+	m.data.filteredWts = m.data.worktrees
+	m.ui.worktreeTable.SetCursor(0)
 
 	msg := prDataLoadedMsg{
 		prMap: map[string]*models.PRInfo{
@@ -434,7 +437,7 @@ func TestHandlePRDataLoadedOmitsIconWhenDisabled(t *testing.T) {
 		t.Fatal("expected command to be returned")
 	}
 
-	rows := m.worktreeTable.Rows()
+	rows := m.ui.worktreeTable.Rows()
 	if len(rows) != 1 || len(rows[0]) != 4 {
 		t.Fatalf("unexpected row shape: %+v", rows)
 	}
@@ -450,14 +453,14 @@ func TestHandlePRDataLoadedWithWorktreePRs(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "local-branch-name"},
 	}
-	m.filteredWts = m.worktrees
-	m.worktreeTable.SetCursor(0)
+	m.data.filteredWts = m.data.worktrees
+	m.ui.worktreeTable.SetCursor(0)
 
 	// Simulate a case where the local branch name differs from the PR's headRefName
 	// So prMap won't match, but worktreePRs (from gh pr view) will
@@ -477,11 +480,11 @@ func TestHandlePRDataLoadedWithWorktreePRs(t *testing.T) {
 	if !m.prDataLoaded {
 		t.Fatal("expected prDataLoaded to be true")
 	}
-	if m.worktrees[0].PR == nil {
+	if m.data.worktrees[0].PR == nil {
 		t.Fatal("expected PR info to be applied to worktree via worktreePRs")
 	}
-	if m.worktrees[0].PR.Number != 99 {
-		t.Fatalf("expected PR number 99, got %d", m.worktrees[0].PR.Number)
+	if m.data.worktrees[0].PR.Number != 99 {
+		t.Fatalf("expected PR number 99, got %d", m.data.worktrees[0].PR.Number)
 	}
 }
 
@@ -491,7 +494,7 @@ func TestHandleCIStatusLoadedUpdatesCache(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{
 			Path:   filepath.Join(cfg.WorktreeDir, "wt1"),
 			Branch: "feature",
@@ -503,7 +506,7 @@ func TestHandleCIStatusLoadedUpdatesCache(t *testing.T) {
 			},
 		},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	msg := ciStatusLoadedMsg{
 		branch: "feature",
@@ -516,8 +519,8 @@ func TestHandleCIStatusLoadedUpdatesCache(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command")
 	}
-	if entry, ok := m.ciCache["feature"]; !ok || len(entry.checks) != 1 {
-		t.Fatalf("expected CI cache to be updated, got %v", entry)
+	if checks, _, ok := m.cache.ciCache.Get("feature"); !ok || len(checks) != 1 {
+		t.Fatalf("expected CI cache to be updated, got %v", checks)
 	}
 	if !strings.Contains(m.infoContent, "CI Checks:") {
 		t.Fatalf("expected info content to include CI checks, got %q", m.infoContent)
@@ -534,7 +537,7 @@ func TestHandleCIStatusLoadedOmitsIconWhenDisabled(t *testing.T) {
 	cfg.WorktreeDir = t.TempDir()
 	cfg.IconSet = "none"
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{
 			Path:   filepath.Join(cfg.WorktreeDir, "wt1"),
 			Branch: "feature",
@@ -546,7 +549,7 @@ func TestHandleCIStatusLoadedOmitsIconWhenDisabled(t *testing.T) {
 			},
 		},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	msg := ciStatusLoadedMsg{
 		branch: "feature",
@@ -576,27 +579,27 @@ func TestFilterEnterClosesWithoutSelectingItem(t *testing.T) {
 		SearchAutoSelect: false,
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
+	m.view.FocusedPane = 0
 
 	wt1Path := filepath.Join(cfg.WorktreeDir, "srv-api")
 	wt2Path := filepath.Join(cfg.WorktreeDir, "srv-auth")
 	wt3Path := filepath.Join(cfg.WorktreeDir, "srv-worker")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "feature/srv-api"},
 		{Path: wt2Path, Branch: "feature/srv-auth"},
 		{Path: wt3Path, Branch: "feature/srv-worker"},
 	}
 
 	// Apply filter for "srv"
-	m.filterQuery = "srv"
-	m.filterInput.SetValue("srv")
+	m.services.filter.FilterQuery = "srv"
+	m.ui.filterInput.SetValue("srv")
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
 
 	// Navigate to the second item (srv-auth)
-	m.worktreeTable.SetCursor(1)
-	m.selectedIndex = 1
+	m.ui.worktreeTable.SetCursor(1)
+	m.data.selectedIndex = 1
 
 	// Press Enter - should exit filter without selecting
 	updated, cmd := m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyEnter})
@@ -609,7 +612,7 @@ func TestFilterEnterClosesWithoutSelectingItem(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no command to be returned")
 	}
-	if m.showingFilter {
+	if m.view.ShowingFilter {
 		t.Fatal("expected filter to be closed")
 	}
 	if m.selectedPath != "" {
@@ -631,7 +634,7 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	wt4Path := filepath.Join(cfg.WorktreeDir, "srv-auth")
 	wt5Path := filepath.Join(cfg.WorktreeDir, "srv-worker")
 
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: wt1Path, Branch: "main", IsMain: true},
 		{Path: wt2Path, Branch: "feature/srv-api"},
 		{Path: wt3Path, Branch: "feature/frontend"},
@@ -640,17 +643,17 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	}
 
 	// Apply filter for "srv"
-	m.filterQuery = "srv"
-	m.filterInput.SetValue("srv")
+	m.services.filter.FilterQuery = "srv"
+	m.ui.filterInput.SetValue("srv")
 	m.updateTable()
-	m.showingFilter = true
-	m.filterInput.Focus()
-	m.worktreeTable.SetCursor(0)
-	m.selectedIndex = 0
+	m.view.ShowingFilter = true
+	m.ui.filterInput.Focus()
+	m.ui.worktreeTable.SetCursor(0)
+	m.data.selectedIndex = 0
 
 	// Verify we have exactly 3 filtered items
-	if len(m.filteredWts) != 3 {
-		t.Fatalf("expected 3 filtered items, got %d", len(m.filteredWts))
+	if len(m.data.filteredWts) != 3 {
+		t.Fatalf("expected 3 filtered items, got %d", len(m.data.filteredWts))
 	}
 
 	// Navigate down through all filtered items
@@ -664,7 +667,7 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	}
 
 	// Should be at the last filtered item (index 2)
-	cursor := m.worktreeTable.Cursor()
+	cursor := m.ui.worktreeTable.Cursor()
 	if cursor != 2 {
 		t.Fatalf("expected cursor at index 2, got %d", cursor)
 	}
@@ -677,7 +680,7 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	}
 	m = updatedModel
 
-	cursor = m.worktreeTable.Cursor()
+	cursor = m.ui.worktreeTable.Cursor()
 	if cursor != 2 {
 		t.Fatalf("expected cursor to stay at index 2, got %d", cursor)
 	}
@@ -693,7 +696,7 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	}
 
 	// Should be at the first filtered item (index 0)
-	cursor = m.worktreeTable.Cursor()
+	cursor = m.ui.worktreeTable.Cursor()
 	if cursor != 0 {
 		t.Fatalf("expected cursor at index 0, got %d", cursor)
 	}
@@ -706,7 +709,7 @@ func TestFilterNavigationThroughMultipleFilteredItems(t *testing.T) {
 	}
 	m = updatedModel
 
-	cursor = m.worktreeTable.Cursor()
+	cursor = m.ui.worktreeTable.Cursor()
 	if cursor != 0 {
 		t.Fatalf("expected cursor to stay at index 0, got %d", cursor)
 	}
@@ -718,8 +721,8 @@ func TestStatusFileNavigation(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	// Set up status files using setStatusFiles to build tree
 	m.setStatusFiles([]StatusFile{
@@ -727,42 +730,42 @@ func TestStatusFileNavigation(t *testing.T) {
 		{Filename: "file2.go", Status: "M.", IsUntracked: false},
 		{Filename: "file3.go", Status: " ?", IsUntracked: true},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	// Test navigation down with j
 	_, _ = m.handleNavigationDown(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex 1 after j, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex 1 after j, got %d", m.services.statusTree.Index)
 	}
 
 	// Test navigation down again
 	_, _ = m.handleNavigationDown(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.statusTreeIndex != 2 {
-		t.Fatalf("expected statusTreeIndex 2 after second j, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 2 {
+		t.Fatalf("expected statusTreeIndex 2 after second j, got %d", m.services.statusTree.Index)
 	}
 
 	// Test boundary - should not go past last item
 	_, _ = m.handleNavigationDown(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.statusTreeIndex != 2 {
-		t.Fatalf("expected statusTreeIndex to stay at 2, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 2 {
+		t.Fatalf("expected statusTreeIndex to stay at 2, got %d", m.services.statusTree.Index)
 	}
 
 	// Test navigation up with k
 	_, _ = m.handleNavigationUp(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex 1 after k, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex 1 after k, got %d", m.services.statusTree.Index)
 	}
 
 	// Navigate to first item
 	_, _ = m.handleNavigationUp(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex 0 after second k, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex 0 after second k, got %d", m.services.statusTree.Index)
 	}
 
 	// Test boundary - should not go below 0
 	_, _ = m.handleNavigationUp(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.services.statusTree.Index)
 	}
 }
 
@@ -771,21 +774,21 @@ func TestLogPaneCtrlJMovesNextCommit(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 2
-	m.logTable.Focus()
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 2
+	m.ui.logTable.Focus()
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: t.TempDir(), Branch: testFeat},
 	}
-	m.selectedIndex = 0
-	m.logEntries = []commitLogEntry{
+	m.data.selectedIndex = 0
+	m.data.logEntries = []commitLogEntry{
 		{sha: "abc123", authorInitials: "ab", message: "first"},
 		{sha: "def456", authorInitials: "de", message: "second"},
 	}
-	m.logTable.SetRows([]table.Row{
+	m.ui.logTable.SetRows([]table.Row{
 		{"abc123", "ab", "first"},
 		{"def456", "de", "second"},
 	})
-	m.logTable.SetCursor(0)
+	m.ui.logTable.SetCursor(0)
 
 	updated, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyCtrlJ})
 	updatedModel, ok := updated.(*Model)
@@ -794,8 +797,8 @@ func TestLogPaneCtrlJMovesNextCommit(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.logTable.Cursor() != 1 {
-		t.Fatalf("expected log cursor at 1, got %d", m.logTable.Cursor())
+	if m.ui.logTable.Cursor() != 1 {
+		t.Fatalf("expected log cursor at 1, got %d", m.ui.logTable.Cursor())
 	}
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
@@ -813,13 +816,13 @@ func TestSearchLogSelectsNextMatch(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 2
-	m.logEntries = []commitLogEntry{
+	m.view.FocusedPane = 2
+	m.data.logEntries = []commitLogEntry{
 		{sha: "abc123", authorInitials: "ab", message: "Fix bug in parser"},
 		{sha: "def456", authorInitials: "de", message: "Add new feature"},
 		{sha: "ghi789", authorInitials: "gh", message: "Fix tests"},
 	}
-	m.logTable.SetRows([]table.Row{
+	m.ui.logTable.SetRows([]table.Row{
 		{"abc123", "ab", formatCommitMessage("Fix bug in parser")},
 		{"def456", "de", formatCommitMessage("Add new feature")},
 		{"ghi789", "gh", formatCommitMessage("Fix tests")},
@@ -836,13 +839,13 @@ func TestSearchLogSelectsNextMatch(t *testing.T) {
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 
-	if m.logTable.Cursor() != 0 {
-		t.Fatalf("expected first match at cursor 0, got %d", m.logTable.Cursor())
+	if m.ui.logTable.Cursor() != 0 {
+		t.Fatalf("expected first match at cursor 0, got %d", m.ui.logTable.Cursor())
 	}
 
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	if m.logTable.Cursor() != 2 {
-		t.Fatalf("expected next match at cursor 2, got %d", m.logTable.Cursor())
+	if m.ui.logTable.Cursor() != 2 {
+		t.Fatalf("expected next match at cursor 2, got %d", m.ui.logTable.Cursor())
 	}
 }
 
@@ -851,7 +854,7 @@ func TestFilterLogNarrowsList(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 2
+	m.view.FocusedPane = 2
 	m.setLogEntries([]commitLogEntry{
 		{sha: "abc123", authorInitials: "ab", message: "Fix bug in parser"},
 		{sha: "def456", authorInitials: "de", message: "Add new feature"},
@@ -868,11 +871,11 @@ func TestFilterLogNarrowsList(t *testing.T) {
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 
-	if len(m.logEntries) != 1 {
-		t.Fatalf("expected 1 filtered commit, got %d", len(m.logEntries))
+	if len(m.data.logEntries) != 1 {
+		t.Fatalf("expected 1 filtered commit, got %d", len(m.data.logEntries))
 	}
-	if m.logEntries[0].sha != "abc123" {
-		t.Fatalf("expected commit abc123, got %q", m.logEntries[0].sha)
+	if m.data.logEntries[0].sha != "abc123" {
+		t.Fatalf("expected commit abc123, got %q", m.data.logEntries[0].sha)
 	}
 }
 
@@ -882,20 +885,20 @@ func TestStatusFileNavigationEmptyList(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 	m.setStatusFiles(nil)
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	// Should not panic with empty list
 	_, _ = m.handleNavigationDown(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.services.statusTree.Index)
 	}
 
 	_, _ = m.handleNavigationUp(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex to stay at 0, got %d", m.services.statusTree.Index)
 	}
 }
 
@@ -905,19 +908,19 @@ func TestStatusFileEnterShowsDiff(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	// Set up worktree and status files
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 		{Filename: "file2.go", Status: "M.", IsUntracked: false},
 	})
-	m.statusTreeIndex = 1
+	m.services.statusTree.Index = 1
 
 	// Mock execProcess to capture the command
 	var capturedCmd bool
@@ -945,8 +948,8 @@ func TestStatusFileEditOpensEditor(t *testing.T) {
 		Editor:      "nvim",
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
@@ -957,14 +960,14 @@ func TestStatusFileEditOpensEditor(t *testing.T) {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	m.setStatusFiles([]StatusFile{
 		{Filename: filename, Status: ".M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
 	m.execProcess = func(cmd *exec.Cmd, cb tea.ExecCallback) tea.Cmd {
@@ -997,18 +1000,18 @@ func TestCommitAllChangesFromStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	var gotCmd *exec.Cmd
 	m.execProcess = func(cmd *exec.Cmd, cb tea.ExecCallback) tea.Cmd {
@@ -1041,7 +1044,7 @@ func TestCommitAllChangesNotInStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0 // Not status pane
+	m.view.FocusedPane = 0 // Not status pane
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
 	if cmd != nil {
@@ -1054,18 +1057,18 @@ func TestCommitStagedChangesFromStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	// Set up staged changes
 	m.setStatusFiles([]StatusFile{
@@ -1107,18 +1110,18 @@ func TestCommitStagedChangesNoStagedFiles(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	// Set up only unstaged changes (no staged)
 	m.setStatusFiles([]StatusFile{
@@ -1131,11 +1134,8 @@ func TestCommitStagedChangesNoStagedFiles(t *testing.T) {
 	}
 
 	// Should show info screen with message
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
-	}
-	if m.infoScreen == nil {
-		t.Fatal("expected infoScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -1144,7 +1144,7 @@ func TestCommitStagedChangesNotInStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0 // Not status pane
+	m.view.FocusedPane = 0 // Not status pane
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	// When not in status pane, 'c' should trigger create worktree which returns a command
@@ -1162,25 +1162,25 @@ func TestStageUnstagedFile(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: " M", IsUntracked: false}, // Unstaged modification
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1209,25 +1209,25 @@ func TestUnstageStagedFile(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: "M ", IsUntracked: false}, // Staged modification
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1250,25 +1250,25 @@ func TestStageMixedStatusFile(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	wtPath := filepath.Join(cfg.WorktreeDir, "wt1")
 	if err := os.MkdirAll(wtPath, 0o700); err != nil {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: "MM", IsUntracked: false}, // Both staged and unstaged
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1291,11 +1291,11 @@ func TestStageFileNotInStatusPane(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0 // Not status pane
+	m.view.FocusedPane = 0 // Not status pane
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: " M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	if cmd != nil {
@@ -1308,26 +1308,26 @@ func TestStageDirectoryAllUnstaged(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: cfg.WorktreeDir, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	// Build a tree with a directory containing unstaged files
 	m.setStatusFiles([]StatusFile{
 		{Filename: "src/file1.go", Status: " M", IsUntracked: false},
 		{Filename: "src/file2.go", Status: " M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0 // Select the directory
+	m.services.statusTree.Index = 0 // Select the directory
 
-	if len(m.statusTreeFlat) < 2 || !m.statusTreeFlat[0].IsDir() {
+	if len(m.services.statusTree.TreeFlat) < 2 || !m.services.statusTree.TreeFlat[0].IsDir() {
 		t.Fatal("expected directory node at index 0")
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1354,26 +1354,26 @@ func TestStageDirectoryAllStaged(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: cfg.WorktreeDir, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	// Build a tree with a directory containing fully staged files
 	m.setStatusFiles([]StatusFile{
 		{Filename: "src/file1.go", Status: "M ", IsUntracked: false},
 		{Filename: "src/file2.go", Status: "A ", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0 // Select the directory
+	m.services.statusTree.Index = 0 // Select the directory
 
-	if len(m.statusTreeFlat) < 2 || !m.statusTreeFlat[0].IsDir() {
+	if len(m.services.statusTree.TreeFlat) < 2 || !m.services.statusTree.TreeFlat[0].IsDir() {
 		t.Fatal("expected directory node at index 0")
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1396,26 +1396,26 @@ func TestStageDirectoryMixed(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: cfg.WorktreeDir, Branch: "feature"},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	// Build a tree with a directory containing mixed status files
 	m.setStatusFiles([]StatusFile{
 		{Filename: "src/file1.go", Status: "M ", IsUntracked: false}, // Staged
 		{Filename: "src/file2.go", Status: " M", IsUntracked: false}, // Unstaged
 	})
-	m.statusTreeIndex = 0 // Select the directory
+	m.services.statusTree.Index = 0 // Select the directory
 
-	if len(m.statusTreeFlat) < 2 || !m.statusTreeFlat[0].IsDir() {
+	if len(m.services.statusTree.TreeFlat) < 2 || !m.services.statusTree.TreeFlat[0].IsDir() {
 		t.Fatal("expected directory node at index 0")
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		gotCmd = exec.Command(name, args...)
 		return gotCmd
 	}
@@ -1480,13 +1480,13 @@ func TestShowDeleteFileNoSelection(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{}
-	m.selectedIndex = -1
+	m.data.filteredWts = []*models.WorktreeInfo{}
+	m.data.selectedIndex = -1
 
 	if cmd := m.showDeleteFile(); cmd != nil {
 		t.Fatal("expected nil command when no worktree selected")
 	}
-	if m.confirmScreen != nil {
+	if m.ui.screenManager.IsActive() && m.ui.screenManager.Type() == appscreen.TypeConfirm {
 		t.Fatal("expected no confirm screen when no selection")
 	}
 }
@@ -1496,17 +1496,17 @@ func TestShowDeleteFileNoFiles(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
-	m.selectedIndex = 0
-	m.statusTreeFlat = []*StatusTreeNode{}
-	m.statusTreeIndex = 0
+	m.data.selectedIndex = 0
+	m.services.statusTree.TreeFlat = []*StatusTreeNode{}
+	m.services.statusTree.Index = 0
 
 	if cmd := m.showDeleteFile(); cmd != nil {
 		t.Fatal("expected nil command when no files in tree")
 	}
-	if m.confirmScreen != nil {
+	if m.ui.screenManager.IsActive() && m.ui.screenManager.Type() == appscreen.TypeConfirm {
 		t.Fatal("expected no confirm screen when no files")
 	}
 }
@@ -1516,22 +1516,22 @@ func TestShowDeleteFileSingleFile(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
-	m.selectedIndex = 0
-	m.statusTreeFlat = []*StatusTreeNode{
+	m.data.selectedIndex = 0
+	m.services.statusTree.TreeFlat = []*StatusTreeNode{
 		{
 			Path: "file.go",
 			File: &StatusFile{Filename: "file.go", Status: " M"},
 		},
 	}
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	if cmd := m.showDeleteFile(); cmd != nil {
 		t.Fatal("expected nil command for confirm screen setup")
 	}
-	if m.confirmScreen == nil || m.confirmAction == nil || m.currentScreen != screenConfirm {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeConfirm {
 		t.Fatal("expected confirm screen to be set for file deletion")
 	}
 }
@@ -1541,11 +1541,11 @@ func TestShowDeleteFileDirectory(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
-	m.selectedIndex = 0
-	m.statusTreeFlat = []*StatusTreeNode{
+	m.data.selectedIndex = 0
+	m.services.statusTree.TreeFlat = []*StatusTreeNode{
 		{
 			Path: "src",
 			File: nil, // Directory
@@ -1561,12 +1561,12 @@ func TestShowDeleteFileDirectory(t *testing.T) {
 			},
 		},
 	}
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	if cmd := m.showDeleteFile(); cmd != nil {
 		t.Fatal("expected nil command for confirm screen setup")
 	}
-	if m.confirmScreen == nil || m.confirmAction == nil || m.currentScreen != screenConfirm {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeConfirm {
 		t.Fatal("expected confirm screen to be set for directory deletion")
 	}
 }
@@ -1576,23 +1576,23 @@ func TestShowDeleteFileEmptyDirectory(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
-	m.selectedIndex = 0
-	m.statusTreeFlat = []*StatusTreeNode{
+	m.data.selectedIndex = 0
+	m.services.statusTree.TreeFlat = []*StatusTreeNode{
 		{
 			Path:     "src",
 			File:     nil, // Directory
 			Children: []*StatusTreeNode{},
 		},
 	}
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	if cmd := m.showDeleteFile(); cmd != nil {
 		t.Fatal("expected nil command for empty directory")
 	}
-	if m.confirmScreen != nil {
+	if m.ui.screenManager.IsActive() && m.ui.screenManager.Type() == appscreen.TypeConfirm {
 		t.Fatal("expected no confirm screen for empty directory")
 	}
 }
@@ -1603,8 +1603,8 @@ func TestStatusFileEnterNoFilesDoesNothing(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusFiles = nil
+	m.view.FocusedPane = 1
+	m.data.statusFiles = nil
 
 	_, cmd := m.handleEnterKey()
 	if cmd != nil {
@@ -1618,8 +1618,8 @@ func TestBuildStatusContentParsesFiles(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	// Simulated git status --porcelain=v2 output
 	statusRaw := `1 .M N... 100644 100644 100644 abc123 abc123 modified.go
@@ -1631,26 +1631,26 @@ func TestBuildStatusContentParsesFiles(t *testing.T) {
 	m.setStatusFiles(parseStatusFiles(statusRaw))
 	m.rebuildStatusContentWithHighlight()
 
-	if len(m.statusFiles) != 5 {
-		t.Fatalf("expected 5 status files, got %d", len(m.statusFiles))
+	if len(m.data.statusFiles) != 5 {
+		t.Fatalf("expected 5 status files, got %d", len(m.data.statusFiles))
 	}
 
 	// Check first file (modified)
-	if m.statusFiles[0].Filename != "modified.go" {
-		t.Fatalf("expected filename 'modified.go', got %q", m.statusFiles[0].Filename)
+	if m.data.statusFiles[0].Filename != "modified.go" {
+		t.Fatalf("expected filename 'modified.go', got %q", m.data.statusFiles[0].Filename)
 	}
-	if m.statusFiles[0].Status != ".M" {
-		t.Fatalf("expected status '.M', got %q", m.statusFiles[0].Status)
+	if m.data.statusFiles[0].Status != ".M" {
+		t.Fatalf("expected status '.M', got %q", m.data.statusFiles[0].Status)
 	}
-	if m.statusFiles[0].IsUntracked {
+	if m.data.statusFiles[0].IsUntracked {
 		t.Fatal("expected IsUntracked to be false for modified file")
 	}
 
 	// Check untracked file
-	if m.statusFiles[2].Filename != "untracked.txt" {
-		t.Fatalf("expected filename 'untracked.txt', got %q", m.statusFiles[2].Filename)
+	if m.data.statusFiles[2].Filename != "untracked.txt" {
+		t.Fatalf("expected filename 'untracked.txt', got %q", m.data.statusFiles[2].Filename)
 	}
-	if !m.statusFiles[2].IsUntracked {
+	if !m.data.statusFiles[2].IsUntracked {
 		t.Fatal("expected IsUntracked to be true for untracked file")
 	}
 }
@@ -1661,19 +1661,19 @@ func TestBuildStatusContentCleanTree(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.statusFiles = []StatusFile{{Filename: "old.go", Status: ".M"}}
-	m.statusFileIndex = 5
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.data.statusFiles = []StatusFile{{Filename: "old.go", Status: ".M"}}
+	m.data.statusFileIndex = 5
 
 	m.setStatusFiles(parseStatusFiles(""))
 	m.rebuildStatusContentWithHighlight()
 
-	if len(m.statusFiles) != 0 {
-		t.Fatalf("expected 0 status files for clean tree, got %d", len(m.statusFiles))
+	if len(m.data.statusFiles) != 0 {
+		t.Fatalf("expected 0 status files for clean tree, got %d", len(m.data.statusFiles))
 	}
-	if m.statusFileIndex != 0 {
-		t.Fatalf("expected statusFileIndex reset to 0, got %d", m.statusFileIndex)
+	if m.data.statusFileIndex != 0 {
+		t.Fatalf("expected statusFileIndex reset to 0, got %d", m.data.statusFileIndex)
 	}
 	if !strings.Contains(m.statusContent, "Clean working tree") {
 		t.Fatalf("expected 'Clean working tree' in result, got %q", m.statusContent)
@@ -1685,8 +1685,8 @@ func TestSearchStatusSelectsMatch(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 	// Note: tree sorts alphabetically, so README.md (R) comes before app.go (a)
 	m.setStatusFiles([]StatusFile{
 		{Filename: "app.go", Status: ".M"},
@@ -1706,8 +1706,8 @@ func TestSearchStatusSelectsMatch(t *testing.T) {
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	_, _ = m.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex 1, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex 1, got %d", m.services.statusTree.Index)
 	}
 }
 
@@ -1717,13 +1717,13 @@ func TestRenderStatusFilesHighlighting(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 		{Filename: "file2.go", Status: ".M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 1
+	m.services.statusTree.Index = 1
 
 	result := m.renderStatusFiles()
 
@@ -1755,12 +1755,12 @@ func TestRenderStatusFilesIconsDisabled(t *testing.T) {
 	cfg.WorktreeDir = t.TempDir()
 	cfg.IconSet = "none"
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	result := m.renderStatusFiles()
 	icon := deviconForName("file1.go", false)
@@ -1775,11 +1775,11 @@ func TestStatusTreeIndexClamping(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
 
 	// Set index out of range before parsing
-	m.statusTreeIndex = 100
+	m.services.statusTree.Index = 100
 
 	statusRaw := `1 .M N... 100644 100644 100644 abc123 abc123 file1.go
 1 .M N... 100644 100644 100644 abc123 abc123 file2.go`
@@ -1788,17 +1788,17 @@ func TestStatusTreeIndexClamping(t *testing.T) {
 	m.rebuildStatusContentWithHighlight()
 
 	// Index should be clamped to last valid index
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex clamped to 1, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex clamped to 1, got %d", m.services.statusTree.Index)
 	}
 
 	// Test negative index
-	m.statusTreeIndex = -5
+	m.services.statusTree.Index = -5
 	m.setStatusFiles(parseStatusFiles(statusRaw))
 	m.rebuildStatusContentWithHighlight()
 
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex clamped to 0, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex clamped to 0, got %d", m.services.statusTree.Index)
 	}
 }
 
@@ -1808,17 +1808,17 @@ func TestMouseScrollNavigatesFiles(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.windowWidth = 100
-	m.windowHeight = 30
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.view.WindowWidth = 100
+	m.view.WindowHeight = 30
 
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 		{Filename: "file2.go", Status: ".M", IsUntracked: false},
 		{Filename: "file3.go", Status: ".M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	// Scroll down should increment index
 	msg := tea.MouseMsg{
@@ -1829,21 +1829,21 @@ func TestMouseScrollNavigatesFiles(t *testing.T) {
 	}
 
 	_, _ = m.handleMouse(msg)
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex 1 after scroll down, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex 1 after scroll down, got %d", m.services.statusTree.Index)
 	}
 
 	// Scroll up should decrement index
 	msg.Button = tea.MouseButtonWheelUp
 	_, _ = m.handleMouse(msg)
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex 0 after scroll up, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex 0 after scroll up, got %d", m.services.statusTree.Index)
 	}
 }
 
 // TestBuildStatusTreeEmpty tests building tree from empty file list.
 func TestBuildStatusTreeEmpty(t *testing.T) {
-	tree := buildStatusTree([]StatusFile{})
+	tree := services.BuildStatusTree([]StatusFile{})
 	if tree == nil {
 		t.Fatal("expected non-nil tree root")
 	}
@@ -1861,7 +1861,7 @@ func TestBuildStatusTreeFlatFiles(t *testing.T) {
 		{Filename: "README.md", Status: ".M"},
 		{Filename: "main.go", Status: "M."},
 	}
-	tree := buildStatusTree(files)
+	tree := services.BuildStatusTree(files)
 
 	if len(tree.Children) != 2 {
 		t.Fatalf("expected 2 children, got %d", len(tree.Children))
@@ -1894,7 +1894,7 @@ func TestBuildStatusTreeNestedDirs(t *testing.T) {
 		{Filename: "internal/git/git.go", Status: "M."},
 		{Filename: "README.md", Status: ".M"},
 	}
-	tree := buildStatusTree(files)
+	tree := services.BuildStatusTree(files)
 
 	// Root should have 2 children: internal (dir) and README.md (file)
 	// After compression, internal/app and internal/git are separate
@@ -1918,7 +1918,7 @@ func TestBuildStatusTreeDirsSortedBeforeFiles(t *testing.T) {
 		{Filename: "aaa/file.go", Status: ".M"},
 		{Filename: "alpha.txt", Status: ".M"},
 	}
-	tree := buildStatusTree(files)
+	tree := services.BuildStatusTree(files)
 
 	if len(tree.Children) != 3 {
 		t.Fatalf("expected 3 children, got %d", len(tree.Children))
@@ -1944,10 +1944,10 @@ func TestCompressStatusTreeSingleChild(t *testing.T) {
 	files := []StatusFile{
 		{Filename: "a/b/c/file.go", Status: ".M"},
 	}
-	tree := buildStatusTree(files)
+	tree := services.BuildStatusTree(files)
 
 	// After compression, a/b/c should be one node, not three nested nodes
-	flat := flattenStatusTree(tree, map[string]bool{}, 0)
+	flat := services.FlattenStatusTree(tree, map[string]bool{}, 0)
 
 	// Should have: a/b/c (dir) + file.go (file) = 2 nodes
 	if len(flat) != 2 {
@@ -1972,17 +1972,17 @@ func TestFlattenStatusTreeCollapsed(t *testing.T) {
 		{Filename: "dir/file2.go", Status: ".M"},
 		{Filename: "root.go", Status: ".M"},
 	}
-	tree := buildStatusTree(files)
+	tree := services.BuildStatusTree(files)
 
 	// Without collapse: should see dir + 2 files + root.go = 4 nodes
-	flatOpen := flattenStatusTree(tree, map[string]bool{}, 0)
+	flatOpen := services.FlattenStatusTree(tree, map[string]bool{}, 0)
 	if len(flatOpen) != 4 {
 		t.Fatalf("expected 4 nodes when expanded, got %d", len(flatOpen))
 	}
 
 	// With dir collapsed: should see dir + root.go = 2 nodes
 	collapsed := map[string]bool{"dir": true}
-	flatClosed := flattenStatusTree(tree, collapsed, 0)
+	flatClosed := services.FlattenStatusTree(tree, collapsed, 0)
 	if len(flatClosed) != 2 {
 		t.Fatalf("expected 2 nodes when collapsed, got %d", len(flatClosed))
 	}
@@ -2027,8 +2027,8 @@ func TestFlattenStatusTreeDepth(t *testing.T) {
 		{Filename: "dir/subdir/file.go", Status: ".M"},
 		{Filename: "root.go", Status: ".M"},
 	}
-	tree := buildStatusTree(files)
-	flat := flattenStatusTree(tree, map[string]bool{}, 0)
+	tree := services.BuildStatusTree(files)
+	flat := services.FlattenStatusTree(tree, map[string]bool{}, 0)
 
 	// After compression: dir/subdir (depth 0), file.go (depth 1), root.go (depth 0)
 	if len(flat) != 3 {
@@ -2036,16 +2036,16 @@ func TestFlattenStatusTreeDepth(t *testing.T) {
 	}
 
 	// Root level nodes should have depth 0
-	if flat[0].depth != 0 {
-		t.Errorf("expected dir/subdir depth 0, got %d", flat[0].depth)
+	if flat[0].Depth != 0 {
+		t.Errorf("expected dir/subdir depth 0, got %d", flat[0].Depth)
 	}
 	// File inside dir should have depth 1
-	if flat[1].depth != 1 {
-		t.Errorf("expected file.go depth 1, got %d", flat[1].depth)
+	if flat[1].Depth != 1 {
+		t.Errorf("expected file.go depth 1, got %d", flat[1].Depth)
 	}
 	// Root file should have depth 0
-	if flat[2].depth != 0 {
-		t.Errorf("expected root.go depth 0, got %d", flat[2].depth)
+	if flat[2].Depth != 0 {
+		t.Errorf("expected root.go depth 0, got %d", flat[2].Depth)
 	}
 }
 
@@ -2053,35 +2053,35 @@ func TestFlattenStatusTreeDepth(t *testing.T) {
 func TestDirectoryToggleUpdatesFlat(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.windowWidth = 100
-	m.windowHeight = 30
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.view.WindowWidth = 100
+	m.view.WindowHeight = 30
 
 	m.setStatusFiles([]StatusFile{
 		{Filename: "dir/file1.go", Status: ".M"},
 		{Filename: "dir/file2.go", Status: ".M"},
 	})
 
-	initialCount := len(m.statusTreeFlat)
+	initialCount := len(m.services.statusTree.TreeFlat)
 	if initialCount != 3 { // dir + 2 files
 		t.Fatalf("expected 3 nodes initially, got %d", initialCount)
 	}
 
 	// Collapse the directory
-	m.statusCollapsedDirs["dir"] = true
+	m.services.statusTree.CollapsedDirs["dir"] = true
 	m.rebuildStatusTreeFlat()
 
-	if len(m.statusTreeFlat) != 1 { // just the dir
-		t.Fatalf("expected 1 node after collapse, got %d", len(m.statusTreeFlat))
+	if len(m.services.statusTree.TreeFlat) != 1 { // just the dir
+		t.Fatalf("expected 1 node after collapse, got %d", len(m.services.statusTree.TreeFlat))
 	}
 
 	// Expand again
-	m.statusCollapsedDirs["dir"] = false
+	m.services.statusTree.CollapsedDirs["dir"] = false
 	m.rebuildStatusTreeFlat()
 
-	if len(m.statusTreeFlat) != 3 {
-		t.Fatalf("expected 3 nodes after expand, got %d", len(m.statusTreeFlat))
+	if len(m.services.statusTree.TreeFlat) != 3 {
+		t.Fatalf("expected 3 nodes after expand, got %d", len(m.services.statusTree.TreeFlat))
 	}
 }
 
@@ -2090,9 +2090,9 @@ func TestEscClearsWorktreeFilter(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.filterQuery = testFilterQuery
-	m.worktrees = []*models.WorktreeInfo{
+	m.view.FocusedPane = 0
+	m.services.filter.FilterQuery = testFilterQuery
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "test-wt"), Branch: testFeat},
 	}
 	m.updateTable()
@@ -2103,8 +2103,8 @@ func TestEscClearsWorktreeFilter(t *testing.T) {
 		t.Fatalf("expected updated model, got %T", updated)
 	}
 
-	if updatedModel.filterQuery != "" {
-		t.Fatalf("expected filter to be cleared, got %q", updatedModel.filterQuery)
+	if updatedModel.services.filter.FilterQuery != "" {
+		t.Fatalf("expected filter to be cleared, got %q", updatedModel.services.filter.FilterQuery)
 	}
 }
 
@@ -2113,8 +2113,8 @@ func TestEscClearsStatusFilter(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusFilterQuery = testFilterQuery
+	m.view.FocusedPane = 1
+	m.services.filter.StatusFilterQuery = testFilterQuery
 
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyEsc})
 	updatedModel, ok := updated.(*Model)
@@ -2122,8 +2122,8 @@ func TestEscClearsStatusFilter(t *testing.T) {
 		t.Fatalf("expected updated model, got %T", updated)
 	}
 
-	if updatedModel.statusFilterQuery != "" {
-		t.Fatalf("expected status filter to be cleared, got %q", updatedModel.statusFilterQuery)
+	if updatedModel.services.filter.StatusFilterQuery != "" {
+		t.Fatalf("expected status filter to be cleared, got %q", updatedModel.services.filter.StatusFilterQuery)
 	}
 }
 
@@ -2132,8 +2132,8 @@ func TestEscClearsLogFilter(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 2
-	m.logFilterQuery = testFilterQuery
+	m.view.FocusedPane = 2
+	m.services.filter.LogFilterQuery = testFilterQuery
 
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyEsc})
 	updatedModel, ok := updated.(*Model)
@@ -2141,8 +2141,8 @@ func TestEscClearsLogFilter(t *testing.T) {
 		t.Fatalf("expected updated model, got %T", updated)
 	}
 
-	if updatedModel.logFilterQuery != "" {
-		t.Fatalf("expected log filter to be cleared, got %q", updatedModel.logFilterQuery)
+	if updatedModel.services.filter.LogFilterQuery != "" {
+		t.Fatalf("expected log filter to be cleared, got %q", updatedModel.services.filter.LogFilterQuery)
 	}
 }
 
@@ -2151,8 +2151,8 @@ func TestEscDoesNothingWhenNoFilter(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.filterQuery = ""
+	m.view.FocusedPane = 0
+	m.services.filter.FilterQuery = ""
 
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyEsc})
 	updatedModel, ok := updated.(*Model)
@@ -2160,8 +2160,8 @@ func TestEscDoesNothingWhenNoFilter(t *testing.T) {
 		t.Fatalf("expected updated model, got %T", updated)
 	}
 
-	if updatedModel.filterQuery != "" {
-		t.Fatalf("expected filter to remain empty, got %q", updatedModel.filterQuery)
+	if updatedModel.services.filter.FilterQuery != "" {
+		t.Fatalf("expected filter to remain empty, got %q", updatedModel.services.filter.FilterQuery)
 	}
 }
 
@@ -2183,25 +2183,25 @@ func TestHasActiveFilterForPane(t *testing.T) {
 	}
 
 	// Set worktree filter
-	m.filterQuery = testFilterQuery
+	m.services.filter.FilterQuery = testFilterQuery
 	if !m.hasActiveFilterForPane(0) {
 		t.Fatal("expected active filter for pane 0")
 	}
 
 	// Set status filter
-	m.statusFilterQuery = testFilterQuery
+	m.services.filter.StatusFilterQuery = testFilterQuery
 	if !m.hasActiveFilterForPane(1) {
 		t.Fatal("expected active filter for pane 1")
 	}
 
 	// Set log filter
-	m.logFilterQuery = testFilterQuery
+	m.services.filter.LogFilterQuery = testFilterQuery
 	if !m.hasActiveFilterForPane(2) {
 		t.Fatal("expected active filter for pane 2")
 	}
 
 	// Whitespace-only should not count as active
-	m.filterQuery = "   "
+	m.services.filter.FilterQuery = "   "
 	if m.hasActiveFilterForPane(0) {
 		t.Fatal("expected whitespace-only filter to not be active")
 	}
@@ -2212,10 +2212,10 @@ func TestZoomPaneToggle(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
+	m.view.FocusedPane = 0
 
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to start at -1, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to start at -1, got %d", m.view.ZoomedPane)
 	}
 
 	// Press = to zoom pane 0
@@ -2226,8 +2226,8 @@ func TestZoomPaneToggle(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.zoomedPane != 0 {
-		t.Fatalf("expected zoomedPane to be 0 after zoom, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != 0 {
+		t.Fatalf("expected zoomedPane to be 0 after zoom, got %d", m.view.ZoomedPane)
 	}
 
 	// Press = again to unzoom
@@ -2238,8 +2238,8 @@ func TestZoomPaneToggle(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.view.ZoomedPane)
 	}
 }
 
@@ -2248,8 +2248,8 @@ func TestZoomPaneExitsOnPaneKeys(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.zoomedPane = 0
+	m.view.FocusedPane = 0
+	m.view.ZoomedPane = 0
 
 	// Press 2 to switch to pane 2 and exit zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
@@ -2259,11 +2259,11 @@ func TestZoomPaneExitsOnPaneKeys(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after pressing 2, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after pressing 2, got %d", m.view.ZoomedPane)
 	}
-	if m.focusedPane != 1 {
-		t.Fatalf("expected focusedPane to be 1, got %d", m.focusedPane)
+	if m.view.FocusedPane != 1 {
+		t.Fatalf("expected focusedPane to be 1, got %d", m.view.FocusedPane)
 	}
 }
 
@@ -2272,8 +2272,8 @@ func TestZoomPaneExitsOnTabKey(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.zoomedPane = 0
+	m.view.FocusedPane = 0
+	m.view.ZoomedPane = 0
 
 	// Press tab to cycle panes and exit zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyTab})
@@ -2283,11 +2283,11 @@ func TestZoomPaneExitsOnTabKey(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after pressing tab, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after pressing tab, got %d", m.view.ZoomedPane)
 	}
-	if m.focusedPane != 1 {
-		t.Fatalf("expected focusedPane to be 1 after tab, got %d", m.focusedPane)
+	if m.view.FocusedPane != 1 {
+		t.Fatalf("expected focusedPane to be 1 after tab, got %d", m.view.FocusedPane)
 	}
 }
 
@@ -2296,8 +2296,8 @@ func TestZoomPaneExitsOnBracketKey(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.zoomedPane = 1
+	m.view.FocusedPane = 1
+	m.view.ZoomedPane = 1
 
 	// Press [ to cycle back and exit zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
@@ -2307,11 +2307,11 @@ func TestZoomPaneExitsOnBracketKey(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after pressing [, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after pressing [, got %d", m.view.ZoomedPane)
 	}
-	if m.focusedPane != 0 {
-		t.Fatalf("expected focusedPane to be 0 after [, got %d", m.focusedPane)
+	if m.view.FocusedPane != 0 {
+		t.Fatalf("expected focusedPane to be 0 after [, got %d", m.view.FocusedPane)
 	}
 }
 
@@ -2320,8 +2320,8 @@ func TestPaneKey1ToggleZoom(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.zoomedPane = -1
+	m.view.FocusedPane = 0
+	m.view.ZoomedPane = -1
 
 	// Press 1 while on pane 0, not zoomed - should zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
@@ -2331,11 +2331,11 @@ func TestPaneKey1ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 0 {
-		t.Fatalf("expected focusedPane to remain 0, got %d", m.focusedPane)
+	if m.view.FocusedPane != 0 {
+		t.Fatalf("expected focusedPane to remain 0, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != 0 {
-		t.Fatalf("expected zoomedPane to be 0 after toggle, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != 0 {
+		t.Fatalf("expected zoomedPane to be 0 after toggle, got %d", m.view.ZoomedPane)
 	}
 
 	// Press 1 again while on pane 0, already zoomed - should unzoom
@@ -2346,11 +2346,11 @@ func TestPaneKey1ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 0 {
-		t.Fatalf("expected focusedPane to remain 0, got %d", m.focusedPane)
+	if m.view.FocusedPane != 0 {
+		t.Fatalf("expected focusedPane to remain 0, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.view.ZoomedPane)
 	}
 }
 
@@ -2359,8 +2359,8 @@ func TestPaneKey2ToggleZoom(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.zoomedPane = -1
+	m.view.FocusedPane = 1
+	m.view.ZoomedPane = -1
 
 	// Press 2 while on pane 1, not zoomed - should zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
@@ -2370,11 +2370,11 @@ func TestPaneKey2ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 1 {
-		t.Fatalf("expected focusedPane to remain 1, got %d", m.focusedPane)
+	if m.view.FocusedPane != 1 {
+		t.Fatalf("expected focusedPane to remain 1, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != 1 {
-		t.Fatalf("expected zoomedPane to be 1 after toggle, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != 1 {
+		t.Fatalf("expected zoomedPane to be 1 after toggle, got %d", m.view.ZoomedPane)
 	}
 
 	// Press 2 again while on pane 1, already zoomed - should unzoom
@@ -2385,11 +2385,11 @@ func TestPaneKey2ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 1 {
-		t.Fatalf("expected focusedPane to remain 1, got %d", m.focusedPane)
+	if m.view.FocusedPane != 1 {
+		t.Fatalf("expected focusedPane to remain 1, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.view.ZoomedPane)
 	}
 }
 
@@ -2398,8 +2398,8 @@ func TestPaneKey3ToggleZoom(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 2
-	m.zoomedPane = -1
+	m.view.FocusedPane = 2
+	m.view.ZoomedPane = -1
 
 	// Press 3 while on pane 2, not zoomed - should zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -2409,11 +2409,11 @@ func TestPaneKey3ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 2 {
-		t.Fatalf("expected focusedPane to remain 2, got %d", m.focusedPane)
+	if m.view.FocusedPane != 2 {
+		t.Fatalf("expected focusedPane to remain 2, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != 2 {
-		t.Fatalf("expected zoomedPane to be 2 after toggle, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != 2 {
+		t.Fatalf("expected zoomedPane to be 2 after toggle, got %d", m.view.ZoomedPane)
 	}
 
 	// Press 3 again while on pane 2, already zoomed - should unzoom
@@ -2424,11 +2424,11 @@ func TestPaneKey3ToggleZoom(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 2 {
-		t.Fatalf("expected focusedPane to remain 2, got %d", m.focusedPane)
+	if m.view.FocusedPane != 2 {
+		t.Fatalf("expected focusedPane to remain 2, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after unzoom, got %d", m.view.ZoomedPane)
 	}
 }
 
@@ -2437,8 +2437,8 @@ func TestPaneKeyCrossPaneSwitching(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 0
-	m.zoomedPane = 0
+	m.view.FocusedPane = 0
+	m.view.ZoomedPane = 0
 
 	// Press 2 while on pane 0 (zoomed) - should switch to pane 1 and exit zoom
 	updated, _ := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
@@ -2448,11 +2448,11 @@ func TestPaneKeyCrossPaneSwitching(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 1 {
-		t.Fatalf("expected focusedPane to be 1, got %d", m.focusedPane)
+	if m.view.FocusedPane != 1 {
+		t.Fatalf("expected focusedPane to be 1, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to be -1 after switching panes, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to be -1 after switching panes, got %d", m.view.ZoomedPane)
 	}
 
 	// Now press 3 while on pane 1 (not zoomed) - should switch to pane 2 and remain unzoomed
@@ -2463,11 +2463,11 @@ func TestPaneKeyCrossPaneSwitching(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 2 {
-		t.Fatalf("expected focusedPane to be 2, got %d", m.focusedPane)
+	if m.view.FocusedPane != 2 {
+		t.Fatalf("expected focusedPane to be 2, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to remain -1, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to remain -1, got %d", m.view.ZoomedPane)
 	}
 
 	// Press 1 while on pane 2 (not zoomed) - should switch to pane 0
@@ -2478,11 +2478,11 @@ func TestPaneKeyCrossPaneSwitching(t *testing.T) {
 	}
 	m = updatedModel
 
-	if m.focusedPane != 0 {
-		t.Fatalf("expected focusedPane to be 0, got %d", m.focusedPane)
+	if m.view.FocusedPane != 0 {
+		t.Fatalf("expected focusedPane to be 0, got %d", m.view.FocusedPane)
 	}
-	if m.zoomedPane != -1 {
-		t.Fatalf("expected zoomedPane to remain -1, got %d", m.zoomedPane)
+	if m.view.ZoomedPane != -1 {
+		t.Fatalf("expected zoomedPane to remain -1, got %d", m.view.ZoomedPane)
 	}
 }
 
@@ -2507,8 +2507,8 @@ func TestHandleWorktreesLoadedSuccess(t *testing.T) {
 	if updatedModel.loading {
 		t.Error("expected loading to be false")
 	}
-	if len(updatedModel.worktrees) != 2 {
-		t.Fatalf("expected 2 worktrees, got %d", len(updatedModel.worktrees))
+	if len(updatedModel.data.worktrees) != 2 {
+		t.Fatalf("expected 2 worktrees, got %d", len(updatedModel.data.worktrees))
 	}
 }
 
@@ -2523,7 +2523,7 @@ func TestHandleWorktreesLoadedError(t *testing.T) {
 	if !updatedModel.worktreesLoaded {
 		t.Error("expected worktreesLoaded to be true even with error")
 	}
-	if updatedModel.infoScreen == nil {
+	if !updatedModel.ui.screenManager.IsActive() || updatedModel.ui.screenManager.Type() != appscreen.TypeInfo {
 		t.Error("expected info screen to be shown on error")
 	}
 }
@@ -2536,11 +2536,12 @@ func TestHandleWorktreesLoadedEmpty(t *testing.T) {
 	updated, _ := m.handleWorktreesLoaded(msg)
 	updatedModel := updated.(*Model)
 
-	if updatedModel.currentScreen != screenWelcome {
-		t.Errorf("expected welcome screen, got %d", updatedModel.currentScreen)
+	// WelcomeScreen is now managed by screenManager
+	if !updatedModel.ui.screenManager.IsActive() {
+		t.Error("expected screen manager to be active")
 	}
-	if updatedModel.welcomeScreen == nil {
-		t.Error("expected welcome screen to be created")
+	if updatedModel.ui.screenManager.Type() != appscreen.TypeWelcome {
+		t.Errorf("expected welcome screen type, got %s", updatedModel.ui.screenManager.Type())
 	}
 }
 
@@ -2576,8 +2577,8 @@ func TestHandleCachedWorktreesLoaded(t *testing.T) {
 	updated, _ := m.handleCachedWorktrees(msg)
 	updatedModel := updated.(*Model)
 
-	if len(updatedModel.worktrees) != 1 {
-		t.Fatalf("expected 1 worktree, got %d", len(updatedModel.worktrees))
+	if len(updatedModel.data.worktrees) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(updatedModel.data.worktrees))
 	}
 }
 
@@ -2590,8 +2591,8 @@ func TestHandleCachedWorktreesIgnoredWhenLoaded(t *testing.T) {
 	updated, _ := m.handleCachedWorktrees(msg)
 	updatedModel := updated.(*Model)
 
-	if len(updatedModel.worktrees) != 0 {
-		t.Fatalf("expected 0 worktrees, got %d", len(updatedModel.worktrees))
+	if len(updatedModel.data.worktrees) != 0 {
+		t.Fatalf("expected 0 worktrees, got %d", len(updatedModel.data.worktrees))
 	}
 }
 
@@ -2641,18 +2642,15 @@ func TestHandleAbsorbResultError(t *testing.T) {
 	updated, _ := m.handleAbsorbResult(msg)
 	updatedModel := updated.(*Model)
 
-	if updatedModel.currentScreen != screenInfo {
-		t.Errorf("expected info screen, got %d", updatedModel.currentScreen)
-	}
-	if updatedModel.infoScreen == nil {
-		t.Error("expected info screen to be shown")
+	if !updatedModel.ui.screenManager.IsActive() || updatedModel.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Errorf("expected info screen, got active=%v type=%v", updatedModel.ui.screenManager.IsActive(), updatedModel.ui.screenManager.Type())
 	}
 }
 
 func TestHandlePRDataLoadedSuccess(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "pr"), Branch: "pr-123", PR: nil},
 	}
 
@@ -2667,7 +2665,7 @@ func TestHandlePRDataLoadedSuccess(t *testing.T) {
 	if !updatedModel.prDataLoaded {
 		t.Error("expected prDataLoaded to be true")
 	}
-	if updatedModel.worktrees[0].PR == nil {
+	if updatedModel.data.worktrees[0].PR == nil {
 		t.Error("expected PR to be assigned to worktree")
 	}
 }
@@ -2691,7 +2689,6 @@ func TestHandlePRDataLoadedError(t *testing.T) {
 func TestHandleCIStatusLoadedSuccess(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.ciCache = make(map[string]*ciCacheEntry)
 
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success"},
@@ -2701,7 +2698,7 @@ func TestHandleCIStatusLoadedSuccess(t *testing.T) {
 	updated, _ := m.handleCIStatusLoaded(msg)
 	updatedModel := updated.(*Model)
 
-	if _, ok := updatedModel.ciCache["main"]; !ok {
+	if _, _, ok := updatedModel.cache.ciCache.Get("main"); !ok {
 		t.Error("expected CI status to be cached")
 	}
 }
@@ -2709,13 +2706,12 @@ func TestHandleCIStatusLoadedSuccess(t *testing.T) {
 func TestHandleCIStatusLoadedError(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.ciCache = make(map[string]*ciCacheEntry)
 
 	msg := ciStatusLoadedMsg{branch: "main", checks: nil, err: os.ErrPermission}
 	updated, _ := m.handleCIStatusLoaded(msg)
 	updatedModel := updated.(*Model)
 
-	if _, ok := updatedModel.ciCache["main"]; ok {
+	if _, _, ok := updatedModel.cache.ciCache.Get("main"); ok {
 		t.Error("expected CI status not to be cached on error")
 	}
 }
@@ -2727,7 +2723,7 @@ func TestHandleOpenPRsLoadedEmpty(t *testing.T) {
 	msg := openPRsLoadedMsg{prs: []*models.PRInfo{}, err: nil}
 	cmd := m.handleOpenPRsLoaded(msg)
 
-	if m.infoScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
 		t.Error("expected info screen to be shown for empty PRs")
 	}
 	if cmd != nil {
@@ -2742,7 +2738,7 @@ func TestHandleOpenPRsLoadedError(t *testing.T) {
 	msg := openPRsLoadedMsg{prs: nil, err: os.ErrPermission}
 	cmd := m.handleOpenPRsLoaded(msg)
 
-	if m.infoScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
 		t.Error("expected info screen to be shown on error")
 	}
 	if cmd != nil {
@@ -2757,7 +2753,7 @@ func TestHandleOpenIssuesLoadedEmpty(t *testing.T) {
 	msg := openIssuesLoadedMsg{issues: []*models.IssueInfo{}, err: nil}
 	cmd := m.handleOpenIssuesLoaded(msg)
 
-	if m.infoScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
 		t.Error("expected info screen to be shown for empty issues")
 	}
 	if cmd != nil {
@@ -2772,7 +2768,7 @@ func TestHandleOpenIssuesLoadedError(t *testing.T) {
 	msg := openIssuesLoadedMsg{issues: nil, err: os.ErrPermission}
 	cmd := m.handleOpenIssuesLoaded(msg)
 
-	if m.infoScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
 		t.Error("expected info screen to be shown on error")
 	}
 	if cmd != nil {
@@ -2787,7 +2783,7 @@ func TestPRAssignmentsPreservedOnWorktreeRefresh(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
 
 	// Create initial worktrees
@@ -2799,8 +2795,8 @@ func TestPRAssignmentsPreservedOnWorktreeRefresh(t *testing.T) {
 		Path:   filepath.Join(cfg.WorktreeDir, "wt2"),
 		Branch: "feature-2",
 	}
-	m.worktrees = []*models.WorktreeInfo{wt1, wt2}
-	m.filteredWts = m.worktrees
+	m.data.worktrees = []*models.WorktreeInfo{wt1, wt2}
+	m.data.filteredWts = m.data.worktrees
 
 	// Assign PR data to worktrees
 	prMsg := prDataLoadedMsg{
@@ -2815,14 +2811,14 @@ func TestPRAssignmentsPreservedOnWorktreeRefresh(t *testing.T) {
 	m.handlePRDataLoaded(prMsg)
 
 	// Verify PR assignments
-	if m.worktrees[0].PR == nil || m.worktrees[0].PR.Number != 123 {
+	if m.data.worktrees[0].PR == nil || m.data.worktrees[0].PR.Number != 123 {
 		t.Fatal("expected wt1 to have PR #123 assigned")
 	}
-	if m.worktrees[1].PR == nil || m.worktrees[1].PR.Number != 456 {
+	if m.data.worktrees[1].PR == nil || m.data.worktrees[1].PR.Number != 456 {
 		t.Fatal("expected wt2 to have PR #456 assigned")
 	}
-	if m.worktrees[0].PRFetchStatus != "loaded" {
-		t.Fatalf("expected wt1 PRFetchStatus='loaded', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != "loaded" {
+		t.Fatalf("expected wt1 PRFetchStatus='loaded', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 
 	// Simulate worktree refresh (e.g., from git file watcher)
@@ -2840,18 +2836,18 @@ func TestPRAssignmentsPreservedOnWorktreeRefresh(t *testing.T) {
 		err:       nil,
 	}
 	m.handleWorktreesLoaded(refreshMsg)
-	if m.worktrees[0].PR == nil || m.worktrees[0].PR.Number != 123 {
+	if m.data.worktrees[0].PR == nil || m.data.worktrees[0].PR.Number != 123 {
 		t.Fatal("PR assignment was lost on worktree refresh! wt1 should still have PR #123")
 	}
-	if m.worktrees[1].PR == nil || m.worktrees[1].PR.Number != 456 {
+	if m.data.worktrees[1].PR == nil || m.data.worktrees[1].PR.Number != 456 {
 		t.Fatal("PR assignment was lost on worktree refresh! wt2 should still have PR #456")
 	}
-	if m.worktrees[0].PRFetchStatus != "loaded" {
-		t.Fatalf("PRFetchStatus was lost on refresh! expected 'loaded', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != "loaded" {
+		t.Fatalf("PRFetchStatus was lost on refresh! expected 'loaded', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 
 	// Verify table row data includes PR info
-	rows := m.worktreeTable.Rows()
+	rows := m.ui.worktreeTable.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
@@ -2875,7 +2871,7 @@ func TestPRFetchErrorsPreservedOnWorktreeRefresh(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
 
 	// Create initial worktrees
@@ -2883,8 +2879,8 @@ func TestPRFetchErrorsPreservedOnWorktreeRefresh(t *testing.T) {
 		Path:   filepath.Join(cfg.WorktreeDir, "wt1"),
 		Branch: "feature-1",
 	}
-	m.worktrees = []*models.WorktreeInfo{wt1}
-	m.filteredWts = m.worktrees
+	m.data.worktrees = []*models.WorktreeInfo{wt1}
+	m.data.filteredWts = m.data.worktrees
 
 	// Simulate PR fetch with error
 	prMsg := prDataLoadedMsg{
@@ -2897,11 +2893,11 @@ func TestPRFetchErrorsPreservedOnWorktreeRefresh(t *testing.T) {
 	m.handlePRDataLoaded(prMsg)
 
 	// Verify error was recorded
-	if m.worktrees[0].PRFetchError != "gh CLI not found in PATH" {
-		t.Fatalf("expected PRFetchError to be set, got %q", m.worktrees[0].PRFetchError)
+	if m.data.worktrees[0].PRFetchError != "gh CLI not found in PATH" {
+		t.Fatalf("expected PRFetchError to be set, got %q", m.data.worktrees[0].PRFetchError)
 	}
-	if m.worktrees[0].PRFetchStatus != "error" {
-		t.Fatalf("expected PRFetchStatus='error', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != "error" {
+		t.Fatalf("expected PRFetchStatus='error', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 
 	// Simulate worktree refresh
@@ -2914,11 +2910,11 @@ func TestPRFetchErrorsPreservedOnWorktreeRefresh(t *testing.T) {
 		err:       nil,
 	}
 	m.handleWorktreesLoaded(refreshMsg)
-	if m.worktrees[0].PRFetchError != "gh CLI not found in PATH" {
-		t.Fatalf("PRFetchError was lost on refresh! expected error message, got %q", m.worktrees[0].PRFetchError)
+	if m.data.worktrees[0].PRFetchError != "gh CLI not found in PATH" {
+		t.Fatalf("PRFetchError was lost on refresh! expected error message, got %q", m.data.worktrees[0].PRFetchError)
 	}
-	if m.worktrees[0].PRFetchStatus != "error" {
-		t.Fatalf("PRFetchStatus was lost on refresh! expected 'error', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != "error" {
+		t.Fatalf("PRFetchStatus was lost on refresh! expected 'error', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 }
 
@@ -2928,7 +2924,7 @@ func TestPRStatePreservedOnCachedWorktrees(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 
 	// Create initial worktree with PR data
 	wt1 := &models.WorktreeInfo{
@@ -2938,7 +2934,7 @@ func TestPRStatePreservedOnCachedWorktrees(t *testing.T) {
 		PRFetchError:  "some error",
 		PRFetchStatus: models.PRFetchStatusError,
 	}
-	m.worktrees = []*models.WorktreeInfo{wt1}
+	m.data.worktrees = []*models.WorktreeInfo{wt1}
 
 	// Simulate cached worktrees load (fresh worktree objects without PR data)
 	cachedWt1 := &models.WorktreeInfo{
@@ -2949,14 +2945,14 @@ func TestPRStatePreservedOnCachedWorktrees(t *testing.T) {
 	m.handleCachedWorktrees(msg)
 
 	// Verify PR state was preserved
-	if m.worktrees[0].PR == nil || m.worktrees[0].PR.Number != 42 {
+	if m.data.worktrees[0].PR == nil || m.data.worktrees[0].PR.Number != 42 {
 		t.Fatal("PR info was lost on cached worktree load")
 	}
-	if m.worktrees[0].PRFetchError != "some error" {
-		t.Fatalf("PRFetchError was lost! expected 'some error', got %q", m.worktrees[0].PRFetchError)
+	if m.data.worktrees[0].PRFetchError != "some error" {
+		t.Fatalf("PRFetchError was lost! expected 'some error', got %q", m.data.worktrees[0].PRFetchError)
 	}
-	if m.worktrees[0].PRFetchStatus != models.PRFetchStatusError {
-		t.Fatalf("PRFetchStatus was lost! expected 'error', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != models.PRFetchStatusError {
+		t.Fatalf("PRFetchStatus was lost! expected 'error', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 }
 
@@ -2966,7 +2962,7 @@ func TestPRStatePreservedOnPruneResult(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 
 	// Create initial worktrees with PR data
 	wt1 := &models.WorktreeInfo{
@@ -2981,7 +2977,7 @@ func TestPRStatePreservedOnPruneResult(t *testing.T) {
 		PRFetchError:  "gh CLI not found",
 		PRFetchStatus: models.PRFetchStatusError,
 	}
-	m.worktrees = []*models.WorktreeInfo{wt1, wt2}
+	m.data.worktrees = []*models.WorktreeInfo{wt1, wt2}
 
 	// Simulate prune result (fresh worktree objects without PR data)
 	prunedWt1 := &models.WorktreeInfo{
@@ -3001,18 +2997,18 @@ func TestPRStatePreservedOnPruneResult(t *testing.T) {
 	m.handlePruneResult(msg)
 
 	// Verify PR state was preserved for both worktrees
-	if m.worktrees[0].PR == nil || m.worktrees[0].PR.Number != 123 {
+	if m.data.worktrees[0].PR == nil || m.data.worktrees[0].PR.Number != 123 {
 		t.Fatal("PR info was lost on prune result for wt1")
 	}
-	if m.worktrees[0].PRFetchStatus != models.PRFetchStatusLoaded {
-		t.Fatalf("PRFetchStatus was lost for wt1! expected 'loaded', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != models.PRFetchStatusLoaded {
+		t.Fatalf("PRFetchStatus was lost for wt1! expected 'loaded', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 
-	if m.worktrees[1].PRFetchError != "gh CLI not found" {
-		t.Fatalf("PRFetchError was lost for wt2! expected 'gh CLI not found', got %q", m.worktrees[1].PRFetchError)
+	if m.data.worktrees[1].PRFetchError != "gh CLI not found" {
+		t.Fatalf("PRFetchError was lost for wt2! expected 'gh CLI not found', got %q", m.data.worktrees[1].PRFetchError)
 	}
-	if m.worktrees[1].PRFetchStatus != models.PRFetchStatusError {
-		t.Fatalf("PRFetchStatus was lost for wt2! expected 'error', got %q", m.worktrees[1].PRFetchStatus)
+	if m.data.worktrees[1].PRFetchStatus != models.PRFetchStatusError {
+		t.Fatalf("PRFetchStatus was lost for wt2! expected 'error', got %q", m.data.worktrees[1].PRFetchStatus)
 	}
 }
 
@@ -3022,7 +3018,7 @@ func TestPRRefreshClearsPreservedState(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
 
 	// Create worktree with OLD PR data
@@ -3032,7 +3028,7 @@ func TestPRRefreshClearsPreservedState(t *testing.T) {
 		PR:            &models.PRInfo{Number: 99, State: "OPEN", Title: "Old PR"},
 		PRFetchStatus: models.PRFetchStatusLoaded,
 	}
-	m.worktrees = []*models.WorktreeInfo{wt1}
+	m.data.worktrees = []*models.WorktreeInfo{wt1}
 
 	// Simulate worktree refresh that preserves the OLD PR data
 	refreshedWt1 := &models.WorktreeInfo{
@@ -3046,7 +3042,7 @@ func TestPRRefreshClearsPreservedState(t *testing.T) {
 	m.handleWorktreesLoaded(refreshMsg)
 
 	// Verify OLD PR data was preserved after worktree refresh
-	if m.worktrees[0].PR == nil || m.worktrees[0].PR.Number != 99 {
+	if m.data.worktrees[0].PR == nil || m.data.worktrees[0].PR.Number != 99 {
 		t.Fatal("PR data should be preserved after worktree refresh")
 	}
 
@@ -3059,17 +3055,17 @@ func TestPRRefreshClearsPreservedState(t *testing.T) {
 		worktreeErrors: map[string]string{},
 	}
 	m.handlePRDataLoaded(prMsg)
-	if m.worktrees[0].PR == nil {
+	if m.data.worktrees[0].PR == nil {
 		t.Fatal("PR data should be set after PR refresh")
 	}
-	if m.worktrees[0].PR.Number != 123 {
-		t.Fatalf("PR refresh should replace old data! expected PR#123, got PR#%d", m.worktrees[0].PR.Number)
+	if m.data.worktrees[0].PR.Number != 123 {
+		t.Fatalf("PR refresh should replace old data! expected PR#123, got PR#%d", m.data.worktrees[0].PR.Number)
 	}
-	if m.worktrees[0].PR.Title != "New PR" {
-		t.Fatalf("PR refresh should replace old data! expected 'New PR', got %q", m.worktrees[0].PR.Title)
+	if m.data.worktrees[0].PR.Title != "New PR" {
+		t.Fatalf("PR refresh should replace old data! expected 'New PR', got %q", m.data.worktrees[0].PR.Title)
 	}
-	if m.worktrees[0].PRFetchStatus != models.PRFetchStatusLoaded {
-		t.Fatalf("PRFetchStatus should be 'loaded', got %q", m.worktrees[0].PRFetchStatus)
+	if m.data.worktrees[0].PRFetchStatus != models.PRFetchStatusLoaded {
+		t.Fatalf("PRFetchStatus should be 'loaded', got %q", m.data.worktrees[0].PRFetchStatus)
 	}
 }
 
@@ -3080,12 +3076,12 @@ func TestPRDataResetSyncsRowsAndColumns(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.WorktreeDir = t.TempDir()
 	m := NewModel(cfg, "")
-	m.worktreeTable.SetWidth(100)
+	m.ui.worktreeTable.SetWidth(100)
 	m.worktreesLoaded = true
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "feature"},
 	}
-	m.filteredWts = m.worktrees
+	m.data.filteredWts = m.data.worktrees
 
 	// First, load PR data (4 columns)
 	prMsg := prDataLoadedMsg{
@@ -3098,27 +3094,27 @@ func TestPRDataResetSyncsRowsAndColumns(t *testing.T) {
 	if !m.prDataLoaded {
 		t.Fatal("expected prDataLoaded to be true after loading PR data")
 	}
-	if len(m.worktreeTable.Columns()) != 4 {
-		t.Fatalf("expected 4 columns after PR data, got %d", len(m.worktreeTable.Columns()))
+	if len(m.ui.worktreeTable.Columns()) != 4 {
+		t.Fatalf("expected 4 columns after PR data, got %d", len(m.ui.worktreeTable.Columns()))
 	}
-	rows := m.worktreeTable.Rows()
+	rows := m.ui.worktreeTable.Rows()
 	if len(rows[0]) != 4 {
 		t.Fatalf("expected 4 values in row after PR data, got %d", len(rows[0]))
 	}
 
 	// Now simulate pressing 'p' to refetch - this should reset to 3 columns
-	m.ciCache = make(map[string]*ciCacheEntry)
+	m.cache.ciCache.Clear()
 	m.prDataLoaded = false
 	m.updateTable()
-	m.updateTableColumns(m.worktreeTable.Width())
+	m.updateTableColumns(m.ui.worktreeTable.Width())
 
 	if m.prDataLoaded {
 		t.Fatal("expected prDataLoaded to be false after reset")
 	}
-	if len(m.worktreeTable.Columns()) != 3 {
-		t.Fatalf("expected 3 columns after reset, got %d", len(m.worktreeTable.Columns()))
+	if len(m.ui.worktreeTable.Columns()) != 3 {
+		t.Fatalf("expected 3 columns after reset, got %d", len(m.ui.worktreeTable.Columns()))
 	}
-	rows = m.worktreeTable.Rows()
+	rows = m.ui.worktreeTable.Rows()
 	if len(rows[0]) != 3 {
 		t.Fatalf("expected 3 values in row after reset, got %d", len(rows[0]))
 	}
@@ -3127,17 +3123,17 @@ func TestPRDataResetSyncsRowsAndColumns(t *testing.T) {
 func TestClearSearchQuery(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.searchTarget = searchTargetWorktrees
+	m.view.SearchTarget = searchTargetWorktrees
 	m.setSearchQuery(searchTargetWorktrees, "test query")
-	m.filterInput.SetValue("test")
+	m.ui.filterInput.SetValue("test")
 
 	m.clearSearchQuery()
 
-	if m.worktreeSearchQuery != "" {
-		t.Errorf("expected worktreeSearchQuery to be empty, got %q", m.worktreeSearchQuery)
+	if m.services.filter.WorktreeSearchQuery != "" {
+		t.Errorf("expected worktreeSearchQuery to be empty, got %q", m.services.filter.WorktreeSearchQuery)
 	}
-	if m.filterInput.Value() != "" {
-		t.Errorf("expected filterInput to be empty, got %q", m.filterInput.Value())
+	if m.ui.filterInput.Value() != "" {
+		t.Errorf("expected filterInput to be empty, got %q", m.ui.filterInput.Value())
 	}
 }
 
@@ -3146,17 +3142,17 @@ func TestRestoreFocusAfterSearch(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	t.Run("restore focus to worktrees", func(t *testing.T) {
-		m.searchTarget = searchTargetWorktrees
+		m.view.SearchTarget = searchTargetWorktrees
 		m.restoreFocusAfterSearch()
-		if !m.worktreeTable.Focused() {
+		if !m.ui.worktreeTable.Focused() {
 			t.Error("expected worktreeTable to be focused")
 		}
 	})
 
 	t.Run("restore focus to log", func(t *testing.T) {
-		m.searchTarget = searchTargetLog
+		m.view.SearchTarget = searchTargetLog
 		m.restoreFocusAfterSearch()
-		if !m.logTable.Focused() {
+		if !m.ui.logTable.Focused() {
 			t.Error("expected logTable to be focused")
 		}
 	})
@@ -3167,17 +3163,17 @@ func TestRestoreFocusAfterFilter(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	t.Run("restore focus to worktrees", func(t *testing.T) {
-		m.filterTarget = filterTargetWorktrees
+		m.view.FilterTarget = filterTargetWorktrees
 		m.restoreFocusAfterFilter()
-		if !m.worktreeTable.Focused() {
+		if !m.ui.worktreeTable.Focused() {
 			t.Error("expected worktreeTable to be focused")
 		}
 	})
 
 	t.Run("restore focus to log", func(t *testing.T) {
-		m.filterTarget = filterTargetLog
+		m.view.FilterTarget = filterTargetLog
 		m.restoreFocusAfterFilter()
-		if !m.logTable.Focused() {
+		if !m.ui.logTable.Focused() {
 			t.Error("expected logTable to be focused")
 		}
 	})
@@ -3188,22 +3184,22 @@ func TestHandleGotoTop(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	t.Run("goto top on worktree pane", func(t *testing.T) {
-		m.focusedPane = 0
-		m.worktrees = []*models.WorktreeInfo{
+		m.view.FocusedPane = 0
+		m.data.worktrees = []*models.WorktreeInfo{
 			{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "branch1"},
 			{Path: filepath.Join(cfg.WorktreeDir, "wt2"), Branch: "branch2"},
 			{Path: filepath.Join(cfg.WorktreeDir, "wt3"), Branch: "branch3"},
 		}
-		m.worktreeTable.SetWidth(100)
+		m.ui.worktreeTable.SetWidth(100)
 		m.updateTable()
-		m.updateTableColumns(m.worktreeTable.Width())
-		if len(m.worktreeTable.Rows()) == 0 {
+		m.updateTableColumns(m.ui.worktreeTable.Width())
+		if len(m.ui.worktreeTable.Rows()) == 0 {
 			t.Fatal("table has no rows after updateTable")
 		}
-		m.worktreeTable.SetCursor(2)
+		m.ui.worktreeTable.SetCursor(2)
 		_, cmd := m.handleGotoTop()
-		if m.worktreeTable.Cursor() != 0 {
-			t.Errorf("expected cursor at top (0), got %d", m.worktreeTable.Cursor())
+		if m.ui.worktreeTable.Cursor() != 0 {
+			t.Errorf("expected cursor at top (0), got %d", m.ui.worktreeTable.Cursor())
 		}
 		if cmd == nil {
 			t.Error("expected command to be returned")
@@ -3211,16 +3207,16 @@ func TestHandleGotoTop(t *testing.T) {
 	})
 
 	t.Run("goto top on status pane", func(t *testing.T) {
-		m.focusedPane = 1
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.view.FocusedPane = 1
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 			{Path: "file2.txt", File: &StatusFile{Filename: "file2.txt"}},
 		}
-		m.statusTreeIndex = 2
+		m.services.statusTree.Index = 2
 		_, cmd := m.handleGotoTop()
-		if m.statusTreeIndex != 0 {
-			t.Errorf("expected statusTreeIndex to be 0, got %d", m.statusTreeIndex)
+		if m.services.statusTree.Index != 0 {
+			t.Errorf("expected statusTreeIndex to be 0, got %d", m.services.statusTree.Index)
 		}
 		if cmd != nil {
 			t.Error("expected nil command for status pane")
@@ -3228,18 +3224,18 @@ func TestHandleGotoTop(t *testing.T) {
 	})
 
 	t.Run("goto top on log pane", func(t *testing.T) {
-		m.focusedPane = 2
-		m.logEntries = []commitLogEntry{
+		m.view.FocusedPane = 2
+		m.data.logEntries = []commitLogEntry{
 			{sha: "abc123", message: "commit 1"},
 			{sha: "def456", message: "commit 2"},
 			{sha: "ghi789", message: "commit 3"},
 		}
-		m.setLogEntries(m.logEntries, false)
-		m.updateLogColumns(m.logTable.Width())
-		m.logTable.SetCursor(2)
+		m.setLogEntries(m.data.logEntries, false)
+		m.updateLogColumns(m.ui.logTable.Width())
+		m.ui.logTable.SetCursor(2)
 		_, cmd := m.handleGotoTop()
-		if m.logTable.Cursor() != 0 {
-			t.Errorf("expected cursor at top, got %d", m.logTable.Cursor())
+		if m.ui.logTable.Cursor() != 0 {
+			t.Errorf("expected cursor at top, got %d", m.ui.logTable.Cursor())
 		}
 		// Command may or may not be nil - just verify the cursor moved
 		_ = cmd
@@ -3251,18 +3247,18 @@ func TestHandleGotoBottom(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	t.Run("goto bottom on worktree pane", func(t *testing.T) {
-		m.focusedPane = 0
-		m.worktreeTable.SetCursor(0)
-		m.filteredWts = []*models.WorktreeInfo{
+		m.view.FocusedPane = 0
+		m.ui.worktreeTable.SetCursor(0)
+		m.data.filteredWts = []*models.WorktreeInfo{
 			{Path: "wt1", Branch: "branch1"},
 			{Path: "wt2", Branch: "branch2"},
 			{Path: "wt3", Branch: "branch3"},
 		}
 		m.updateTable()
 		_, cmd := m.handleGotoBottom()
-		expectedBottom := len(m.filteredWts) - 1
-		if m.worktreeTable.Cursor() != expectedBottom {
-			t.Errorf("expected cursor at bottom (%d), got %d", expectedBottom, m.worktreeTable.Cursor())
+		expectedBottom := len(m.data.filteredWts) - 1
+		if m.ui.worktreeTable.Cursor() != expectedBottom {
+			t.Errorf("expected cursor at bottom (%d), got %d", expectedBottom, m.ui.worktreeTable.Cursor())
 		}
 		if cmd == nil {
 			t.Error("expected command to be returned")
@@ -3270,36 +3266,36 @@ func TestHandleGotoBottom(t *testing.T) {
 	})
 
 	t.Run("goto bottom on status pane", func(t *testing.T) {
-		m.focusedPane = 1
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.view.FocusedPane = 1
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 			{Path: "file2.txt", File: &StatusFile{Filename: "file2.txt"}},
 		}
-		m.statusTreeIndex = 0
+		m.services.statusTree.Index = 0
 		_, cmd := m.handleGotoBottom()
-		expectedBottom := len(m.statusTreeFlat) - 1
-		if m.statusTreeIndex != expectedBottom {
-			t.Errorf("expected statusTreeIndex to be %d, got %d", expectedBottom, m.statusTreeIndex)
+		expectedBottom := len(m.services.statusTree.TreeFlat) - 1
+		if m.services.statusTree.Index != expectedBottom {
+			t.Errorf("expected statusTreeIndex to be %d, got %d", expectedBottom, m.services.statusTree.Index)
 		}
 		// Command may or may not be nil - just verify the index changed
 		_ = cmd
 	})
 
 	t.Run("goto bottom on log pane", func(t *testing.T) {
-		m.focusedPane = 2
-		m.logTable.SetCursor(0)
-		m.logEntries = []commitLogEntry{
+		m.view.FocusedPane = 2
+		m.ui.logTable.SetCursor(0)
+		m.data.logEntries = []commitLogEntry{
 			{sha: "abc123", message: "commit 1"},
 			{sha: "def456", message: "commit 2"},
 			{sha: "ghi789", message: "commit 3"},
 		}
-		m.setLogEntries(m.logEntries, false)
-		m.updateLogColumns(m.logTable.Width())
+		m.setLogEntries(m.data.logEntries, false)
+		m.updateLogColumns(m.ui.logTable.Width())
 		_, cmd := m.handleGotoBottom()
-		expectedBottom := len(m.logEntries) - 1
-		if m.logTable.Cursor() != expectedBottom {
-			t.Errorf("expected cursor at bottom (%d), got %d", expectedBottom, m.logTable.Cursor())
+		expectedBottom := len(m.data.logEntries) - 1
+		if m.ui.logTable.Cursor() != expectedBottom {
+			t.Errorf("expected cursor at bottom (%d), got %d", expectedBottom, m.ui.logTable.Cursor())
 		}
 		// Command may or may not be nil - just verify the cursor moved
 		_ = cmd
@@ -3309,11 +3305,11 @@ func TestHandleGotoBottom(t *testing.T) {
 func TestHandleNextFolder(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
+	m.view.FocusedPane = 1
 
 	t.Run("empty status tree", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{}
-		m.statusTreeIndex = 0
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{}
+		m.services.statusTree.Index = 0
 		_, cmd := m.handleNextFolder()
 		if cmd != nil {
 			t.Error("expected nil command for empty tree")
@@ -3321,16 +3317,16 @@ func TestHandleNextFolder(t *testing.T) {
 	})
 
 	t.Run("find next folder", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 			{Path: "file2.txt", File: &StatusFile{Filename: "file2.txt"}},
 			{Path: "dir2", Children: []*StatusTreeNode{}},
 		}
-		m.statusTreeIndex = 0
+		m.services.statusTree.Index = 0
 		_, cmd := m.handleNextFolder()
-		if m.statusTreeIndex != 1 {
-			t.Errorf("expected statusTreeIndex to be 1 (dir1), got %d", m.statusTreeIndex)
+		if m.services.statusTree.Index != 1 {
+			t.Errorf("expected statusTreeIndex to be 1 (dir1), got %d", m.services.statusTree.Index)
 		}
 		if cmd != nil {
 			t.Error("expected nil command")
@@ -3338,14 +3334,14 @@ func TestHandleNextFolder(t *testing.T) {
 	})
 
 	t.Run("no next folder found", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 		}
-		m.statusTreeIndex = 1 // Already at last folder
+		m.services.statusTree.Index = 1 // Already at last folder
 		_, cmd := m.handleNextFolder()
-		if m.statusTreeIndex != 1 {
-			t.Errorf("expected statusTreeIndex to remain 1, got %d", m.statusTreeIndex)
+		if m.services.statusTree.Index != 1 {
+			t.Errorf("expected statusTreeIndex to remain 1, got %d", m.services.statusTree.Index)
 		}
 		if cmd != nil {
 			t.Error("expected nil command")
@@ -3356,11 +3352,11 @@ func TestHandleNextFolder(t *testing.T) {
 func TestHandlePrevFolder(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
+	m.view.FocusedPane = 1
 
 	t.Run("empty status tree", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{}
-		m.statusTreeIndex = 0
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{}
+		m.services.statusTree.Index = 0
 		_, cmd := m.handlePrevFolder()
 		if cmd != nil {
 			t.Error("expected nil command for empty tree")
@@ -3368,16 +3364,16 @@ func TestHandlePrevFolder(t *testing.T) {
 	})
 
 	t.Run("find previous folder", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 			{Path: "dir2", Children: []*StatusTreeNode{}},
 			{Path: "file2.txt", File: &StatusFile{Filename: "file2.txt"}},
 		}
-		m.statusTreeIndex = 3
+		m.services.statusTree.Index = 3
 		_, cmd := m.handlePrevFolder()
-		if m.statusTreeIndex != 2 {
-			t.Errorf("expected statusTreeIndex to be 2 (dir2), got %d", m.statusTreeIndex)
+		if m.services.statusTree.Index != 2 {
+			t.Errorf("expected statusTreeIndex to be 2 (dir2), got %d", m.services.statusTree.Index)
 		}
 		if cmd != nil {
 			t.Error("expected nil command")
@@ -3385,14 +3381,14 @@ func TestHandlePrevFolder(t *testing.T) {
 	})
 
 	t.Run("no previous folder found", func(t *testing.T) {
-		m.statusTreeFlat = []*StatusTreeNode{
+		m.services.statusTree.TreeFlat = []*StatusTreeNode{
 			{Path: "dir1", Children: []*StatusTreeNode{}},
 			{Path: "file1.txt", File: &StatusFile{Filename: "file1.txt"}},
 		}
-		m.statusTreeIndex = 0 // Already at first folder
+		m.services.statusTree.Index = 0 // Already at first folder
 		_, cmd := m.handlePrevFolder()
-		if m.statusTreeIndex != 0 {
-			t.Errorf("expected statusTreeIndex to remain 0, got %d", m.statusTreeIndex)
+		if m.services.statusTree.Index != 0 {
+			t.Errorf("expected statusTreeIndex to remain 0, got %d", m.services.statusTree.Index)
 		}
 		if cmd != nil {
 			t.Error("expected nil command")
@@ -3405,9 +3401,9 @@ func TestCICheckNavigationDown(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3417,7 +3413,7 @@ func TestCICheckNavigationDown(t *testing.T) {
 		{Name: "test", Conclusion: "failure", Link: "https://github.com/owner/repo/actions/runs/456"},
 		{Name: "lint", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/789"},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 
 	// Start navigating CI checks
 	m.ciCheckIndex = 0
@@ -3442,8 +3438,8 @@ func TestCICheckNavigationDown(t *testing.T) {
 	if m.ciCheckIndex != -1 {
 		t.Fatalf("expected ciCheckIndex -1 after wrapping, got %d", m.ciCheckIndex)
 	}
-	if m.statusTreeIndex != 0 {
-		t.Fatalf("expected statusTreeIndex 0 after wrapping, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 0 {
+		t.Fatalf("expected statusTreeIndex 0 after wrapping, got %d", m.services.statusTree.Index)
 	}
 }
 
@@ -3452,9 +3448,9 @@ func TestCICheckNavigationUp(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3464,13 +3460,13 @@ func TestCICheckNavigationUp(t *testing.T) {
 		{Name: "test", Conclusion: "failure", Link: "https://github.com/owner/repo/actions/runs/456"},
 		{Name: "lint", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/789"},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 
 	// Set up file tree
 	m.setStatusFiles([]StatusFile{
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	// Start at first CI check
 	m.ciCheckIndex = 1
@@ -3489,7 +3485,7 @@ func TestCICheckNavigationUp(t *testing.T) {
 
 	// Test wrapping from file tree to CI checks
 	m.ciCheckIndex = -1
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 	_, _ = m.handleNavigationUp(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	if m.ciCheckIndex != 2 {
 		t.Fatalf("expected ciCheckIndex 2 after wrapping from file tree, got %d", m.ciCheckIndex)
@@ -3501,9 +3497,9 @@ func TestCICheckEnterOpensURL(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3512,12 +3508,12 @@ func TestCICheckEnterOpensURL(t *testing.T) {
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success", Link: checkURL},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 	m.ciCheckIndex = 0
 
 	// Capture command
 	var capturedCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		capturedCmd = exec.Command(name, args...)
 		return capturedCmd
 	}
@@ -3557,9 +3553,9 @@ func TestCICheckCtrlVShowsLogs(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3568,12 +3564,12 @@ func TestCICheckCtrlVShowsLogs(t *testing.T) {
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success", Link: checkURL},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 	m.ciCheckIndex = 0
 
 	// Capture command
 	var capturedCmd *exec.Cmd
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		capturedCmd = exec.Command(name, args...)
 		return capturedCmd
 	}
@@ -3607,8 +3603,8 @@ func TestCICheckSelectionResetOnWorktreeChange(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 		{Path: "/other/path", Branch: "other"},
 	}
@@ -3617,11 +3613,11 @@ func TestCICheckSelectionResetOnWorktreeChange(t *testing.T) {
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/123"},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 	m.ciCheckIndex = 0
 
 	// Change worktree selection
-	m.selectedIndex = 1
+	m.data.selectedIndex = 1
 	m.updateDetailsView()
 
 	// CI check selection should be reset
@@ -3635,9 +3631,9 @@ func TestCICheckSelectionResetOnPaneSwitch(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3645,7 +3641,7 @@ func TestCICheckSelectionResetOnPaneSwitch(t *testing.T) {
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/123"},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 	m.ciCheckIndex = 0
 
 	// Switch to pane 0
@@ -3662,9 +3658,9 @@ func TestCICheckSelectionResetWhenUnavailable(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3672,7 +3668,7 @@ func TestCICheckSelectionResetWhenUnavailable(t *testing.T) {
 	checks := []*models.CICheck{
 		{Name: "build", Conclusion: "success", Link: "https://github.com/owner/repo/actions/runs/123"},
 	}
-	m.ciCache["feat"] = &ciCacheEntry{checks: checks}
+	m.cache.ciCache.Set("feat", checks)
 	m.ciCheckIndex = 5 // Out of bounds
 
 	// Navigate - should reset invalid index
@@ -3682,7 +3678,7 @@ func TestCICheckSelectionResetWhenUnavailable(t *testing.T) {
 	}
 
 	// Clear CI cache
-	m.ciCache = make(map[string]*ciCacheEntry)
+	m.cache.ciCache.Clear()
 	m.ciCheckIndex = 0
 
 	// Navigate - should reset when no CI checks available
@@ -3697,10 +3693,10 @@ func TestCICheckNavigationWithNoChecks(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.focusedPane = 1
-	m.statusViewport = viewport.New(40, 10)
-	m.selectedIndex = 0
-	m.filteredWts = []*models.WorktreeInfo{
+	m.view.FocusedPane = 1
+	m.ui.statusViewport = viewport.New(40, 10)
+	m.data.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: testWorktreePath, Branch: "feat"},
 	}
 
@@ -3709,12 +3705,12 @@ func TestCICheckNavigationWithNoChecks(t *testing.T) {
 		{Filename: "file1.go", Status: ".M", IsUntracked: false},
 		{Filename: "file2.go", Status: "M.", IsUntracked: false},
 	})
-	m.statusTreeIndex = 0
+	m.services.statusTree.Index = 0
 
 	// Navigation should work on file tree
 	_, _ = m.handleNavigationDown(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.statusTreeIndex != 1 {
-		t.Fatalf("expected statusTreeIndex 1, got %d", m.statusTreeIndex)
+	if m.services.statusTree.Index != 1 {
+		t.Fatalf("expected statusTreeIndex 1, got %d", m.services.statusTree.Index)
 	}
 	if m.ciCheckIndex != -1 {
 		t.Fatalf("expected ciCheckIndex -1, got %d", m.ciCheckIndex)

@@ -39,7 +39,7 @@ func (m *Model) renderFilter(layout layoutDims) string {
 	filterStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TextFg).
 		Padding(0, 1)
-	line := fmt.Sprintf("%s %s", labelStyle.Render(m.inputLabel()), m.filterInput.View())
+	line := fmt.Sprintf("%s %s", labelStyle.Render(m.inputLabel()), m.ui.filterInput.View())
 	return filterStyle.Width(layout.width).Render(line)
 }
 
@@ -53,9 +53,9 @@ func (m *Model) renderFooter(layout layoutDims) string {
 	// Context-aware hints based on focused pane
 	var hints []string
 
-	switch m.focusedPane {
+	switch m.view.FocusedPane {
 	case 2: // Log pane
-		if len(m.logEntries) > 0 {
+		if len(m.data.logEntries) > 0 {
 			hints = []string{
 				m.renderKeyHint("Enter", "View Commit"),
 				m.renderKeyHint("C", "Cherry-pick"),
@@ -81,7 +81,7 @@ func (m *Model) renderFooter(layout layoutDims) string {
 		hints = []string{
 			m.renderKeyHint("j/k", "Scroll"),
 		}
-		if len(m.statusFiles) > 0 {
+		if len(m.data.statusFiles) > 0 {
 			hints = append(hints,
 				m.renderKeyHint("Enter", "Show Diff"),
 				m.renderKeyHint("e", "Edit File"),
@@ -107,8 +107,8 @@ func (m *Model) renderFooter(layout layoutDims) string {
 			m.renderKeyHint("S", "Sync"),
 		}
 		// Show "o" key hint only when current worktree has PR info
-		if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredWts) {
-			wt := m.filteredWts[m.selectedIndex]
+		if m.data.selectedIndex >= 0 && m.data.selectedIndex < len(m.data.filteredWts) {
+			wt := m.data.filteredWts[m.data.selectedIndex]
 			if wt.PR != nil {
 				hints = append(hints, m.renderKeyHint("o", "Open PR"))
 			}
@@ -125,7 +125,7 @@ func (m *Model) renderFooter(layout layoutDims) string {
 	if !m.loading {
 		return footerStyle.Width(layout.width).Render(footerContent)
 	}
-	spinnerView := m.spinner.View()
+	spinnerView := m.ui.spinner.View()
 	gap := "  "
 	available := maxInt(layout.width-lipgloss.Width(spinnerView)-lipgloss.Width(gap), 0)
 	footer := footerStyle.Width(available).Render(footerContent)
@@ -161,7 +161,7 @@ func (m *Model) renderPaneTitle(index int, title string, focused bool, width int
 
 	filterIndicator := ""
 	paneIdx := index - 1 // index is 1-based, panes are 0-based
-	if !m.showingFilter && !m.showingSearch && m.hasActiveFilterForPane(paneIdx) {
+	if !m.view.ShowingFilter && !m.view.ShowingSearch && m.hasActiveFilterForPane(paneIdx) {
 		filteredStyle := lipgloss.NewStyle().Foreground(m.theme.WarnFg).Italic(true)
 		keyStyle := lipgloss.NewStyle().
 			Foreground(m.theme.AccentFg).
@@ -176,7 +176,7 @@ func (m *Model) renderPaneTitle(index int, title string, focused bool, width int
 	}
 
 	zoomIndicator := ""
-	if m.zoomedPane == paneIdx {
+	if m.view.ZoomedPane == paneIdx {
 		zoomedStyle := lipgloss.NewStyle().Foreground(m.theme.Accent).Italic(true)
 		keyStyle := lipgloss.NewStyle().
 			Foreground(m.theme.AccentFg).

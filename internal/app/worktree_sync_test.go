@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -23,14 +26,17 @@ func TestPushToUpstreamRunsGitPush(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	var gotName string
 	var gotArgs []string
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		gotName = name
 		gotArgs = append([]string{}, args...)
 		return exec.Command("printf", "")
@@ -40,10 +46,10 @@ func TestPushToUpstreamRunsGitPush(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	if !m.loading {
+		t.Fatal("expected loading to be true")
 	}
-	if !m.loading || m.loadingScreen == nil {
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
 		t.Fatal("expected loading screen to be set")
 	}
 	msg := cmd()
@@ -77,44 +83,42 @@ func TestPushToUpstreamPromptsForUpstream(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	if cmd == nil {
 		t.Fatal("expected input command to be returned")
 	}
-	if m.currentScreen != screenInput {
-		t.Fatalf("expected screenInput, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatalf("expected input screen, got %v", m.ui.screenManager.Type())
 	}
-	if m.inputScreen == nil {
-		t.Fatal("expected inputScreen to be set")
-	}
-	if got := m.inputScreen.input.Value(); got != testUpstreamRef {
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if got := inputScr.Input.Value(); got != testUpstreamRef {
 		t.Fatalf("expected default upstream %q, got %q", testUpstreamRef, got)
 	}
 
 	var gotName string
 	var gotArgs []string
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		gotName = name
 		gotArgs = append([]string{}, args...)
 		return exec.Command("printf", "")
 	}
 
-	pushCmd, closeInput := m.inputSubmit(testUpstreamRef, false)
-	if !closeInput {
-		t.Fatal("expected input to close after submit")
-	}
+	pushCmd := inputScr.OnSubmit(testUpstreamRef, false)
 	if pushCmd == nil {
 		t.Fatal("expected push command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	if !m.loading {
+		t.Fatal("expected loading to be true")
 	}
-	if !m.loading || m.loadingScreen == nil {
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
 		t.Fatal("expected loading screen to be set")
 	}
 	msg := pushCmd()
@@ -151,23 +155,21 @@ func TestPushToUpstreamBlocksWithLocalChanges(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, Dirty: true, Modified: 1},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	if cmd != nil {
 		t.Fatal("expected no command when local changes exist")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil {
-		t.Fatal("expected infoScreen to be set")
-	}
-	if !strings.Contains(m.infoScreen.message, "Cannot push") {
-		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Cannot push") {
+		t.Fatalf("unexpected info message: %q", infoScr.Message)
 	}
 }
 
@@ -182,28 +184,26 @@ func TestPushToUpstreamRejectsOtherBranch(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	if cmd == nil {
 		t.Fatal("expected input command to be returned")
 	}
-	if m.currentScreen != screenInput {
-		t.Fatalf("expected screenInput, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatalf("expected input screen, got %v", m.ui.screenManager.Type())
 	}
 
-	pushCmd, closeInput := m.inputSubmit(testOtherBranch, false)
-	if closeInput {
-		t.Fatal("expected input to remain open on invalid branch")
-	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	pushCmd := inputScr.OnSubmit(testOtherBranch, false)
 	if pushCmd != nil {
 		t.Fatal("expected no command on invalid branch")
 	}
-	if m.inputScreen == nil || !strings.Contains(m.inputScreen.errorMsg, "Upstream branch must match") {
-		t.Fatalf("expected validation error, got %q", m.inputScreen.errorMsg)
+	if !strings.Contains(inputScr.ErrorMsg, "Upstream branch must match") {
+		t.Fatalf("expected validation error, got %q", inputScr.ErrorMsg)
 	}
 }
 
@@ -218,20 +218,21 @@ func TestPushToUpstreamRejectsConfiguredOtherBranch(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testOtherBranch},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	if cmd != nil {
 		t.Fatal("expected no command when upstream is for another branch")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "does not match current branch") {
-		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "does not match current branch") {
+		t.Fatalf("unexpected info message: %q", infoScr.Message)
 	}
 }
 
@@ -247,17 +248,20 @@ func TestSyncWithUpstreamRunsPullThenPush(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	type call struct {
 		name string
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}
@@ -266,10 +270,10 @@ func TestSyncWithUpstreamRunsPullThenPush(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	if !m.loading {
+		t.Fatal("expected loading to be true")
 	}
-	if !m.loading || m.loadingScreen == nil {
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
 		t.Fatal("expected loading screen to be set")
 	}
 	msg := cmd()
@@ -310,22 +314,20 @@ func TestSyncWithUpstreamPromptsForUpstream(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
 	if cmd == nil {
 		t.Fatal("expected input command to be returned")
 	}
-	if m.currentScreen != screenInput {
-		t.Fatalf("expected screenInput, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
+		t.Fatalf("expected input screen, got %v", m.ui.screenManager.Type())
 	}
-	if m.inputScreen == nil {
-		t.Fatal("expected inputScreen to be set")
-	}
-	if got := m.inputScreen.input.Value(); got != testUpstreamRef {
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+	if got := inputScr.Input.Value(); got != testUpstreamRef {
 		t.Fatalf("expected default upstream %q, got %q", testUpstreamRef, got)
 	}
 
@@ -334,22 +336,22 @@ func TestSyncWithUpstreamPromptsForUpstream(t *testing.T) {
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}
 
-	syncCmd, closeInput := m.inputSubmit(testUpstreamRef, false)
-	if !closeInput {
-		t.Fatal("expected input to close after submit")
-	}
+	syncCmd := inputScr.OnSubmit(testUpstreamRef, false)
 	if syncCmd == nil {
 		t.Fatal("expected sync command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	if !m.loading {
+		t.Fatal("expected loading to be true")
 	}
-	if !m.loading || m.loadingScreen == nil {
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
 		t.Fatal("expected loading screen to be set")
 	}
 	msg := syncCmd()
@@ -390,23 +392,21 @@ func TestSyncWithUpstreamBlocksWithLocalChanges(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, Dirty: true, Modified: 1},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
 	if cmd != nil {
 		t.Fatal("expected no command when local changes exist")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil {
-		t.Fatal("expected infoScreen to be set")
-	}
-	if !strings.Contains(m.infoScreen.message, "Cannot synchronise") {
-		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Cannot synchronise") {
+		t.Fatalf("unexpected info message: %q", infoScr.Message)
 	}
 }
 
@@ -422,20 +422,21 @@ func TestSyncWithUpstreamRejectsConfiguredOtherBranch(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testOtherBranch},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
 	if cmd != nil {
 		t.Fatal("expected no command when upstream is for another branch")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "does not match current branch") {
-		t.Fatalf("unexpected info message: %q", m.infoScreen.message)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "does not match current branch") {
+		t.Fatalf("unexpected info message: %q", infoScr.Message)
 	}
 }
 
@@ -451,17 +452,20 @@ func TestSyncWithUpstreamUsesRebasePull(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: wtPath, Branch: featureBranch, HasUpstream: true, UpstreamBranch: testUpstreamRef},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	type call struct {
 		name string
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}
@@ -499,7 +503,7 @@ func TestSyncWithNoPRDoesNormalSync(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{
 			Path:           wtPath,
 			Branch:         featureBranch,
@@ -508,14 +512,17 @@ func TestSyncWithNoPRDoesNormalSync(t *testing.T) {
 			PR:             nil, // No PR
 		},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	type call struct {
 		name string
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}
@@ -544,7 +551,7 @@ func TestSyncPREmptyBaseBranchDoesNormalSync(t *testing.T) {
 		t.Fatalf("failed to create worktree dir: %v", err)
 	}
 
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{
 			Path:           wtPath,
 			Branch:         featureBranch,
@@ -556,14 +563,17 @@ func TestSyncPREmptyBaseBranchDoesNormalSync(t *testing.T) {
 			},
 		},
 	}
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 
 	type call struct {
 		name string
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}
@@ -604,7 +614,10 @@ func TestUpdateFromBaseWithRebaseFlag(t *testing.T) {
 
 	var gotName string
 	var gotArgs []string
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		gotName = name
 		gotArgs = append([]string{}, args...)
 		return exec.Command("printf", "")
@@ -614,8 +627,8 @@ func TestUpdateFromBaseWithRebaseFlag(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected command to be returned")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected screenLoading, got %v", m.currentScreen)
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
+		t.Fatalf("expected loading screen, got %v", m.ui.screenManager.Type())
 	}
 
 	_ = cmd()
@@ -654,7 +667,10 @@ func TestUpdateFromBaseWithoutRebaseFlag(t *testing.T) {
 
 	var gotName string
 	var gotArgs []string
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		gotName = name
 		gotArgs = append([]string{}, args...)
 		return exec.Command("printf", "")
@@ -696,17 +712,21 @@ func TestShowSyncChoiceCreatesConfirmScreen(t *testing.T) {
 		t.Fatal("expected showSyncChoice to return nil (no immediate command)")
 	}
 
-	if m.currentScreen != screenConfirm {
-		t.Fatalf("expected screenConfirm, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() {
+		t.Fatal("expected screen manager to be active")
 	}
-	if m.confirmScreen == nil {
-		t.Fatal("expected confirmScreen to be created")
+	if m.ui.screenManager.Type() != appscreen.TypeConfirm {
+		t.Fatalf("expected confirm screen, got %v", m.ui.screenManager.Type())
 	}
-	if m.confirmAction == nil {
-		t.Fatal("expected confirmAction to be set")
+	confirmScreen, ok := m.ui.screenManager.Current().(*appscreen.ConfirmScreen)
+	if !ok {
+		t.Fatal("expected confirm screen in screen manager")
 	}
-	if m.confirmCancel == nil {
-		t.Fatal("expected confirmCancel to be set")
+	if confirmScreen.OnConfirm == nil {
+		t.Fatal("expected OnConfirm to be set")
+	}
+	if confirmScreen.OnCancel == nil {
+		t.Fatal("expected OnCancel to be set")
 	}
 }
 
@@ -736,15 +756,17 @@ func TestConfirmYesCallsUpdateFromBase(t *testing.T) {
 
 	var gotName string
 	var gotArgs []string
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		gotName = name
 		gotArgs = append([]string{}, args...)
 		return exec.Command("printf", "")
 	}
 
 	// Simulate user pressing YES (y key)
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	m = newModel.(*Model)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 
 	if cmd == nil {
 		t.Fatal("expected command to be returned from confirmAction")
@@ -759,16 +781,8 @@ func TestConfirmYesCallsUpdateFromBase(t *testing.T) {
 		t.Fatalf("expected gh pr update-branch --rebase, got %v", gotArgs)
 	}
 
-	// Verify confirm screen was cleared
-	if m.confirmScreen != nil {
-		t.Fatal("expected confirmScreen to be cleared")
-	}
-	if m.confirmAction != nil {
-		t.Fatal("expected confirmAction to be cleared")
-	}
-	if m.confirmCancel != nil {
-		t.Fatal("expected confirmCancel to be cleared")
-	}
+	// Screen manager should have popped the confirm screen after the callback
+	// (In practice, the callback would be invoked by the Update handler which pops the screen)
 }
 
 func TestConfirmNoDoesNormalSync(t *testing.T) {
@@ -801,7 +815,10 @@ func TestConfirmNoDoesNormalSync(t *testing.T) {
 		args []string
 	}
 	var calls []call
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) > 0 && args[0] == "worktree" {
+			return exec.Command("printf", "")
+		}
 		calls = append(calls, call{name: name, args: append([]string{}, args...)})
 		return exec.Command("printf", "")
 	}

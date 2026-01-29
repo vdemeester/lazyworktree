@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -15,17 +16,18 @@ func TestShowCreateWorktreeFromChangesNoSelection(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.selectedIndex = -1 // No selection
+	m.data.selectedIndex = -1 // No selection
 
 	cmd := m.showCreateWorktreeFromChanges()
 	if cmd != nil {
 		t.Error("Expected nil command when no worktree is selected")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, errNoWorktreeSelected) {
-		t.Fatalf("expected info modal with %q, got %#v", errNoWorktreeSelected, m.infoScreen)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, errNoWorktreeSelected) {
+		t.Fatalf("expected info modal with %q, got %q", errNoWorktreeSelected, infoScr.Message)
 	}
 }
 
@@ -39,23 +41,22 @@ func TestShowCreateWorktreeStartsWithBasePicker(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("showCreateWorktree returned nil command")
 	}
-	if m.currentScreen != screenListSelect {
-		t.Fatalf("expected currentScreen screenListSelect, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeListSelect {
+		t.Fatalf("expected list screen to be active")
 	}
-	if m.listScreen == nil {
-		t.Fatal("listScreen should be initialized")
+
+	listScreen := m.ui.screenManager.Current().(*appscreen.ListSelectionScreen)
+	if listScreen.Title != "Select base for new worktree" {
+		t.Fatalf("unexpected list title: %q", listScreen.Title)
 	}
-	if m.listScreen.title != "Select base for new worktree" {
-		t.Fatalf("unexpected list title: %q", m.listScreen.title)
+	if len(listScreen.Items) != 6 {
+		t.Fatalf("expected 6 base options, got %d", len(listScreen.Items))
 	}
-	if len(m.listScreen.items) != 6 {
-		t.Fatalf("expected 6 base options, got %d", len(m.listScreen.items))
+	if listScreen.Items[0].ID != "from-current" {
+		t.Fatalf("expected first option from-current, got %q", listScreen.Items[0].ID)
 	}
-	if m.listScreen.items[0].id != "from-current" {
-		t.Fatalf("expected first option from-current, got %q", m.listScreen.items[0].id)
-	}
-	if m.listScreen.items[1].id != "branch-list" {
-		t.Fatalf("expected second option branch-list, got %q", m.listScreen.items[1].id)
+	if listScreen.Items[1].ID != "branch-list" {
+		t.Fatalf("expected second option branch-list, got %q", listScreen.Items[1].ID)
 	}
 }
 
@@ -87,14 +88,15 @@ func TestHandleCreateFromCurrentReadyCheckboxVisibility(t *testing.T) {
 			}
 			m.handleCreateFromCurrentReady(msg)
 
-			if m.inputScreen == nil {
+			if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 				t.Fatalf("input screen should be initialized")
 			}
-			if m.inputScreen.checkboxEnabled != tt.expectCheckbox {
-				t.Fatalf("expected checkbox enabled=%v, got %v", tt.expectCheckbox, m.inputScreen.checkboxEnabled)
+			inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
+			if inputScr.CheckboxEnabled != tt.expectCheckbox {
+				t.Fatalf("expected checkbox enabled=%v, got %v", tt.expectCheckbox, inputScr.CheckboxEnabled)
 			}
-			if tt.expectCheckbox && m.inputScreen.checkboxChecked != tt.expectChecked {
-				t.Fatalf("expected checkbox checked=%v, got %v", tt.expectChecked, m.inputScreen.checkboxChecked)
+			if tt.expectCheckbox && inputScr.CheckboxChecked != tt.expectChecked {
+				t.Fatalf("expected checkbox checked=%v, got %v", tt.expectChecked, inputScr.CheckboxChecked)
 			}
 		})
 	}
@@ -119,28 +121,29 @@ func TestHandleCreateFromCurrentUsesRandomNameByDefault(t *testing.T) {
 
 	m.handleCreateFromCurrentReady(msg)
 
-	if m.inputScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("input screen should be initialized")
 	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
 
 	// Should use random name, not AI-generated
-	got := m.inputScreen.input.Value()
+	got := inputScr.Input.Value()
 	if got != testRandomName {
 		t.Errorf("expected random name %q, got %q", testRandomName, got)
 	}
 
 	// Verify context is stored for checkbox toggling
-	if m.createFromCurrentDiff != testDiffContent {
-		t.Errorf("expected diff to be cached, got %q", m.createFromCurrentDiff)
+	if m.createFromCurrent.diff != testDiffContent {
+		t.Errorf("expected diff to be cached, got %q", m.createFromCurrent.diff)
 	}
-	if m.createFromCurrentRandomName != testRandomName {
-		t.Errorf("expected random name to be cached, got %q", m.createFromCurrentRandomName)
+	if m.createFromCurrent.randomName != testRandomName {
+		t.Errorf("expected random name to be cached, got %q", m.createFromCurrent.randomName)
 	}
-	if m.createFromCurrentBranch != mainWorktreeName {
-		t.Errorf("expected branch to be cached, got %q", m.createFromCurrentBranch)
+	if m.createFromCurrent.branch != mainWorktreeName {
+		t.Errorf("expected branch to be cached, got %q", m.createFromCurrent.branch)
 	}
-	if m.createFromCurrentAIName != "" {
-		t.Errorf("expected AI name cache to be empty, got %q", m.createFromCurrentAIName)
+	if m.createFromCurrent.aiName != "" {
+		t.Errorf("expected AI name cache to be empty, got %q", m.createFromCurrent.aiName)
 	}
 }
 
@@ -152,17 +155,18 @@ func TestHandleCheckboxToggleWithAIScript(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Setup the create from current state
-	m.createFromCurrentDiff = testDiff
-	m.createFromCurrentRandomName = testRandomName
-	m.createFromCurrentBranch = mainWorktreeName
-	m.createFromCurrentAIName = ""
+	m.createFromCurrent.diff = testDiff
+	m.createFromCurrent.randomName = testRandomName
+	m.createFromCurrent.branch = mainWorktreeName
+	m.createFromCurrent.aiName = ""
 
-	m.inputScreen = NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
-	m.inputScreen.SetCheckbox("Include changes", false)
-	m.inputScreen.checkboxFocused = true // Simulate tab to checkbox
+	inputScr := appscreen.NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
+	inputScr.SetCheckbox("Include changes", false)
+	inputScr.CheckboxFocused = true // Simulate tab to checkbox
 
 	// Simulate checking the checkbox
-	m.inputScreen.checkboxChecked = true
+	inputScr.CheckboxChecked = true
+	m.createFromCurrent.inputScreen = inputScr
 
 	// Call handleCheckboxToggle
 	cmd := m.handleCheckboxToggle()
@@ -185,15 +189,15 @@ func TestHandleCheckboxToggleWithAIScript(t *testing.T) {
 		m = updated.(*Model)
 
 		// Verify AI name was sanitized and cached
-		if m.createFromCurrentAIName == "" {
+		if m.createFromCurrent.aiName == "" {
 			t.Error("expected AI name to be cached")
 		}
-		if strings.Contains(m.createFromCurrentAIName, "/") {
-			t.Errorf("AI name should be sanitized (no slashes), got %q", m.createFromCurrentAIName)
+		if strings.Contains(m.createFromCurrent.aiName, "/") {
+			t.Errorf("AI name should be sanitized (no slashes), got %q", m.createFromCurrent.aiName)
 		}
 
 		// Input should be updated to AI name
-		got := m.inputScreen.input.Value()
+		got := m.createFromCurrent.inputScreen.Input.Value()
 		if got == testRandomName {
 			t.Error("expected input to be updated from random name to AI name")
 		}
@@ -213,16 +217,17 @@ func TestHandleCheckboxToggleBackToUnchecked(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Setup state with AI name cached
-	m.createFromCurrentDiff = testDiff
-	m.createFromCurrentRandomName = testRandomName
-	m.createFromCurrentBranch = mainWorktreeName
-	m.createFromCurrentAIName = "ai-name-cached"
+	m.createFromCurrent.diff = testDiff
+	m.createFromCurrent.randomName = testRandomName
+	m.createFromCurrent.branch = mainWorktreeName
+	m.createFromCurrent.aiName = "ai-name-cached"
 
-	m.inputScreen = NewInputScreen("test", "placeholder", "ai-name-cached", m.theme, m.config.IconsEnabled())
-	m.inputScreen.SetCheckbox("Include changes", true) // Start checked
+	inputScr := appscreen.NewInputScreen("test", "placeholder", "ai-name-cached", m.theme, m.config.IconsEnabled())
+	inputScr.SetCheckbox("Include changes", true) // Start checked
+	m.createFromCurrent.inputScreen = inputScr
 
 	// Uncheck the checkbox
-	m.inputScreen.checkboxChecked = false
+	inputScr.CheckboxChecked = false
 
 	// Call handleCheckboxToggle
 	cmd := m.handleCheckboxToggle()
@@ -231,7 +236,7 @@ func TestHandleCheckboxToggleBackToUnchecked(t *testing.T) {
 	}
 
 	// Input should be restored to random name
-	got := m.inputScreen.input.Value()
+	got := inputScr.Input.Value()
 	if got != testRandomName {
 		t.Errorf("expected input to be restored to random name %q, got %q", testRandomName, got)
 	}
@@ -245,16 +250,17 @@ func TestHandleCheckboxToggleUsesCachedAIName(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Setup state with AI name already cached
-	m.createFromCurrentDiff = testDiff
-	m.createFromCurrentRandomName = testRandomName
-	m.createFromCurrentBranch = mainWorktreeName
-	m.createFromCurrentAIName = "cached-ai-name"
+	m.createFromCurrent.diff = testDiff
+	m.createFromCurrent.randomName = testRandomName
+	m.createFromCurrent.branch = mainWorktreeName
+	m.createFromCurrent.aiName = "cached-ai-name"
 
-	m.inputScreen = NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
-	m.inputScreen.SetCheckbox("Include changes", false)
+	inputScr := appscreen.NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
+	inputScr.SetCheckbox("Include changes", false)
+	m.createFromCurrent.inputScreen = inputScr
 
 	// Check the checkbox (should use cached AI name, not run script again)
-	m.inputScreen.checkboxChecked = true
+	inputScr.CheckboxChecked = true
 
 	// Call handleCheckboxToggle
 	cmd := m.handleCheckboxToggle()
@@ -263,7 +269,7 @@ func TestHandleCheckboxToggleUsesCachedAIName(t *testing.T) {
 	}
 
 	// Input should be updated to cached AI name
-	got := m.inputScreen.input.Value()
+	got := inputScr.Input.Value()
 	if got != "cached-ai-name" {
 		t.Errorf("expected cached AI name 'cached-ai-name', got %q", got)
 	}
@@ -276,15 +282,16 @@ func TestHandleCheckboxToggleNoScriptConfigured(t *testing.T) {
 	}
 	m := NewModel(cfg, "")
 
-	m.createFromCurrentDiff = testDiff
-	m.createFromCurrentRandomName = testRandomName
-	m.createFromCurrentBranch = mainWorktreeName
+	m.createFromCurrent.diff = testDiff
+	m.createFromCurrent.randomName = testRandomName
+	m.createFromCurrent.branch = mainWorktreeName
 
-	m.inputScreen = NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
-	m.inputScreen.SetCheckbox("Include changes", false)
+	inputScr := appscreen.NewInputScreen("test", "placeholder", testRandomName, m.theme, m.config.IconsEnabled())
+	inputScr.SetCheckbox("Include changes", false)
+	m.createFromCurrent.inputScreen = inputScr
 
 	// Check the checkbox
-	m.inputScreen.checkboxChecked = true
+	inputScr.CheckboxChecked = true
 
 	// Call handleCheckboxToggle
 	cmd := m.handleCheckboxToggle()
@@ -293,7 +300,7 @@ func TestHandleCheckboxToggleNoScriptConfigured(t *testing.T) {
 	}
 
 	// Input should remain unchanged (random name)
-	got := m.inputScreen.input.Value()
+	got := inputScr.Input.Value()
 	if got != testRandomName {
 		t.Errorf("expected random name to remain %q, got %q", testRandomName, got)
 	}
@@ -324,21 +331,18 @@ func TestCreateFromChangesReadyMsg(t *testing.T) {
 	}
 
 	// Check that input screen was set up
-	if m.inputScreen == nil {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("inputScreen should be initialized")
 	}
+	inputScr := m.ui.screenManager.Current().(*appscreen.InputScreen)
 
-	if m.inputScreen.prompt != "Create worktree from changes: branch name" {
-		t.Errorf("Expected prompt 'Create worktree from changes: branch name', got %q", m.inputScreen.prompt)
+	if inputScr.Prompt != "Create worktree from changes: branch name" {
+		t.Errorf("Expected prompt 'Create worktree from changes: branch name', got %q", inputScr.Prompt)
 	}
 
 	// Check default value
-	if m.inputScreen.value != "main-changes" {
-		t.Errorf("Expected default value 'main-changes', got %q", m.inputScreen.value)
-	}
-
-	if m.currentScreen != screenInput {
-		t.Errorf("Expected currentScreen to be screenInput, got %v", m.currentScreen)
+	if inputScr.Value != "main-changes" {
+		t.Errorf("Expected default value 'main-changes', got %q", inputScr.Value)
 	}
 }
 
@@ -365,11 +369,12 @@ func TestCreateFromChangesReadyMsgShowsInfoOnBranchNameScriptError(t *testing.T)
 	if cmd != nil {
 		t.Fatal("expected no command when showing info screen")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Branch name script error") {
-		t.Fatalf("expected branch name script error modal, got %#v", m.infoScreen)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Branch name script error") {
+		t.Fatalf("expected branch name script error modal, got %q", infoScr.Message)
 	}
 }
 
@@ -378,7 +383,7 @@ func TestShowAbsorbWorktreeNoSelection(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.selectedIndex = -1 // No selection
+	m.data.selectedIndex = -1 // No selection
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
@@ -393,21 +398,18 @@ func TestShowAbsorbWorktreeOnMainWorktree(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up main worktree
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/path/to/main", Branch: mainWorktreeName, IsMain: true},
 	}
-	m.filteredWts = m.worktrees
-	m.selectedIndex = 0
+	m.data.filteredWts = m.data.worktrees
+	m.data.selectedIndex = 0
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
 		t.Error("Expected nil command when trying to absorb main worktree")
 	}
-	if m.currentScreen != screenInfo {
-		t.Error("Expected screenInfo to be shown for error")
-	}
-	if m.infoScreen == nil {
-		t.Error("Expected infoScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Errorf("Expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -418,42 +420,45 @@ func TestShowAbsorbWorktreeCreatesConfirmScreen(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up main and feature worktrees
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/path/to/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/path/to/feature", Branch: "feature-branch", IsMain: false},
 	}
-	m.filteredWts = m.worktrees
-	m.selectedIndex = 1 // Select feature worktree
+	m.data.filteredWts = m.data.worktrees
+	m.data.selectedIndex = 1 // Select feature worktree
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
 		t.Error("Expected nil command from showAbsorbWorktree")
 	}
 
-	// Verify confirm screen was created
-	if m.confirmScreen == nil {
-		t.Fatal("Expected confirm screen to be created")
+	// Verify confirm screen was created in screen manager
+	if !m.ui.screenManager.IsActive() {
+		t.Fatal("Expected screen manager to be active")
+	}
+	if m.ui.screenManager.Type() != appscreen.TypeConfirm {
+		t.Fatalf("Expected confirm screen, got %v", m.ui.screenManager.Type())
+	}
+
+	confirmScreen, ok := m.ui.screenManager.Current().(*appscreen.ConfirmScreen)
+	if !ok {
+		t.Fatal("Expected confirm screen in screen manager")
 	}
 
 	// Verify confirm action was set
-	if m.confirmAction == nil {
-		t.Fatal("Expected confirm action to be set")
-	}
-
-	// Verify current screen is set to confirm
-	if m.currentScreen != screenConfirm {
-		t.Errorf("Expected currentScreen to be screenConfirm, got %v", m.currentScreen)
+	if confirmScreen.OnConfirm == nil {
+		t.Fatal("Expected OnConfirm to be set")
 	}
 
 	// Verify the confirm message contains the correct information
-	if m.confirmScreen.message == "" {
+	if confirmScreen.Message == "" {
 		t.Error("Expected confirm screen message to be set")
 	}
-	if !strings.Contains(m.confirmScreen.message, "Absorb worktree into main") {
-		t.Errorf("Expected confirm message to mention 'Absorb worktree into main', got %q", m.confirmScreen.message)
+	if !strings.Contains(confirmScreen.Message, "Absorb worktree into main") {
+		t.Errorf("Expected confirm message to mention 'Absorb worktree into main', got %q", confirmScreen.Message)
 	}
-	if !strings.Contains(m.confirmScreen.message, "feature-branch") {
-		t.Errorf("Expected confirm message to mention 'feature-branch', got %q", m.confirmScreen.message)
+	if !strings.Contains(confirmScreen.Message, "feature-branch") {
+		t.Errorf("Expected confirm message to mention 'feature-branch', got %q", confirmScreen.Message)
 	}
 }
 
@@ -464,21 +469,18 @@ func TestShowAbsorbWorktreeNoMainWorktree(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up only a feature worktree (no main)
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/path/to/feature", Branch: "feature-branch", IsMain: false},
 	}
-	m.filteredWts = m.worktrees
-	m.selectedIndex = 0
+	m.data.filteredWts = m.data.worktrees
+	m.data.selectedIndex = 0
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
 		t.Error("Expected nil command when no main worktree exists")
 	}
-	if m.currentScreen != screenInfo {
-		t.Error("Expected screenInfo to be shown for error")
-	}
-	if m.infoScreen == nil {
-		t.Error("Expected infoScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Errorf("Expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -489,22 +491,19 @@ func TestShowAbsorbWorktreeOnMainBranch(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up worktrees where a non-main worktree is on the main branch
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/path/to/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/path/to/other", Branch: mainWorktreeName, IsMain: false}, // Same branch as main
 	}
-	m.filteredWts = m.worktrees
-	m.selectedIndex = 1 // Select the non-main worktree that's on main branch
+	m.data.filteredWts = m.data.worktrees
+	m.data.selectedIndex = 1 // Select the non-main worktree that's on main branch
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
 		t.Error("Expected nil command when worktree is on main branch")
 	}
-	if m.currentScreen != screenInfo {
-		t.Error("Expected screenInfo to be shown for error")
-	}
-	if m.infoScreen == nil {
-		t.Error("Expected infoScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Errorf("Expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -515,22 +514,19 @@ func TestShowAbsorbWorktreeDirtyMainWorktree(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// Set up worktrees where main worktree is dirty
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/path/to/main", Branch: mainWorktreeName, IsMain: true, Dirty: true},
 		{Path: "/path/to/feature", Branch: "feature-branch", IsMain: false},
 	}
-	m.filteredWts = m.worktrees
-	m.selectedIndex = 1 // Select the feature worktree
+	m.data.filteredWts = m.data.worktrees
+	m.data.selectedIndex = 1 // Select the feature worktree
 
 	cmd := m.showAbsorbWorktree()
 	if cmd != nil {
 		t.Error("Expected nil command when main worktree is dirty")
 	}
-	if m.currentScreen != screenInfo {
-		t.Error("Expected screenInfo to be shown for error")
-	}
-	if m.infoScreen == nil {
-		t.Error("Expected infoScreen to be set")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Errorf("Expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -539,24 +535,24 @@ func TestShowDeleteWorktree(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
 
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	if cmd := m.showDeleteWorktree(); cmd != nil {
 		t.Fatal("expected nil command for main worktree")
 	}
-	if m.confirmScreen != nil {
-		t.Fatal("expected no confirm screen for main worktree")
+	if m.ui.screenManager.IsActive() {
+		t.Fatal("expected no screen for main worktree")
 	}
 
-	m.selectedIndex = 1
+	m.data.selectedIndex = 1
 	if cmd := m.showDeleteWorktree(); cmd != nil {
 		t.Fatal("expected nil command for confirm screen")
 	}
-	if m.confirmScreen == nil || m.confirmAction == nil || m.currentScreen != screenConfirm {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeConfirm {
 		t.Fatal("expected confirm screen to be set")
 	}
 }
@@ -566,27 +562,29 @@ func TestShowRenameWorktree(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{
+	m.data.filteredWts = []*models.WorktreeInfo{
 		{Path: "/tmp/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/tmp/feat", Branch: featureBranch},
 	}
 
-	m.selectedIndex = 0
+	m.data.selectedIndex = 0
 	if cmd := m.showRenameWorktree(); cmd != nil {
 		t.Fatal("expected nil command for main worktree")
 	}
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || !strings.Contains(m.infoScreen.message, "Cannot rename") {
-		t.Fatalf("expected rename warning modal, got %#v", m.infoScreen)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if !strings.Contains(infoScr.Message, "Cannot rename") {
+		t.Fatalf("expected rename warning modal, got %q", infoScr.Message)
 	}
+	m.ui.screenManager.Pop()
 
-	m.selectedIndex = 1
+	m.data.selectedIndex = 1
 	if cmd := m.showRenameWorktree(); cmd == nil {
 		t.Fatal("expected input screen command")
 	}
-	if m.inputScreen == nil || m.currentScreen != screenInput {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInput {
 		t.Fatal("expected input screen to be set")
 	}
 }
@@ -596,7 +594,7 @@ func TestShowPruneMerged(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/tmp/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/tmp/feat", Branch: featureBranch, PR: &models.PRInfo{State: "OPEN"}},
 	}
@@ -608,8 +606,8 @@ func TestShowPruneMerged(t *testing.T) {
 	if !m.checkMergedAfterPRRefresh {
 		t.Fatal("expected checkMergedAfterPRRefresh flag to be set")
 	}
-	if m.currentScreen != screenLoading {
-		t.Fatalf("expected loading screen, got %v", m.currentScreen)
+	if m.ui.screenManager.Type() != appscreen.TypeLoading {
+		t.Fatalf("expected loading screen, got %v", m.ui.screenManager.Type())
 	}
 
 	// Simulate PR data loaded - this should trigger the actual merged check
@@ -617,16 +615,17 @@ func TestShowPruneMerged(t *testing.T) {
 	updated, _ := m.Update(msg)
 	m = updated.(*Model)
 
-	if m.currentScreen != screenInfo {
-		t.Fatalf("expected info screen, got %v", m.currentScreen)
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+		t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
-	if m.infoScreen == nil || m.infoScreen.message != "No merged worktrees to prune." {
-		t.Fatalf("unexpected info modal: %#v", m.infoScreen)
+	infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+	if infoScr.Message != "No merged worktrees to prune." {
+		t.Fatalf("unexpected info modal: %q", infoScr.Message)
 	}
 
 	// Reset and test with a merged PR
 	m = NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: "/tmp/main", Branch: mainWorktreeName, IsMain: true},
 		{Path: "/tmp/merged", Branch: "merged", PR: &models.PRInfo{State: "MERGED"}},
 	}
@@ -640,8 +639,9 @@ func TestShowPruneMerged(t *testing.T) {
 	updated, _ = m.Update(msg)
 	m = updated.(*Model)
 
-	if m.checklistScreen == nil || m.checklistSubmit == nil || m.currentScreen != screenChecklist {
-		t.Fatal("expected checklist screen for prune")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeChecklist {
+		t.Fatalf("expected checklist screen for prune, got active=%v type=%v",
+			m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 	}
 }
 
@@ -663,7 +663,7 @@ func TestShowPruneMergedUnknownHost(t *testing.T) {
 	withCwd(t, repo)
 
 	m := NewModel(cfg, "")
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: repo, Branch: mainWorktreeName, IsMain: true},
 	}
 
@@ -676,7 +676,7 @@ func TestShowPruneMergedUnknownHost(t *testing.T) {
 	if m.checkMergedAfterPRRefresh {
 		t.Fatal("expected checkMergedAfterPRRefresh to be false for unknown host")
 	}
-	if m.currentScreen == screenLoading {
+	if m.ui.screenManager.Type() == appscreen.TypeLoading {
 		t.Fatal("expected no loading screen for unknown host")
 	}
 }
@@ -701,10 +701,10 @@ func TestShowCreateFromCurrent(t *testing.T) {
 	_ = exec.Command("git", "commit", "-m", "initial").Run()
 
 	// Set up model with worktree pointing to this repo
-	m.worktrees = []*models.WorktreeInfo{
+	m.data.worktrees = []*models.WorktreeInfo{
 		{Path: tmpDir, Branch: "main", IsMain: true},
 	}
-	m.filteredWts = m.worktrees
+	m.data.filteredWts = m.data.worktrees
 
 	// Test showCreateFromCurrent
 	cmd := m.showCreateFromCurrent()
@@ -736,8 +736,8 @@ func TestShowCreateFromCurrentNoWorktree(t *testing.T) {
 	m := NewModel(cfg, "")
 
 	// No worktrees set up
-	m.worktrees = []*models.WorktreeInfo{}
-	m.filteredWts = m.worktrees
+	m.data.worktrees = []*models.WorktreeInfo{}
+	m.data.filteredWts = m.data.worktrees
 
 	cmd := m.showCreateFromCurrent()
 	if cmd == nil {

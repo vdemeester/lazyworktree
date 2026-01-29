@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
@@ -27,7 +29,7 @@ type commandRecorder struct {
 	starts []recordedCommand
 }
 
-func (r *commandRecorder) runner(name string, args ...string) *exec.Cmd {
+func (r *commandRecorder) runner(_ context.Context, name string, args ...string) *exec.Cmd {
 	return exec.Command(name, args...)
 }
 
@@ -164,8 +166,8 @@ func TestIntegrationPaletteSelectsCustomCommand(t *testing.T) {
 	}
 
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir + "/wt", Branch: "feat"}}
-	m.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir + "/wt", Branch: "feat"}}
+	m.data.selectedIndex = 0
 
 	recorder := &commandRecorder{}
 	m.commandRunner = recorder.runner
@@ -177,8 +179,13 @@ func TestIntegrationPaletteSelectsCustomCommand(t *testing.T) {
 		_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 
-	if _, ok := m.paletteScreen.Selected(); !ok {
-		t.Fatal("expected palette selection after filtering")
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypePalette {
+		t.Fatal("expected palette screen to be active")
+	}
+
+	paletteScreen := m.ui.screenManager.Current().(*appscreen.CommandPaletteScreen)
+	if paletteScreen.Cursor >= len(paletteScreen.Filtered) {
+		t.Fatal("expected valid palette selection after filtering")
 	}
 
 	_, cmd := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -186,8 +193,8 @@ func TestIntegrationPaletteSelectsCustomCommand(t *testing.T) {
 		_ = cmd()
 	}
 
-	if m.currentScreen != screenNone {
-		t.Fatalf("expected palette to close, got %v", m.currentScreen)
+	if m.ui.screenManager.IsActive() {
+		t.Fatalf("expected palette to close, screen manager still active with type %v", m.ui.screenManager.Type())
 	}
 	if !containsCommand(recorder.execs, "bash") {
 		t.Fatalf("expected bash command to be executed, got %+v", recorder.execs)
@@ -341,11 +348,11 @@ func TestIntegrationPaletteSelectsActiveTmuxSession(t *testing.T) {
 	}
 
 	m := NewModel(cfg, "")
-	m.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir + "/wt", Branch: "feat"}}
-	m.selectedIndex = 0
+	m.data.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir + "/wt", Branch: "feat"}}
+	m.data.selectedIndex = 0
 
 	// Mock commandRunner to return active tmux sessions
-	m.commandRunner = func(name string, args ...string) *exec.Cmd {
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
 		// If querying tmux sessions, return mock data
 		if name == "tmux" && len(args) > 0 && args[0] == "list-sessions" {
 			mockOutput := "wt-test-session\nother-session\n"
@@ -371,9 +378,17 @@ func TestIntegrationPaletteSelectsActiveTmuxSession(t *testing.T) {
 	}
 
 	// Verify item is selected
-	if action, ok := m.paletteScreen.Selected(); !ok {
+	if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypePalette {
+		t.Skip("palette screen not active after filtering")
+	}
+
+	paletteScreen := m.ui.screenManager.Current().(*appscreen.CommandPaletteScreen)
+	if paletteScreen.Cursor >= len(paletteScreen.Filtered) {
 		t.Skip("palette filtering did not select any item (may vary by test environment)")
-	} else if !strings.HasPrefix(action, "tmux-attach:") {
+	}
+
+	action := paletteScreen.Filtered[paletteScreen.Cursor].ID
+	if !strings.HasPrefix(action, "tmux-attach:") {
 		// If it's not a tmux-attach action, that's okay - the filter might have matched something else
 		t.Logf("filtered item is not tmux-attach (got %q), skipping rest of test", action)
 		return
@@ -386,8 +401,8 @@ func TestIntegrationPaletteSelectsActiveTmuxSession(t *testing.T) {
 	}
 
 	// Verify palette is closed
-	if m.currentScreen != screenNone {
-		t.Fatalf("expected palette to close, got %v", m.currentScreen)
+	if m.ui.screenManager.IsActive() {
+		t.Fatalf("expected palette to close, screen manager still active with type %v", m.ui.screenManager.Type())
 	}
 
 	// Verify tmux command was executed
@@ -466,14 +481,12 @@ func TestIntegrationDiffViewerModesWithNoChanges(t *testing.T) {
 			m = updated.(*Model)
 
 			// Verify info screen is shown
-			if m.currentScreen != screenInfo {
-				t.Fatalf("expected screenInfo, got %v", m.currentScreen)
+			if !m.ui.screenManager.IsActive() || m.ui.screenManager.Type() != appscreen.TypeInfo {
+				t.Fatalf("expected info screen, got active=%v type=%v", m.ui.screenManager.IsActive(), m.ui.screenManager.Type())
 			}
-			if m.infoScreen == nil {
-				t.Fatal("expected infoScreen to be set")
-			}
-			if m.infoScreen.message != testNoDiffMessage {
-				t.Fatalf("expected message 'No diff to show.', got %q", m.infoScreen.message)
+			infoScr := m.ui.screenManager.Current().(*appscreen.InfoScreen)
+			if infoScr.Message != testNoDiffMessage {
+				t.Fatalf("expected message 'No diff to show.', got %q", infoScr.Message)
 			}
 
 			// Verify no command was executed
@@ -537,7 +550,7 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 			m = updated.(*Model)
 
 			// Simulate having changes
-			m.statusFilesAll = []StatusFile{
+			m.data.statusFilesAll = []StatusFile{
 				{Filename: "test.go", Status: ".M", IsUntracked: false},
 			}
 
@@ -588,7 +601,7 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 			}
 
 			// Verify no info screen is shown
-			if m.currentScreen == screenInfo {
+			if m.ui.screenManager.IsActive() && m.ui.screenManager.Type() == appscreen.TypeInfo {
 				t.Fatal("expected no info screen when there are changes")
 			}
 		})

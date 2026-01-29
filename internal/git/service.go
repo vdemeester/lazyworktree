@@ -52,15 +52,16 @@ type NotifyOnceFn func(key string, message string, severity string)
 
 // Service orchestrates git and helper commands for the UI.
 type Service struct {
-	notify       NotifyFn
-	notifyOnce   NotifyOnceFn
-	semaphore    chan struct{}
-	mainBranch   string
-	gitHost      string
-	notifiedSet  map[string]bool
-	useGitPager  bool
-	gitPagerArgs []string
-	gitPager     string
+	notify        NotifyFn
+	notifyOnce    NotifyOnceFn
+	semaphore     chan struct{}
+	mainBranch    string
+	gitHost       string
+	notifiedSet   map[string]bool
+	useGitPager   bool
+	gitPagerArgs  []string
+	gitPager      string
+	commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
 }
 
 // NewService constructs a Service and sets up concurrency limits.
@@ -82,16 +83,35 @@ func NewService(notify NotifyFn, notifyOnce NotifyOnceFn) *Service {
 	}
 
 	s := &Service{
-		notify:      notify,
-		notifyOnce:  notifyOnce,
-		semaphore:   semaphore,
-		notifiedSet: make(map[string]bool),
+		notify:        notify,
+		notifyOnce:    notifyOnce,
+		semaphore:     semaphore,
+		notifiedSet:   make(map[string]bool),
+		commandRunner: exec.CommandContext,
 	}
 
 	// Detect diff pager availability
 	s.detectGitPager()
 
 	return s
+}
+
+// SetCommandRunner allows overriding the command runner (primarily for testing).
+func (s *Service) SetCommandRunner(runner func(ctx context.Context, name string, args ...string) *exec.Cmd) {
+	s.commandRunner = runner
+}
+
+func (s *Service) prepareAllowedCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("no command provided")
+	}
+
+	switch args[0] {
+	case "git", "glab", "gh":
+		return s.commandRunner(ctx, args[0], args[1:]...), nil
+	default:
+		return nil, fmt.Errorf("unsupported command %q", args[0])
+	}
 }
 
 // SetGitPagerArgs sets additional arguments used when formatting diffs.
@@ -119,26 +139,6 @@ func (s *Service) isGitPagerAvailable() bool {
 
 func (s *Service) debugf(format string, args ...any) {
 	log.Printf(format, args...)
-}
-
-func prepareAllowedCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
-	if len(args) == 0 {
-		return nil, fmt.Errorf("no command provided")
-	}
-
-	switch args[0] {
-	case "git":
-		// #nosec G204 -- arguments for git command come from internal logic and are not shell interpolated
-		return exec.CommandContext(ctx, "git", args[1:]...), nil
-	case "glab":
-		// #nosec G204 -- arguments for glab command are controlled by the application workflow
-		return exec.CommandContext(ctx, "glab", args[1:]...), nil
-	case "gh":
-		// #nosec G204 -- arguments for gh command are supplied by vetted code paths
-		return exec.CommandContext(ctx, "gh", args[1:]...), nil
-	default:
-		return nil, fmt.Errorf("unsupported command %q", args[0])
-	}
 }
 
 func (s *Service) detectGitPager() {
@@ -238,7 +238,7 @@ func (s *Service) RunGit(ctx context.Context, args []string, cwd string, okRetur
 	}
 	s.debugf("run: %s (cwd=%s)", command, cwd)
 
-	cmd, err := prepareAllowedCommand(ctx, args)
+	cmd, err := s.prepareAllowedCommand(ctx, args)
 	if err != nil {
 		key := fmt.Sprintf("unsupported_cmd:%s", command)
 		s.notifyOnce(key, fmt.Sprintf("Unsupported command: %s", command), "error")
@@ -301,7 +301,7 @@ func (s *Service) RunCommandChecked(ctx context.Context, args []string, cwd, err
 	}
 	s.debugf("run: %s (cwd=%s)", command, cwd)
 
-	cmd, err := prepareAllowedCommand(ctx, args)
+	cmd, err := s.prepareAllowedCommand(ctx, args)
 	if err != nil {
 		message := fmt.Sprintf("%s: %v", errorPrefix, err)
 		if errorPrefix == "" {
@@ -330,6 +330,25 @@ func (s *Service) RunCommandChecked(ctx context.Context, args []string, cwd, err
 
 	s.debugf("ok: %s", command)
 	return true
+}
+
+// RunGitWithCombinedOutput executes a git command with environment variables and returns its combined output and error.
+func (s *Service) RunGitWithCombinedOutput(ctx context.Context, args []string, cwd string, env map[string]string) ([]byte, error) {
+	command := strings.Join(args, " ")
+	s.debugf("run: %s (cwd=%s)", command, cwd)
+
+	cmd, err := s.prepareAllowedCommand(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), formatEnv(env)...)
+	}
+
+	return cmd.CombinedOutput()
 }
 
 // GetMainBranch returns the main branch name for the current repository.
@@ -1579,7 +1598,7 @@ func (s *Service) CherryPickCommit(ctx context.Context, commitSHA, targetPath st
 	}
 
 	// Attempt cherry-pick
-	cmd, err := prepareAllowedCommand(ctx, []string{"git", "cherry-pick", commitSHA})
+	cmd, err := s.prepareAllowedCommand(ctx, []string{"git", "cherry-pick", commitSHA})
 	if err != nil {
 		return false, err
 	}

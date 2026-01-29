@@ -49,7 +49,7 @@ func buildZellijInfoMessage(sessionName string) string {
 
 func (m *Model) attachZellijSessionCmd(sessionName string) tea.Cmd {
 	// #nosec G204 -- zellij session name comes from user configuration.
-	c := m.commandRunner("zellij", onExistsAttach, sessionName)
+	c := m.commandRunner(m.ctx, "zellij", onExistsAttach, sessionName)
 	return m.execProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			return errMsg{err: err}
@@ -68,7 +68,7 @@ func (m *Model) getZellijActiveSessions() []string {
 
 	// Query zellij for session list
 	// #nosec G204 -- static command with format string
-	cmd := m.commandRunner("zellij", "list-sessions", "--short")
+	cmd := m.commandRunner(m.ctx, "zellij", "list-sessions", "--short")
 	output, err := cmd.Output()
 	if err != nil {
 		// zellij not running or no sessions
@@ -116,7 +116,7 @@ func (m *Model) attachTmuxSessionCmd(sessionName string, insideTmux bool) tea.Cm
 		args = []string{"switch-client", "-t", sessionName}
 	}
 	// #nosec G204 -- tmux session name comes from user configuration.
-	c := m.commandRunner("tmux", args...)
+	c := m.commandRunner(m.ctx, "tmux", args...)
 	return m.execProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			return errMsg{err: err}
@@ -312,7 +312,7 @@ func (m *Model) getTmuxActiveSessions() []string {
 
 	// Query tmux for session list
 	// #nosec G204 -- static command with format string
-	cmd := m.commandRunner("tmux", "list-sessions", "-F", "#{session_name}")
+	cmd := m.commandRunner(m.ctx, "tmux", "list-sessions", "-F", "#{session_name}")
 	output, err := cmd.Output()
 	if err != nil {
 		// tmux not running or no sessions
@@ -412,7 +412,7 @@ func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.Worktree
 	env["LW_TMUX_SESSION_FILE"] = sessionPath
 	script := buildTmuxScript(sessionName, &scriptCfg, resolved, env)
 	// #nosec G204 -- command is built from user-configured tmux session settings.
-	c := m.commandRunner("bash", "-lc", script)
+	c := m.commandRunner(m.ctx, "bash", "-lc", script)
 	c.Dir = wt.Path
 	c.Env = append(os.Environ(), envMapToList(env)...)
 
@@ -479,7 +479,7 @@ func (m *Model) openZellijSession(zellijCfg *config.TmuxCommand, wt *models.Work
 	env["LW_ZELLIJ_SESSION_FILE"] = sessionPath
 	script := buildZellijScript(sessionName, &scriptCfg, layoutPaths)
 	// #nosec G204 -- command is built from user-configured zellij session settings.
-	c := m.commandRunner("bash", "-lc", script)
+	c := m.commandRunner(m.ctx, "bash", "-lc", script)
 	c.Dir = wt.Path
 	c.Env = append(os.Environ(), envMapToList(env)...)
 

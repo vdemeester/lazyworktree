@@ -14,14 +14,14 @@ func (m *Model) determineCurrentWorktree() *models.WorktreeInfo {
 	}
 
 	if cwd, err := os.Getwd(); err == nil {
-		for _, wt := range m.worktrees {
+		for _, wt := range m.data.worktrees {
 			if strings.HasPrefix(cwd, wt.Path) {
 				return wt
 			}
 		}
 	}
 
-	for _, wt := range m.worktrees {
+	for _, wt := range m.data.worktrees {
 		if wt.IsMain {
 			return wt
 		}
@@ -32,7 +32,7 @@ func (m *Model) determineCurrentWorktree() *models.WorktreeInfo {
 
 // selectedWorktree returns the currently selected worktree from the filtered list.
 func (m *Model) selectedWorktree() *models.WorktreeInfo {
-	indices := []int{m.worktreeTable.Cursor(), m.selectedIndex}
+	indices := []int{m.ui.worktreeTable.Cursor(), m.data.selectedIndex}
 	for _, idx := range indices {
 		if wt := m.worktreeAtIndex(idx); wt != nil {
 			return wt
@@ -43,8 +43,8 @@ func (m *Model) selectedWorktree() *models.WorktreeInfo {
 
 // worktreeAtIndex returns the worktree at the given index in the filtered list.
 func (m *Model) worktreeAtIndex(idx int) *models.WorktreeInfo {
-	if idx < 0 || idx >= len(m.filteredWts) {
+	if idx < 0 || idx >= len(m.data.filteredWts) {
 		return nil
 	}
-	return m.filteredWts[idx]
+	return m.data.filteredWts[idx]
 }
