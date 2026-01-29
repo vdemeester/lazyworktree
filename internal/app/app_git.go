@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,12 +108,14 @@ func (m *Model) deleteFilesCmd(wt *models.WorktreeInfo, files []*StatusFile) fun
 			envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
 		}
 
+		var errs []error
 		for _, sf := range files {
 			filePath := filepath.Join(wt.Path, sf.Filename)
 
 			if sf.IsUntracked {
 				if err := os.Remove(filePath); err != nil {
-					return func() tea.Msg { return errMsg{err: err} }
+					errs = append(errs, err)
+					continue
 				}
 			} else {
 				// Restore the file from git (discard all changes)
@@ -122,9 +125,13 @@ func (m *Model) deleteFilesCmd(wt *models.WorktreeInfo, files []*StatusFile) fun
 				c.Dir = wt.Path
 				c.Env = envVars
 				if err := c.Run(); err != nil {
-					return func() tea.Msg { return errMsg{err: err} }
+					errs = append(errs, err)
+					continue
 				}
 			}
+		}
+		if len(errs) > 0 {
+			return func() tea.Msg { return errMsg{err: errors.Join(errs...)} }
 		}
 
 		// Clear cache so status pane refreshes
