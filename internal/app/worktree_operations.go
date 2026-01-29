@@ -622,7 +622,7 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 	}
 
 	// Build checklist items (pre-check clean worktrees, uncheck dirty ones)
-	items := make([]checklistItem, 0, len(candidateMap))
+	items := make([]appscreen.ChecklistItem, 0, len(candidateMap))
 	for branch, info := range candidateMap {
 		// Get worktree name from path
 		wtName := filepath.Base(info.wt.Path)
@@ -645,7 +645,7 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 			desc += " - HAS UNCOMMITTED CHANGES!"
 		}
 
-		items = append(items, checklistItem{
+		items = append(items, appscreen.ChecklistItem{
 			ID:          branch,
 			Label:       wtName,
 			Description: desc,
@@ -659,7 +659,7 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 	})
 
 	checkScreen := appscreen.NewChecklistScreen(
-		convertToScreenChecklistItems(items),
+		items,
 		"Prune Merged Worktrees",
 		"Filter...",
 		"No merged worktrees found.",
@@ -887,17 +887,4 @@ func shellQuote(input string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(input, "'", "'\"'\"'") + "'"
-}
-
-func convertToScreenChecklistItems(items []checklistItem) []appscreen.ChecklistItem {
-	result := make([]appscreen.ChecklistItem, len(items))
-	for i, item := range items {
-		result[i] = appscreen.ChecklistItem{
-			ID:          item.ID,
-			Label:       item.Label,
-			Description: item.Description,
-			Checked:     item.Checked,
-		}
-	}
-	return result
 }

@@ -5,10 +5,3 @@ type selectionItem struct {
 	label       string
 	description string
 }
-
-type checklistItem struct {
-	ID          string
-	Label       string
-	Description string
-	Checked     bool
-}
