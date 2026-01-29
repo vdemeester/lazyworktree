@@ -191,7 +191,7 @@ func (m *Model) showCreateFromChangesInput(wt *models.WorktreeInfo, currentBranc
 		}
 
 		// Get the stash ref
-		stashRef := m.services.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false)
+		stashRef := strings.TrimSpace(m.services.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false))
 		if stashRef == "" || !strings.HasPrefix(stashRef, "stash@{") {
 			// Try to restore stash if we can't get the ref
 			m.services.git.RunCommandChecked(m.ctx, []string{"git", "stash", "pop"}, wt.Path, "Failed to restore stash")
@@ -411,7 +411,7 @@ func (m *Model) executeCreateWithChanges(wt *models.WorktreeInfo, currentBranch,
 		}
 
 		// Get the stash ref
-		stashRef := m.services.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false)
+		stashRef := strings.TrimSpace(m.services.git.RunGit(m.ctx, []string{"git", "stash", "list", "-1", "--format=%gd"}, "", []int{0}, true, false))
 		if stashRef == "" || !strings.HasPrefix(stashRef, "stash@{") {
 			// Try to restore stash if we can't get the ref
 			m.services.git.RunCommandChecked(m.ctx, []string{"git", "stash", "pop"}, wt.Path, "Failed to restore stash")

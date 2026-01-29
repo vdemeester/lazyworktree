@@ -1180,8 +1180,8 @@ func TestStageUnstagedFile(t *testing.T) {
 	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -1227,8 +1227,8 @@ func TestUnstageStagedFile(t *testing.T) {
 	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -1268,8 +1268,8 @@ func TestStageMixedStatusFile(t *testing.T) {
 	m.services.statusTree.Index = 0
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -1327,8 +1327,8 @@ func TestStageDirectoryAllUnstaged(t *testing.T) {
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -1373,8 +1373,8 @@ func TestStageDirectoryAllStaged(t *testing.T) {
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -1415,8 +1415,8 @@ func TestStageDirectoryMixed(t *testing.T) {
 	}
 
 	var gotCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		gotCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		gotCmd = exec.CommandContext(ctx, name, args...)
 		return gotCmd
 	}
 
@@ -3558,8 +3558,8 @@ func TestCICheckEnterOpensURL(t *testing.T) {
 
 	// Capture command
 	var capturedCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		capturedCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedCmd = exec.CommandContext(ctx, name, args...)
 		return capturedCmd
 	}
 	m.startCommand = func(cmd *exec.Cmd) error {
@@ -3614,8 +3614,8 @@ func TestCICheckCtrlVShowsLogs(t *testing.T) {
 
 	// Capture command
 	var capturedCmd *exec.Cmd
-	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
-		capturedCmd = exec.Command(name, args...)
+	m.commandRunner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedCmd = exec.CommandContext(ctx, name, args...)
 		return capturedCmd
 	}
 	m.startCommand = func(cmd *exec.Cmd) error {

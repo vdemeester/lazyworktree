@@ -593,6 +593,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.theme,
 		)
 		confirmScreen.OnConfirm = m.deleteBranchCmd(msg.branch)
+		confirmScreen.OnCancel = func() tea.Cmd {
+			m.ui.screenManager.Pop()
+			return nil
+		}
 		m.ui.screenManager.Push(confirmScreen)
 		return m, nil
 
@@ -878,6 +882,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return nil
 		}
 		commitFilesScr.OnClose = func() tea.Cmd {
+			m.ui.screenManager.Pop()
 			return nil
 		}
 		m.ui.screenManager.Push(commitFilesScr)
