@@ -891,7 +891,7 @@ especially for interactive and human-driven workflows.
 
 For a fair and detailed comparison with other popular worktree managers
 (including their respective strengths and trade-offs), see
-the [COMPARAISON](./COMPARAISON.md) document.
+the [COMPARISON](./COMPARISON.md) document.
 
 ## Trivia
 
