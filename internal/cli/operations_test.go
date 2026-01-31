@@ -86,6 +86,34 @@ func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
+// mockFilesystem implements OSFilesystem for testing.
+type mockFilesystem struct {
+	statFunc     func(name string) (os.FileInfo, error)
+	mkdirAllFunc func(path string, perm os.FileMode) error
+	getwdFunc    func() (string, error)
+}
+
+func (m *mockFilesystem) Stat(name string) (os.FileInfo, error) {
+	if m.statFunc != nil {
+		return m.statFunc(name)
+	}
+	return os.Stat(name)
+}
+
+func (m *mockFilesystem) MkdirAll(path string, perm os.FileMode) error {
+	if m.mkdirAllFunc != nil {
+		return m.mkdirAllFunc(path, perm)
+	}
+	return os.MkdirAll(path, perm)
+}
+
+func (m *mockFilesystem) Getwd() (string, error) {
+	if m.getwdFunc != nil {
+		return m.getwdFunc()
+	}
+	return os.Getwd()
+}
+
 func TestFindWorktreeByPathOrName(t *testing.T) {
 	t.Parallel()
 
@@ -332,14 +360,14 @@ func TestGetCurrentWorktreeWithChanges(t *testing.T) {
 		},
 	}
 
-	// Mock os.Getwd
-	oldGetwd := osGetwd
-	osGetwd = func() (string, error) {
-		return wtPath, nil
+	// Use mock filesystem
+	fs := &mockFilesystem{
+		getwdFunc: func() (string, error) {
+			return wtPath, nil
+		},
 	}
-	defer func() { osGetwd = oldGetwd }()
 
-	wt, hasChanges, err := getCurrentWorktreeWithChanges(ctx, svc)
+	wt, hasChanges, err := getCurrentWorktreeWithChangesFS(ctx, svc, fs)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +386,7 @@ func TestGetCurrentWorktreeWithChanges(t *testing.T) {
 		},
 	}
 
-	wt2, hasChanges2, err := getCurrentWorktreeWithChanges(ctx, svc2)
+	wt2, hasChanges2, err := getCurrentWorktreeWithChangesFS(ctx, svc2, fs)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -375,14 +403,6 @@ func TestCreateFromBranch(t *testing.T) {
 
 	ctx := context.Background()
 	tmpDir := t.TempDir()
-	oldMkdirAll := osMkdirAll
-	oldStat := osStat
-	t.Cleanup(func() {
-		osMkdirAll = oldMkdirAll
-		osStat = oldStat
-	})
-	osMkdirAll = os.MkdirAll
-	osStat = os.Stat
 	cfg := &config.AppConfig{
 		WorktreeDir:  tmpDir,
 		InitCommands: []string{},

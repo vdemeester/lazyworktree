@@ -15,11 +15,27 @@ import (
 	"github.com/chmouel/lazyworktree/internal/utils"
 )
 
-var (
-	osStat     = os.Stat
-	osMkdirAll = os.MkdirAll
-	osGetwd    = os.Getwd
-)
+// OSFilesystem abstracts filesystem operations for dependency injection.
+type OSFilesystem interface {
+	Stat(name string) (os.FileInfo, error)
+	MkdirAll(path string, perm os.FileMode) error
+	Getwd() (string, error)
+}
+
+// RealFilesystem implements OSFilesystem using the real os package.
+type RealFilesystem struct{}
+
+// Stat wraps os.Stat.
+func (RealFilesystem) Stat(name string) (os.FileInfo, error) { return os.Stat(name) }
+
+// MkdirAll wraps os.MkdirAll.
+func (RealFilesystem) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+
+// Getwd wraps os.Getwd.
+func (RealFilesystem) Getwd() (string, error) { return os.Getwd() }
+
+// DefaultFS is the default filesystem implementation using the real os package.
+var DefaultFS OSFilesystem = RealFilesystem{}
 
 type gitService interface {
 	CreateWorktreeFromPR(ctx context.Context, prNumber int, branch string, worktreeName string, targetPath string) bool
@@ -36,6 +52,11 @@ var _ gitService = (*git.Service)(nil)
 
 // CreateFromBranch creates a worktree from a branch name.
 func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppConfig, branchName, worktreeName string, withChange, silent bool) (string, error) {
+	return CreateFromBranchWithFS(ctx, gitSvc, cfg, branchName, worktreeName, withChange, silent, DefaultFS)
+}
+
+// CreateFromBranchWithFS creates a worktree from a branch name using the provided filesystem.
+func CreateFromBranchWithFS(ctx context.Context, gitSvc gitService, cfg *config.AppConfig, branchName, worktreeName string, withChange, silent bool, fs OSFilesystem) (string, error) {
 	// Validate branch exists
 	if !branchExists(ctx, gitSvc, branchName) {
 		return "", fmt.Errorf("branch %q does not exist", branchName)
@@ -46,7 +67,7 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 	var hasChanges bool
 	if withChange {
 		var err error
-		currentWt, hasChanges, err = getCurrentWorktreeWithChanges(ctx, gitSvc)
+		currentWt, hasChanges, err = getCurrentWorktreeWithChangesFS(ctx, gitSvc, fs)
 		if err != nil {
 			return "", err
 		}
@@ -66,7 +87,7 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 	if worktreeName == "" {
 		// Generate random name with retry for uniqueness
 		sanitizedBranch := utils.SanitizeBranchName(branchName, 50)
-		worktreeName = generateUniqueWorktreeName(cfg, repoName, sanitizedBranch)
+		worktreeName = generateUniqueWorktreeNameFS(cfg, repoName, sanitizedBranch, fs)
 	} else {
 		// Validate and sanitise user-provided name
 		sanitised := utils.SanitizeBranchName(worktreeName, 100)
@@ -79,14 +100,14 @@ func CreateFromBranch(ctx context.Context, gitSvc gitService, cfg *config.AppCon
 	targetPath := filepath.Join(cfg.WorktreeDir, repoName, worktreeName)
 
 	// Check for path conflicts
-	if _, err := osStat(targetPath); err == nil {
+	if _, err := fs.Stat(targetPath); err == nil {
 		return "", fmt.Errorf("path already exists: %s", targetPath)
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("failed to check path %s: %w", targetPath, err)
 	}
 
 	// Create parent directory
-	if err := osMkdirAll(filepath.Dir(targetPath), utils.DefaultDirPerms); err != nil {
+	if err := fs.MkdirAll(filepath.Dir(targetPath), utils.DefaultDirPerms); err != nil {
 		return "", fmt.Errorf("failed to create worktree directory: %w", err)
 	}
 
@@ -155,10 +176,10 @@ func createWorktreeFromBranch(ctx context.Context, gitSvc gitService, cfg *confi
 	return nil
 }
 
-// generateUniqueWorktreeName generates a unique worktree name with retries.
+// generateUniqueWorktreeNameFS generates a unique worktree name with retries.
 // Format: <branch>-<random-adjective>-<random-noun>
 // Retries up to 10 times if path already exists.
-func generateUniqueWorktreeName(cfg *config.AppConfig, repoName, branchName string) string {
+func generateUniqueWorktreeNameFS(cfg *config.AppConfig, repoName, branchName string, fs OSFilesystem) string {
 	const maxRetries = 10
 
 	for range maxRetries {
@@ -167,7 +188,7 @@ func generateUniqueWorktreeName(cfg *config.AppConfig, repoName, branchName stri
 		targetPath := filepath.Join(cfg.WorktreeDir, repoName, candidate)
 
 		// Check if path exists
-		if _, err := osStat(targetPath); os.IsNotExist(err) {
+		if _, err := fs.Stat(targetPath); os.IsNotExist(err) {
 			return candidate // Found unique name
 		}
 	}
@@ -179,6 +200,11 @@ func generateUniqueWorktreeName(cfg *config.AppConfig, repoName, branchName stri
 
 // CreateFromPR creates a worktree from a PR number.
 func CreateFromPR(ctx context.Context, gitSvc gitService, cfg *config.AppConfig, prNumber int, silent bool) (string, error) {
+	return CreateFromPRWithFS(ctx, gitSvc, cfg, prNumber, silent, DefaultFS)
+}
+
+// CreateFromPRWithFS creates a worktree from a PR number using the provided filesystem.
+func CreateFromPRWithFS(ctx context.Context, gitSvc gitService, cfg *config.AppConfig, prNumber int, silent bool, fs OSFilesystem) (string, error) {
 	if !silent {
 		fmt.Fprintf(os.Stderr, "Fetching PR #%d...\n", prNumber)
 	}
@@ -214,14 +240,14 @@ func CreateFromPR(ctx context.Context, gitSvc gitService, cfg *config.AppConfig,
 	targetPath := filepath.Join(cfg.WorktreeDir, repoName, branchName)
 
 	// Check for path conflicts
-	if _, err := osStat(targetPath); err == nil {
+	if _, err := fs.Stat(targetPath); err == nil {
 		return "", fmt.Errorf("path already exists: %s", targetPath)
 	} else if !os.IsNotExist(err) {
 		return "", fmt.Errorf("failed to check path %s: %w", targetPath, err)
 	}
 
 	// Create parent directory
-	if err := osMkdirAll(filepath.Dir(targetPath), utils.DefaultDirPerms); err != nil {
+	if err := fs.MkdirAll(filepath.Dir(targetPath), utils.DefaultDirPerms); err != nil {
 		return "", fmt.Errorf("failed to create worktree directory: %w", err)
 	}
 
@@ -477,9 +503,9 @@ func branchExists(ctx context.Context, gitSvc gitService, branch string) bool {
 	return strings.TrimSpace(output) != ""
 }
 
-// getCurrentWorktreeWithChanges returns the current worktree and whether it has uncommitted changes.
-func getCurrentWorktreeWithChanges(ctx context.Context, gitSvc gitService) (*models.WorktreeInfo, bool, error) {
-	pwd, err := osGetwd()
+// getCurrentWorktreeWithChangesFS returns the current worktree and whether it has uncommitted changes.
+func getCurrentWorktreeWithChangesFS(ctx context.Context, gitSvc gitService, fs OSFilesystem) (*models.WorktreeInfo, bool, error) {
+	pwd, err := fs.Getwd()
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get working directory: %w", err)
 	}

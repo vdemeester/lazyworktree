@@ -35,18 +35,13 @@ func TestCreateFromPR_ExistingPath(t *testing.T) {
 
 	ctx := context.Background()
 
-	oldStat := osStat
-	oldMkdirAll := osMkdirAll
-	t.Cleanup(func() {
-		osStat = oldStat
-		osMkdirAll = oldMkdirAll
-	})
-
-	osStat = func(string) (os.FileInfo, error) {
-		return nil, nil
-	}
-	osMkdirAll = func(string, os.FileMode) error {
-		return errors.New("should not be called")
+	fs := &mockFilesystem{
+		statFunc: func(string) (os.FileInfo, error) {
+			return nil, nil // path exists
+		},
+		mkdirAllFunc: func(string, os.FileMode) error {
+			return errors.New("should not be called")
+		},
 	}
 
 	svc := &fakeGitService{
@@ -57,7 +52,7 @@ func TestCreateFromPR_ExistingPath(t *testing.T) {
 	}
 	cfg := &config.AppConfig{WorktreeDir: "/worktrees", PRBranchNameTemplate: "pr-{number}-{title}"}
 
-	if _, err := CreateFromPR(ctx, svc, cfg, 1, true); err == nil {
+	if _, err := CreateFromPRWithFS(ctx, svc, cfg, 1, true, fs); err == nil {
 		t.Fatalf("expected error")
 	}
 }
@@ -67,18 +62,13 @@ func TestCreateFromPR_MkdirFailure(t *testing.T) {
 
 	ctx := context.Background()
 
-	oldStat := osStat
-	oldMkdirAll := osMkdirAll
-	t.Cleanup(func() {
-		osStat = oldStat
-		osMkdirAll = oldMkdirAll
-	})
-
-	osStat = func(string) (os.FileInfo, error) {
-		return nil, os.ErrNotExist
-	}
-	osMkdirAll = func(string, os.FileMode) error {
-		return errors.New("mkdir failed")
+	fs := &mockFilesystem{
+		statFunc: func(string) (os.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		mkdirAllFunc: func(string, os.FileMode) error {
+			return errors.New("mkdir failed")
+		},
 	}
 
 	svc := &fakeGitService{
@@ -89,7 +79,7 @@ func TestCreateFromPR_MkdirFailure(t *testing.T) {
 	}
 	cfg := &config.AppConfig{WorktreeDir: "/worktrees", PRBranchNameTemplate: "pr-{number}-{title}"}
 
-	if _, err := CreateFromPR(ctx, svc, cfg, 1, true); err == nil {
+	if _, err := CreateFromPRWithFS(ctx, svc, cfg, 1, true, fs); err == nil {
 		t.Fatalf("expected error")
 	}
 }
