@@ -609,6 +609,15 @@ Default: 10
 Set to 0 to disable timed refreshes.
 .
 .TP
+.B ci_auto_refresh
+Periodically refresh CI status for GitHub repositories. When enabled, CI checks
+are refreshed automatically for open PRs or branches with pending CI jobs.
+Disabled by default as it uses the GitHub API rate limit (5,000 requests/hour
+for authenticated users).
+.br
+Default: false
+.
+.TP
 .B debug_log
 Path to debug log file for troubleshooting. When set, detailed debug information is written to this file.
 .br

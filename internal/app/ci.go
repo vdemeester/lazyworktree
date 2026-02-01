@@ -323,6 +323,33 @@ func (m *Model) maybeFetchCIStatus() tea.Cmd {
 	return nil
 }
 
+// shouldRefreshCI returns true if we should periodically refresh CI status.
+// For open PRs, always refresh (new jobs can start anytime via push/re-run).
+// For closed PRs or non-PR branches, only refresh if jobs are still pending.
+func (m *Model) shouldRefreshCI() bool {
+	if m.state.data.selectedIndex < 0 || m.state.data.selectedIndex >= len(m.state.data.filteredWts) {
+		return false
+	}
+	wt := m.state.data.filteredWts[m.state.data.selectedIndex]
+
+	// Always refresh for open PRs (new jobs can start anytime)
+	if wt.PR != nil && wt.PR.State == prStateOpen {
+		return true
+	}
+
+	// For closed PRs or non-PR branches, only refresh if jobs are pending
+	checks, _, ok := m.cache.ciCache.Get(wt.Branch)
+	if !ok {
+		return true // No cache yet, should fetch
+	}
+	for _, check := range checks {
+		if check.Conclusion == "pending" || check.Conclusion == "" {
+			return true
+		}
+	}
+	return false
+}
+
 // ciScriptPagerCommand returns the pager command for CI logs.
 // Returns (pager, isInteractive) - ci_script_pager is implicitly interactive.
 func (m *Model) ciScriptPagerCommand() (string, bool) {

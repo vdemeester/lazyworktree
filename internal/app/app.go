@@ -842,6 +842,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.refreshDetails(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// Periodically refresh CI status (GitHub only, requires ci_auto_refresh)
+		if m.config.CIAutoRefresh && m.state.services.git.IsGitHub(m.ctx) && m.shouldRefreshCI() {
+			if cmd := m.maybeFetchCIStatus(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 		return m, tea.Batch(cmds...)
 
 	case gitDirChangedMsg:

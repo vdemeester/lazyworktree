@@ -16,6 +16,12 @@ auto_refresh: true
 # Background refresh interval in seconds (lower this for more frequent updates)
 refresh_interval: 10
 
+# Periodically refresh CI status for GitHub repositories (default: false)
+# When enabled, CI checks are refreshed automatically for open PRs or branches
+# with pending CI jobs. Disabled by default as it uses the GitHub API rate limit
+# (5,000 requests/hour for authenticated users).
+ci_auto_refresh: false
+
 # Start with fuzzy finder input focused in selection screens
 fuzzy_finder_input: false
 

@@ -89,6 +89,7 @@ type AppConfig struct {
 	CIScriptPager           string // Pager for CI check logs, implicitly interactive
 	Editor                  string
 	AutoRefresh             bool
+	CIAutoRefresh           bool // Periodically refresh CI status (GitHub only, uses API rate limits)
 	RefreshIntervalSeconds  int
 	CustomCommands          map[string]*CustomCommand
 	BranchNameScript        string // Script to generate branch name suggestions from diff
@@ -234,6 +235,7 @@ func parseConfig(data map[string]any) (*AppConfig, error) {
 
 	cfg.AutoFetchPRs = coerceBool(data["auto_fetch_prs"], false)
 	cfg.AutoRefresh = coerceBool(data["auto_refresh"], cfg.AutoRefresh)
+	cfg.CIAutoRefresh = coerceBool(data["ci_auto_refresh"], false)
 	cfg.RefreshIntervalSeconds = coerceInt(data["refresh_interval"], cfg.RefreshIntervalSeconds)
 	cfg.SearchAutoSelect = coerceBool(data["search_auto_select"], false)
 	cfg.FuzzyFinderInput = coerceBool(data["fuzzy_finder_input"], false)
@@ -821,6 +823,9 @@ func (cfg *AppConfig) ApplyCLIOverrides(overrides []string) error {
 	}
 	if _, ok := overrideData["auto_refresh"]; ok {
 		cfg.AutoRefresh = overrideCfg.AutoRefresh
+	}
+	if _, ok := overrideData["ci_auto_refresh"]; ok {
+		cfg.CIAutoRefresh = overrideCfg.CIAutoRefresh
 	}
 	if _, ok := overrideData["git_pager_interactive"]; ok {
 		cfg.GitPagerInteractive = overrideCfg.GitPagerInteractive

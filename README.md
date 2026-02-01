@@ -422,6 +422,7 @@ git config --local --get-regexp "^lw\."
 
 * `sort_mode`: `"switched"` (last accessed, default), `"active"` (commit date), or `"path"` (alphabetical).
 * `auto_refresh`: background refresh of git metadata (default: true).
+* `ci_auto_refresh`: periodically refresh CI status for GitHub repositories (default: false).
 * `refresh_interval`: refresh frequency in seconds (default: 10).
 * `icon_set`: choose icon set ("nerd-font-v3", "emoji", "text", "none"). Use `none` or an empty value to suppress icons.
 * `max_untracked_diffs`, `max_diff_chars`: limits for diff display (0 disables).
