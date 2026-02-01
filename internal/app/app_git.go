@@ -16,6 +16,9 @@ import (
 )
 
 func (m *Model) fetchPRData() tea.Cmd {
+	if m.config.DisablePR {
+		return nil
+	}
 	return func() tea.Msg {
 		// First try the traditional approach (matches by headRefName)
 		prMap, err := m.state.services.git.FetchPRMap(m.ctx)
@@ -76,6 +79,9 @@ func (m *Model) fetchRemotes() tea.Cmd {
 
 // refreshCurrentWorktreePR fetches PR info for the currently selected worktree only.
 func (m *Model) refreshCurrentWorktreePR() tea.Cmd {
+	if m.config.DisablePR {
+		return nil
+	}
 	if m.state.data.selectedIndex < 0 || m.state.data.selectedIndex >= len(m.state.data.filteredWts) {
 		return nil
 	}

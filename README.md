@@ -328,6 +328,7 @@ worktree_dir: ~/.local/share/worktrees
 sort_mode: switched  # Options: "path", "active" (commit date), "switched" (last accessed)
 auto_refresh: true
 refresh_interval: 10  # Seconds
+disable_pr: false     # Disable all PR/MR fetching and display (default: false)
 icon_set: nerd-font-v3
 search_auto_select: false
 fuzzy_finder_input: false

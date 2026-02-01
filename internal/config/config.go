@@ -75,6 +75,7 @@ type AppConfig struct {
 	TerminateCommands       []string
 	SortMode                string // Sort mode: "path", "active" (commit date), "switched" (last accessed)
 	AutoFetchPRs            bool
+	DisablePR               bool // Disable all PR/MR fetching and display
 	SearchAutoSelect        bool // Start with filter focused and select first match on Enter.
 	MaxUntrackedDiffs       int
 	MaxDiffChars            int
@@ -234,6 +235,7 @@ func parseConfig(data map[string]any) (*AppConfig, error) {
 	}
 
 	cfg.AutoFetchPRs = coerceBool(data["auto_fetch_prs"], false)
+	cfg.DisablePR = coerceBool(data["disable_pr"], false)
 	cfg.AutoRefresh = coerceBool(data["auto_refresh"], cfg.AutoRefresh)
 	cfg.CIAutoRefresh = coerceBool(data["ci_auto_refresh"], false)
 	cfg.RefreshIntervalSeconds = coerceInt(data["refresh_interval"], cfg.RefreshIntervalSeconds)
@@ -817,6 +819,9 @@ func (cfg *AppConfig) ApplyCLIOverrides(overrides []string) error {
 	// For booleans and integers, check if they were explicitly set in overrideData
 	if _, ok := overrideData["auto_fetch_prs"]; ok {
 		cfg.AutoFetchPRs = overrideCfg.AutoFetchPRs
+	}
+	if _, ok := overrideData["disable_pr"]; ok {
+		cfg.DisablePR = overrideCfg.DisablePR
 	}
 	if _, ok := overrideData["search_auto_select"]; ok {
 		cfg.SearchAutoSelect = overrideCfg.SearchAutoSelect

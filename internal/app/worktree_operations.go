@@ -79,6 +79,10 @@ func (m *Model) getCurrentBranchForMenu() string {
 
 // showCreateFromPR initiates fetching open PRs for worktree creation.
 func (m *Model) showCreateFromPR() tea.Cmd {
+	if m.config.DisablePR {
+		m.showInfo("PR/MR display is disabled in configuration", nil)
+		return nil
+	}
 	// Fetch all open PRs
 	return func() tea.Msg {
 		prs, err := m.state.services.git.FetchAllOpenPRs(m.ctx)

@@ -411,8 +411,8 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setLoadingScreen(loadingRefreshWorktrees)
 		cmds := []tea.Cmd{m.refreshWorktrees()}
 
-		// Also refresh PR/CI for current worktree if GitHub/GitLab
-		if m.state.services.git.IsGitHubOrGitLab(m.ctx) {
+		// Also refresh PR/CI for current worktree if GitHub/GitLab (unless PR disabled)
+		if !m.config.DisablePR && m.state.services.git.IsGitHubOrGitLab(m.ctx) {
 			m.cache.ciCache.Clear()
 			if cmd := m.refreshCurrentWorktreePR(); cmd != nil {
 				cmds = append(cmds, cmd)

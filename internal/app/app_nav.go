@@ -192,8 +192,8 @@ func (m *Model) updateTable() {
 			wt.LastActive,
 		}
 
-		// Only include PR column if PR data has been loaded
-		if m.prDataLoaded {
+		// Only include PR column if PR data has been loaded and PR is not disabled
+		if m.prDataLoaded && !m.config.DisablePR {
 			prStr := "-"
 			if wt.PR != nil {
 				prIcon := ""

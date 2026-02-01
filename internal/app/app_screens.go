@@ -271,6 +271,10 @@ func (m *Model) registerPaletteActions(registry *commands.Registry) {
 }
 
 func (m *Model) fetchPRDataWithState() tea.Cmd {
+	if m.config.DisablePR {
+		m.showInfo("PR/MR display is disabled in configuration", nil)
+		return nil
+	}
 	m.cache.ciCache.Clear()
 	m.prDataLoaded = false
 	m.updateTable()

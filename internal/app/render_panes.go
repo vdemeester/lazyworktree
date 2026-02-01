@@ -170,7 +170,7 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 		infoLines = append(infoLines, fmt.Sprintf("%s %s", labelStyle.Render("Divergence:"), strings.Join(parts, " ")))
 	}
 	hidePRDetails := wt.PR != nil && wt.IsMain && (wt.PR.State == prStateMerged || wt.PR.State == prStateClosed)
-	if wt.PR != nil && !hidePRDetails {
+	if wt.PR != nil && !hidePRDetails && !m.config.DisablePR {
 		prLabelStyle := lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true) // Accent for PR prominence
 		prPrefix := "PR:"
 		if m.config.IconsEnabled() {
@@ -208,7 +208,7 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 		// URL styled with cyan for consistency
 		urlStyle := lipgloss.NewStyle().Foreground(m.theme.Cyan).Underline(true)
 		infoLines = append(infoLines, fmt.Sprintf("     %s", urlStyle.Render(wt.PR.URL)))
-	} else if wt.PR == nil {
+	} else if wt.PR == nil && !m.config.DisablePR {
 		// Show PR status/error when PR is nil
 		grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
 		errorStyle := lipgloss.NewStyle().Foreground(m.theme.ErrorFg)
@@ -259,49 +259,51 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 	}
 
 	// CI status from cache (shown for all branches with cached checks, not just PRs)
-	if cachedChecks, _, ok := m.cache.ciCache.Get(wt.Branch); ok && len(cachedChecks) > 0 {
-		infoLines = append(infoLines, "") // blank line before CI
-		infoLines = append(infoLines, labelStyle.Render("CI Checks:"))
+	if !m.config.DisablePR {
+		if cachedChecks, _, ok := m.cache.ciCache.Get(wt.Branch); ok && len(cachedChecks) > 0 {
+			infoLines = append(infoLines, "") // blank line before CI
+			infoLines = append(infoLines, labelStyle.Render("CI Checks:"))
 
-		greenStyle := lipgloss.NewStyle().Foreground(m.theme.SuccessFg)
-		redStyle := lipgloss.NewStyle().Foreground(m.theme.ErrorFg)
-		yellowStyle := lipgloss.NewStyle().Foreground(m.theme.WarnFg)
-		grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
-		selectedStyle := lipgloss.NewStyle().
-			Foreground(m.theme.AccentFg).
-			Background(m.theme.Accent).
-			Bold(true)
+			greenStyle := lipgloss.NewStyle().Foreground(m.theme.SuccessFg)
+			redStyle := lipgloss.NewStyle().Foreground(m.theme.ErrorFg)
+			yellowStyle := lipgloss.NewStyle().Foreground(m.theme.WarnFg)
+			grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
+			selectedStyle := lipgloss.NewStyle().
+				Foreground(m.theme.AccentFg).
+				Background(m.theme.Accent).
+				Bold(true)
 
-		checks := sortCIChecks(cachedChecks)
-		for i, check := range checks {
-			symbol := getCIStatusIcon(check.Conclusion, false, m.config.IconsEnabled())
-			isSelected := m.state.view.FocusedPane == 1 && m.ciCheckIndex >= 0 && i == m.ciCheckIndex
+			checks := sortCIChecks(cachedChecks)
+			for i, check := range checks {
+				symbol := getCIStatusIcon(check.Conclusion, false, m.config.IconsEnabled())
+				isSelected := m.state.view.FocusedPane == 1 && m.ciCheckIndex >= 0 && i == m.ciCheckIndex
 
-			var line string
-			if isSelected {
-				// When selected, apply selection style to entire line
-				line = fmt.Sprintf("  %s %s", symbol, check.Name)
-				line = selectedStyle.Render(line)
-			} else {
-				// When not selected, apply conclusion color to icon only
-				var iconStyle lipgloss.Style
-				switch check.Conclusion {
-				case "success":
-					iconStyle = greenStyle
-				case "failure":
-					iconStyle = redStyle
-				case "skipped":
-					iconStyle = grayStyle
-				case "cancelled":
-					iconStyle = grayStyle
-				case "pending", "":
-					iconStyle = yellowStyle
-				default:
-					iconStyle = grayStyle
+				var line string
+				if isSelected {
+					// When selected, apply selection style to entire line
+					line = fmt.Sprintf("  %s %s", symbol, check.Name)
+					line = selectedStyle.Render(line)
+				} else {
+					// When not selected, apply conclusion color to icon only
+					var iconStyle lipgloss.Style
+					switch check.Conclusion {
+					case "success":
+						iconStyle = greenStyle
+					case "failure":
+						iconStyle = redStyle
+					case "skipped":
+						iconStyle = grayStyle
+					case "cancelled":
+						iconStyle = grayStyle
+					case "pending", "":
+						iconStyle = yellowStyle
+					default:
+						iconStyle = grayStyle
+					}
+					line = fmt.Sprintf("  %s %s", iconStyle.Render(symbol), check.Name)
 				}
-				line = fmt.Sprintf("  %s %s", iconStyle.Render(symbol), check.Name)
+				infoLines = append(infoLines, line)
 			}
-			infoLines = append(infoLines, line)
 		}
 	}
 

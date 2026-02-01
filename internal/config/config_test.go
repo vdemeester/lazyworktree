@@ -16,6 +16,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "switched", cfg.SortMode)
 	assert.False(t, cfg.AutoFetchPRs)
+	assert.False(t, cfg.DisablePR)
 	assert.False(t, cfg.SearchAutoSelect)
 	assert.Equal(t, 10, cfg.MaxUntrackedDiffs)
 	assert.Equal(t, 200000, cfg.MaxDiffChars)
@@ -493,6 +494,22 @@ func TestParseConfig(t *testing.T) {
 			},
 			validate: func(t *testing.T, cfg *AppConfig) {
 				assert.True(t, cfg.AutoFetchPRs)
+			},
+		},
+		{
+			name: "disable_pr true",
+			data: map[string]interface{}{
+				"disable_pr": true,
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.True(t, cfg.DisablePR)
+			},
+		},
+		{
+			name: "disable_pr false by default",
+			data: map[string]interface{}{},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.False(t, cfg.DisablePR)
 			},
 		},
 		{
@@ -2010,6 +2027,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 	overrides := []string{
 		"lw.theme=gruvbox-dark",
 		"lw.auto_fetch_prs=true",
+		"lw.disable_pr=true",
 		"lw.max_diff_chars=500000",
 	}
 
@@ -2018,6 +2036,7 @@ func TestApplyCLIOverrides(t *testing.T) {
 
 	assert.Equal(t, "gruvbox-dark", cfg.Theme)
 	assert.True(t, cfg.AutoFetchPRs)
+	assert.True(t, cfg.DisablePR)
 	assert.Equal(t, 500000, cfg.MaxDiffChars)
 }
 

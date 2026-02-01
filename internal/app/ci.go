@@ -22,6 +22,10 @@ var ciDataSvc = services.NewCIDataService()
 
 // openCICheckSelection opens a selection screen for CI checks on the current worktree.
 func (m *Model) openCICheckSelection() tea.Cmd {
+	if m.config.DisablePR {
+		m.showInfo("PR/MR display is disabled in configuration", nil)
+		return nil
+	}
 	if m.state.data.selectedIndex < 0 || m.state.data.selectedIndex >= len(m.state.data.filteredWts) {
 		return nil
 	}
@@ -299,6 +303,9 @@ func (m *Model) fetchCIStatusByCommit(worktreePath, branch string) tea.Cmd {
 
 // maybeFetchCIStatus triggers CI fetch for current worktree if it has a PR or commit and cache is stale.
 func (m *Model) maybeFetchCIStatus() tea.Cmd {
+	if m.config.DisablePR {
+		return nil
+	}
 	if m.state.data.selectedIndex < 0 || m.state.data.selectedIndex >= len(m.state.data.filteredWts) {
 		return nil
 	}
@@ -327,6 +334,9 @@ func (m *Model) maybeFetchCIStatus() tea.Cmd {
 // For open PRs, always refresh (new jobs can start anytime via push/re-run).
 // For closed PRs or non-PR branches, only refresh if jobs are still pending.
 func (m *Model) shouldRefreshCI() bool {
+	if m.config.DisablePR {
+		return false
+	}
 	if m.state.data.selectedIndex < 0 || m.state.data.selectedIndex >= len(m.state.data.filteredWts) {
 		return false
 	}

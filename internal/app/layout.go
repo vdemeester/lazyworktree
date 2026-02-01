@@ -184,16 +184,17 @@ func (m *Model) updateTableColumns(totalWidth int) {
 	status := 10
 	last := 15
 
-	// Only include PR column width if PR data has been loaded
+	// Only include PR column width if PR data has been loaded and PR is not disabled
+	showPRColumn := m.prDataLoaded && !m.config.DisablePR
 	pr := 0
-	if m.prDataLoaded {
+	if showPRColumn {
 		pr = 12
 	}
 
 	// The table library handles separators internally (3 spaces per separator)
 	// So we need to account for them: (numColumns - 1) * 3
 	numColumns := 3
-	if m.prDataLoaded {
+	if showPRColumn {
 		numColumns = 4
 	}
 	separatorSpace := (numColumns - 1) * 3
@@ -204,7 +205,7 @@ func (m *Model) updateTableColumns(totalWidth int) {
 		last--
 		excess--
 	}
-	if m.prDataLoaded {
+	if showPRColumn {
 		for excess > 0 && pr > 8 {
 			pr--
 			excess--
@@ -238,7 +239,7 @@ func (m *Model) updateTableColumns(totalWidth int) {
 		{Title: "Last Active", Width: last},
 	}
 
-	if m.prDataLoaded {
+	if showPRColumn {
 		columns = append(columns, table.Column{Title: "PR", Width: pr})
 	}
 

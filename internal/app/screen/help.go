@@ -165,6 +165,7 @@ Custom themes: define custom_themes in the configuration file. Without a base th
 
 **{{HELP_ICON_CONFIGURATION}}Icon Configuration**
 - icon_set: Choose icon set ("nerd-font-v3", "emoji", "text", "none"). Default: "nerd-font-v3". Applies to file icons, UI indicators, and help headings. The text set uses plain labels. Set to "none" or an empty value to suppress icons.
+- disable_pr: Disable all PR/MR fetching and display. Default: false.
 
 {{HELP_TIP}}Tip: PR data is not fetched by default for speed.
        Press 'p' to fetch PR information on demand.`

@@ -4002,3 +4002,112 @@ func TestHandleSinglePRLoadedNoPR(t *testing.T) {
 		t.Fatal("expected PR to be nil")
 	}
 }
+
+func TestDisablePRFetchPRDataReturnsNil(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+
+	cmd := m.fetchPRData()
+	if cmd != nil {
+		t.Error("expected fetchPRData to return nil when DisablePR is true")
+	}
+}
+
+func TestDisablePRRefreshCurrentWorktreePRReturnsNil(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{Path: filepath.Join(cfg.WorktreeDir, "test"), Branch: "test"},
+	}
+	m.state.data.filteredWts = m.state.data.worktrees
+	m.state.data.selectedIndex = 0
+
+	cmd := m.refreshCurrentWorktreePR()
+	if cmd != nil {
+		t.Error("expected refreshCurrentWorktreePR to return nil when DisablePR is true")
+	}
+}
+
+func TestDisablePRMaybeFetchCIStatusReturnsNil(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{Path: filepath.Join(cfg.WorktreeDir, "test"), Branch: "test"},
+	}
+	m.state.data.filteredWts = m.state.data.worktrees
+	m.state.data.selectedIndex = 0
+
+	cmd := m.maybeFetchCIStatus()
+	if cmd != nil {
+		t.Error("expected maybeFetchCIStatus to return nil when DisablePR is true")
+	}
+}
+
+func TestDisablePRShouldRefreshCIReturnsFalse(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{Path: filepath.Join(cfg.WorktreeDir, "test"), Branch: "test"},
+	}
+	m.state.data.filteredWts = m.state.data.worktrees
+	m.state.data.selectedIndex = 0
+
+	if m.shouldRefreshCI() {
+		t.Error("expected shouldRefreshCI to return false when DisablePR is true")
+	}
+}
+
+func TestDisablePRTableColumnsExcludesPRColumn(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+	m.prDataLoaded = true // Even with PR data loaded, DisablePR should hide column
+
+	m.updateTableColumns(100)
+
+	columns := m.state.ui.worktreeTable.Columns()
+	for _, col := range columns {
+		if col.Title == "PR" {
+			t.Error("expected PR column to be excluded when DisablePR is true")
+		}
+	}
+}
+
+func TestDisablePRTableRowsExcludesPRColumn(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+		DisablePR:   true,
+	}
+	m := NewModel(cfg, "")
+	m.prDataLoaded = true
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{
+			Path:       filepath.Join(cfg.WorktreeDir, "test"),
+			Branch:     "test",
+			LastActive: "2024-01-01",
+			PR:         &models.PRInfo{Number: 123},
+		},
+	}
+	m.state.data.filteredWts = m.state.data.worktrees
+
+	m.updateTable()
+
+	rows := m.state.ui.worktreeTable.Rows()
+	if len(rows) > 0 && len(rows[0]) > 3 {
+		t.Errorf("expected 3 columns when DisablePR is true, got %d", len(rows[0]))
+	}
+}
