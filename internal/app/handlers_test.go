@@ -483,6 +483,34 @@ func TestHandlePRDataLoadedOmitsIconWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestUpdateTableHidesPRForMainWorktree(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir: t.TempDir(),
+	}
+	m := NewModel(cfg, "")
+	m.prDataLoaded = true
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{
+			Path:       filepath.Join(cfg.WorktreeDir, "main"),
+			Branch:     "main",
+			IsMain:     true,
+			LastActive: "2024-01-01",
+			PR:         &models.PRInfo{Number: 377, State: "OPEN"},
+		},
+	}
+	m.state.data.filteredWts = m.state.data.worktrees
+
+	m.updateTable()
+
+	rows := m.state.ui.worktreeTable.Rows()
+	if len(rows) != 1 || len(rows[0]) != 4 {
+		t.Fatalf("unexpected row shape: %+v", rows)
+	}
+	if rows[0][3] != "-" {
+		t.Fatalf("expected main worktree PR column to be \"-\", got %q", rows[0][3])
+	}
+}
+
 func TestHandlePRDataLoadedWithWorktreePRs(t *testing.T) {
 	// Set default provider for testing
 	SetIconProvider(&NerdFontV3Provider{})

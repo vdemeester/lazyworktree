@@ -195,7 +195,7 @@ func (m *Model) updateTable() {
 		// Only include PR column if PR data has been loaded and PR is not disabled
 		if m.prDataLoaded && !m.config.DisablePR {
 			prStr := "-"
-			if wt.PR != nil {
+			if wt.PR != nil && !wt.IsMain {
 				prIcon := ""
 				if showIcons {
 					prIcon = iconWithSpace(getIconPR())
