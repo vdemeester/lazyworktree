@@ -13,6 +13,7 @@ import (
 	"github.com/chmouel/lazyworktree/internal/app/services"
 	"github.com/chmouel/lazyworktree/internal/app/util"
 	log "github.com/chmouel/lazyworktree/internal/log"
+	"github.com/chmouel/lazyworktree/internal/models"
 )
 
 // commandPaletteUsage tracks usage frequency and recency for command palette items.
@@ -150,9 +151,26 @@ func (m *Model) loadCache() tea.Cmd {
 }
 
 // saveCache saves worktree data to the cache file.
+// Only valid git worktrees are saved to prevent stale entries.
 func (m *Model) saveCache() {
 	repoKey := m.getRepoKey()
-	if err := services.SaveCache(repoKey, m.getWorktreeDir(), m.state.data.worktrees); err != nil {
+
+	// Filter to only valid git worktrees before saving
+	// If validPaths is nil, git service is unavailable - save all worktrees
+	validPaths := m.getValidWorktreePaths()
+	var validWorktrees []*models.WorktreeInfo
+	if validPaths == nil {
+		validWorktrees = m.state.data.worktrees
+	} else {
+		validWorktrees = make([]*models.WorktreeInfo, 0, len(m.state.data.worktrees))
+		for _, wt := range m.state.data.worktrees {
+			if validPaths[normalizePath(wt.Path)] {
+				validWorktrees = append(validWorktrees, wt)
+			}
+		}
+	}
+
+	if err := services.SaveCache(repoKey, m.getWorktreeDir(), validWorktrees); err != nil {
 		m.showInfo(fmt.Sprintf("Failed to write cache: %v", err), nil)
 	}
 }
@@ -352,6 +370,81 @@ func (m *Model) getWorktreeDir() string {
 
 func (m *Model) getRepoWorktreeDir() string {
 	return filepath.Join(m.getWorktreeDir(), m.getRepoKey())
+}
+
+// normalizePath returns a canonical path for comparison.
+// Resolves symlinks and cleans the path to prevent false positives
+// when comparing worktree paths.
+func normalizePath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(resolved)
+}
+
+// getValidWorktreePaths returns a set of paths that git recognizes as valid worktrees.
+// Returns nil if git service is unavailable or no worktrees found (allows bypass of validation).
+func (m *Model) getValidWorktreePaths() map[string]bool {
+	if m.state.services.git == nil {
+		return nil
+	}
+
+	raw := m.state.services.git.RunGit(m.ctx,
+		[]string{"git", "worktree", "list", "--porcelain"},
+		"", []int{0}, true, false)
+
+	if raw == "" {
+		return nil
+	}
+
+	paths := make(map[string]bool)
+	for line := range strings.SplitSeq(raw, "\n") {
+		if path, found := strings.CutPrefix(line, "worktree "); found {
+			paths[normalizePath(path)] = true
+		}
+	}
+
+	// Return nil if no worktrees found (git command failed or empty repo)
+	if len(paths) == 0 {
+		return nil
+	}
+
+	return paths
+}
+
+// findOrphanedWorktreeDirs returns directories in the worktree dir that exist on disk
+// but are not registered with git worktree.
+func (m *Model) findOrphanedWorktreeDirs() []string {
+	repoWorktreeDir := m.getRepoWorktreeDir()
+	validPaths := m.getValidWorktreePaths()
+
+	// If validPaths is nil, git service is unavailable - can't determine orphans
+	if validPaths == nil {
+		return nil
+	}
+
+	entries, err := os.ReadDir(repoWorktreeDir)
+	if err != nil {
+		return nil
+	}
+
+	var orphans []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		// Skip hidden files/dirs
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		fullPath := filepath.Join(repoWorktreeDir, entry.Name())
+		normalizedPath := normalizePath(fullPath)
+		if !validPaths[normalizedPath] {
+			orphans = append(orphans, fullPath) // Store original for display/deletion
+		}
+	}
+	return orphans
 }
 
 // GetSelectedPath returns the selected worktree path for shell integration.

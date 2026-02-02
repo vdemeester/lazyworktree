@@ -620,13 +620,18 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 		}
 	}
 
-	if len(candidateMap) == 0 {
-		m.showInfo("No merged worktrees to prune.", nil)
+	// 3. Detect orphaned directories (exist on disk but not in git worktree list)
+	orphanedDirs := m.findOrphanedWorktreeDirs()
+
+	if len(candidateMap) == 0 && len(orphanedDirs) == 0 {
+		m.showInfo("No merged worktrees or orphaned directories to prune.", nil)
 		return nil
 	}
 
 	// Build checklist items (pre-check clean worktrees, uncheck dirty ones)
-	items := make([]appscreen.ChecklistItem, 0, len(candidateMap))
+	items := make([]appscreen.ChecklistItem, 0, len(candidateMap)+len(orphanedDirs))
+
+	// Add merged worktrees
 	for branch, info := range candidateMap {
 		// Get worktree name from path
 		wtName := filepath.Base(info.wt.Path)
@@ -657,6 +662,17 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 		})
 	}
 
+	// Add orphaned directories with special prefix to distinguish them
+	for _, orphanPath := range orphanedDirs {
+		dirName := filepath.Base(orphanPath)
+		items = append(items, appscreen.ChecklistItem{
+			ID:          "orphan:" + orphanPath,
+			Label:       dirName,
+			Description: fmt.Sprintf("Orphaned directory: %s (not in git worktree list)", orphanPath),
+			Checked:     false, // Require explicit selection for deletion
+		})
+	}
+
 	// Sort items for consistent ordering
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].Label < items[j].Label
@@ -664,9 +680,9 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 
 	checkScreen := appscreen.NewChecklistScreen(
 		items,
-		"Prune Merged Worktrees",
+		"Prune Merged Worktrees & Orphans",
 		"Filter...",
-		"No merged worktrees found.",
+		"No merged worktrees or orphaned directories found.",
 		m.state.view.WindowWidth,
 		m.state.view.WindowHeight,
 		m.theme,
@@ -677,10 +693,13 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 			return nil
 		}
 
-		// Collect worktrees to prune based on selection
+		// Separate worktrees from orphaned directories
 		toPrune := make([]*models.WorktreeInfo, 0, len(selected))
+		orphansToDelete := make([]string, 0)
 		for _, item := range selected {
-			if wt, exists := wtBranches[item.ID]; exists {
+			if orphanPath, isOrphan := strings.CutPrefix(item.ID, "orphan:"); isOrphan {
+				orphansToDelete = append(orphansToDelete, orphanPath)
+			} else if wt, exists := wtBranches[item.ID]; exists {
 				toPrune = append(toPrune, wt)
 			}
 		}
@@ -690,8 +709,14 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 
 		// Build the prune routine that runs terminate commands per-worktree
 		pruneRoutine := func() tea.Msg {
+			// First, run git worktree prune to clean up git's internal tracking
+			m.state.services.git.RunGit(m.ctx, []string{"git", "worktree", "prune"}, "", []int{0}, true, true)
+
 			pruned := 0
 			failed := 0
+			orphansDeleted := 0
+
+			// Prune merged worktrees
 			for _, wt := range toPrune {
 				// Run terminate commands for each worktree with its environment
 				if len(terminateCmds) > 0 {
@@ -707,12 +732,42 @@ func (m *Model) performMergedWorktreeCheck() tea.Cmd {
 					failed++
 				}
 			}
+
+			// Delete orphaned directories
+			// Re-fetch valid paths to ensure we have current state
+			validPaths := m.getValidWorktreePaths()
+			repoDir := m.getRepoWorktreeDir()
+
+			for _, orphanPath := range orphansToDelete {
+				// Re-validate: skip if now registered with git
+				if validPaths != nil {
+					normalizedPath := normalizePath(orphanPath)
+					if validPaths[normalizedPath] {
+						// Path is now a valid worktree, skip deletion
+						continue
+					}
+				}
+
+				// Verify path is still within expected repo directory bounds
+				if !strings.HasPrefix(orphanPath, repoDir) {
+					failed++
+					continue
+				}
+
+				if err := os.RemoveAll(orphanPath); err != nil {
+					failed++
+				} else {
+					orphansDeleted++
+				}
+			}
+
 			worktrees, err := m.state.services.git.GetWorktrees(m.ctx)
 			return pruneResultMsg{
-				worktrees: worktrees,
-				err:       err,
-				pruned:    pruned,
-				failed:    failed,
+				worktrees:      worktrees,
+				err:            err,
+				pruned:         pruned,
+				failed:         failed,
+				orphansDeleted: orphansDeleted,
 			}
 		}
 

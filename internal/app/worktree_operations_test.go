@@ -619,7 +619,7 @@ func TestShowPruneMerged(t *testing.T) {
 		t.Fatalf("expected info screen, got active=%v type=%v", m.state.ui.screenManager.IsActive(), m.state.ui.screenManager.Type())
 	}
 	infoScr := m.state.ui.screenManager.Current().(*appscreen.InfoScreen)
-	if infoScr.Message != "No merged worktrees to prune." {
+	if infoScr.Message != "No merged worktrees or orphaned directories to prune." {
 		t.Fatalf("unexpected info modal: %q", infoScr.Message)
 	}
 

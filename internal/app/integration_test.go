@@ -521,6 +521,10 @@ func TestWorktreeLoadingFlow(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
+	hasRepo := hasGitRepo(t)
+	if !hasRepo {
+		m.state.services.git = nil
+	}
 
 	// First, load cached worktrees
 	cachedMsg := cachedWorktreesMsg{worktrees: []*models.WorktreeInfo{
@@ -529,8 +533,14 @@ func TestWorktreeLoadingFlow(t *testing.T) {
 	updated, _ := m.handleCachedWorktrees(cachedMsg)
 	m = updated.(*Model)
 
-	if len(m.state.data.worktrees) != 1 {
-		t.Fatalf("expected 1 cached worktree, got %d", len(m.state.data.worktrees))
+	if hasRepo {
+		if len(m.state.data.worktrees) != 0 {
+			t.Fatalf("expected cached worktrees to be filtered, got %d", len(m.state.data.worktrees))
+		}
+	} else {
+		if len(m.state.data.worktrees) != 1 {
+			t.Fatalf("expected cached worktrees without git validation, got %d", len(m.state.data.worktrees))
+		}
 	}
 	if m.worktreesLoaded {
 		t.Error("expected worktreesLoaded to be false after cached load")

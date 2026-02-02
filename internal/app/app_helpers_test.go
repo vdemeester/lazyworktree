@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/chmouel/lazyworktree/internal/config"
+	"github.com/chmouel/lazyworktree/internal/models"
 )
 
 func TestAuthorInitials(t *testing.T) {
@@ -229,4 +230,198 @@ func TestPagerCommandFallbacksToLess(t *testing.T) {
 	if pager := m.pagerCommand(); pager != "less --use-color -q --wordwrap -qcR -P 'Press q to exit..'" {
 		t.Fatalf("expected fallback pager to be less defaults, got %q", pager)
 	}
+}
+
+func TestFindOrphanedWorktreeDirs(t *testing.T) {
+	requireGitRepo(t)
+
+	// Create a temp directory structure
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "test-repo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("failed to create repo dir: %v", err)
+	}
+
+	// Create some directories (simulating worktrees)
+	validDir := filepath.Join(repoDir, "valid-worktree")
+	orphanDir := filepath.Join(repoDir, "orphan-dir")
+	hiddenDir := filepath.Join(repoDir, ".hidden-dir")
+
+	for _, dir := range []string{validDir, orphanDir, hiddenDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatalf("failed to create dir %s: %v", dir, err)
+		}
+	}
+
+	// Create a regular file (should be ignored)
+	regularFile := filepath.Join(repoDir, "regular-file.txt")
+	if err := os.WriteFile(regularFile, []byte("test"), 0o600); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	cfg := &config.AppConfig{
+		WorktreeDir: tempDir,
+	}
+	m := NewModel(cfg, "")
+	m.repoKey = "test-repo"
+
+	// When running inside a git repo, getValidWorktreePaths returns valid worktree paths
+	// The test directories we created are NOT in that list, so they are orphans
+	orphans := m.findOrphanedWorktreeDirs()
+
+	// We expect 2 orphan directories (valid-worktree and orphan-dir)
+	// .hidden-dir should be excluded, regular-file.txt should be excluded
+	if len(orphans) != 2 {
+		t.Fatalf("expected 2 orphans, got %d: %v", len(orphans), orphans)
+	}
+
+	// Verify hidden directories are not included
+	for _, orphan := range orphans {
+		if filepath.Base(orphan) == ".hidden-dir" {
+			t.Fatal("hidden directory should not be included in orphans")
+		}
+	}
+}
+
+func TestFindOrphanedWorktreeDirsNoGitService(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "test-repo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("failed to create repo dir: %v", err)
+	}
+
+	// Create a directory that would be an orphan
+	orphanDir := filepath.Join(repoDir, "orphan-dir")
+	if err := os.MkdirAll(orphanDir, 0o750); err != nil {
+		t.Fatalf("failed to create orphan dir: %v", err)
+	}
+
+	cfg := &config.AppConfig{WorktreeDir: tempDir}
+	m := NewModel(cfg, "")
+	m.state.services.git = nil // Simulate git unavailable
+	m.repoKey = "test-repo"
+
+	orphans := m.findOrphanedWorktreeDirs()
+	if orphans != nil {
+		t.Fatalf("expected nil orphans when git unavailable, got %v", orphans)
+	}
+}
+
+func TestNormalizePath(t *testing.T) {
+	// Test that normalizePath cleans paths
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "already clean path",
+			input:    "/home/user/worktree",
+			expected: "/home/user/worktree",
+		},
+		{
+			name:     "path with trailing slash",
+			input:    "/home/user/worktree/",
+			expected: "/home/user/worktree",
+		},
+		{
+			name:     "path with double slashes",
+			input:    "/home//user/worktree",
+			expected: "/home/user/worktree",
+		},
+		{
+			name:     "path with dot segments",
+			input:    "/home/user/../user/worktree",
+			expected: "/home/user/worktree",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizePath(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizePath(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNormalizePathWithSymlink(t *testing.T) {
+	// Create a temp directory with a symlink
+	tempDir := t.TempDir()
+	realDir := filepath.Join(tempDir, "real-dir")
+	symlinkDir := filepath.Join(tempDir, "symlink-dir")
+
+	if err := os.MkdirAll(realDir, 0o750); err != nil {
+		t.Fatalf("failed to create real dir: %v", err)
+	}
+
+	if err := os.Symlink(realDir, symlinkDir); err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+
+	// Both paths should normalize to the same value
+	normalizedReal := normalizePath(realDir)
+	normalizedSymlink := normalizePath(symlinkDir)
+
+	if normalizedReal != normalizedSymlink {
+		t.Errorf("symlink and real path should normalize to same value:\nreal: %q\nsymlink: %q",
+			normalizedReal, normalizedSymlink)
+	}
+}
+
+func TestSaveCacheFiltersInvalidEntries(t *testing.T) {
+	// This test verifies that saveCache doesn't crash when git service is unavailable
+	// When git service is nil, all worktrees are saved (graceful fallback)
+
+	tempDir := t.TempDir()
+	cfg := &config.AppConfig{
+		WorktreeDir: tempDir,
+	}
+	m := NewModel(cfg, "")
+	// Disable git service to bypass worktree validation
+	m.state.services.git = nil
+	m.repoKey = "test-repo"
+
+	// Create the repo directory for cache
+	repoDir := filepath.Join(tempDir, "test-repo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("failed to create repo dir: %v", err)
+	}
+
+	// Add some worktrees (they won't be valid since no git repo)
+	m.state.data.worktrees = []*models.WorktreeInfo{
+		{Path: "/nonexistent/path1", Branch: "branch1"},
+		{Path: "/nonexistent/path2", Branch: "branch2"},
+	}
+
+	// saveCache should not crash even with invalid worktrees
+	// Since git service is nil, validation is bypassed and all worktrees are saved
+	m.saveCache()
+
+	// Verify cache file exists and has worktrees (fallback behaviour)
+	cachePath := filepath.Join(repoDir, ".worktree-cache.json")
+	// #nosec G304 -- cachePath is constructed from test temp directory
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("failed to read cache file: %v", err)
+	}
+
+	// Cache should contain worktrees since validation is bypassed
+	if !contains(string(data), "branch1") || !contains(string(data), "branch2") {
+		t.Fatalf("expected worktrees in cache (validation bypassed), got: %s", string(data))
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || s != "" && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

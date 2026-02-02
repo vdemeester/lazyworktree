@@ -377,6 +377,8 @@ func TestHandleCachedWorktreesUpdatesState(t *testing.T) {
 		WorktreeDir: t.TempDir(),
 	}
 	m := NewModel(cfg, "")
+	// Disable git service to bypass worktree validation in tests
+	m.state.services.git = nil
 	m.state.data.selectedIndex = 0
 	m.state.ui.worktreeTable.SetWidth(80)
 
@@ -2637,6 +2639,8 @@ func TestHandleWorktreesLoadedWithPendingSelection(t *testing.T) {
 func TestHandleCachedWorktreesLoaded(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
+	// Disable git service to bypass worktree validation in tests
+	m.state.services.git = nil
 
 	wts := []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, testWt1), Branch: "main"},
@@ -2662,6 +2666,59 @@ func TestHandleCachedWorktreesIgnoredWhenLoaded(t *testing.T) {
 
 	if len(updatedModel.state.data.worktrees) != 0 {
 		t.Fatalf("expected 0 worktrees, got %d", len(updatedModel.state.data.worktrees))
+	}
+}
+
+func TestHandleCachedWorktreesFiltersStaleEntries(t *testing.T) {
+	requireGitRepo(t)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+
+	// Create cached worktrees with paths that don't exist in git
+	// When git service is active, validation filters out invalid entries
+	// Since we're in a real git repo, the fake paths will be filtered out
+	wts := []*models.WorktreeInfo{
+		{Path: "/nonexistent/path1", Branch: "branch1"},
+		{Path: "/nonexistent/path2", Branch: "branch2"},
+	}
+
+	msg := cachedWorktreesMsg{worktrees: wts}
+	updated, _ := m.handleCachedWorktrees(msg)
+	updatedModel := updated.(*Model)
+
+	// In a real git repo, fake paths are filtered out
+	if len(updatedModel.state.data.worktrees) != 0 {
+		t.Fatalf("expected 0 worktrees (filtered out), got %d", len(updatedModel.state.data.worktrees))
+	}
+}
+
+func TestHandleCachedWorktreesNormalisesPaths(t *testing.T) {
+	requireGitRepo(t)
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+
+	validPaths := m.getValidWorktreePaths()
+	if len(validPaths) == 0 {
+		t.Skip("no git worktrees detected")
+	}
+
+	var repoPath string
+	for path := range validPaths {
+		repoPath = path
+		break
+	}
+
+	dirtyPath := repoPath + string(os.PathSeparator)
+	msg := cachedWorktreesMsg{worktrees: []*models.WorktreeInfo{
+		{Path: dirtyPath, Branch: "main"},
+	}}
+	updated, _ := m.handleCachedWorktrees(msg)
+	updatedModel := updated.(*Model)
+
+	if len(updatedModel.state.data.worktrees) != 1 {
+		t.Fatalf("expected cached worktree to be retained after normalisation, got %d", len(updatedModel.state.data.worktrees))
 	}
 }
 
@@ -2696,6 +2753,38 @@ func TestHandlePruneResultWithFailures(t *testing.T) {
 
 	if !strings.Contains(updatedModel.statusContent, "1 failed") {
 		t.Errorf("expected status to include failed count, got %q", updatedModel.statusContent)
+	}
+}
+
+func TestHandlePruneResultWithOrphans(t *testing.T) {
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+
+	msg := pruneResultMsg{worktrees: []*models.WorktreeInfo{}, pruned: 1, orphansDeleted: 2, failed: 0, err: nil}
+	updated, _ := m.handlePruneResult(msg)
+	updatedModel := updated.(*Model)
+
+	if !strings.Contains(updatedModel.statusContent, "Pruned 1") {
+		t.Errorf("expected status to include pruned count, got %q", updatedModel.statusContent)
+	}
+	if !strings.Contains(updatedModel.statusContent, "deleted 2 orphaned") {
+		t.Errorf("expected status to include orphans deleted count, got %q", updatedModel.statusContent)
+	}
+}
+
+func TestHandlePruneResultOnlyOrphans(t *testing.T) {
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+
+	msg := pruneResultMsg{worktrees: []*models.WorktreeInfo{}, pruned: 0, orphansDeleted: 3, failed: 0, err: nil}
+	updated, _ := m.handlePruneResult(msg)
+	updatedModel := updated.(*Model)
+
+	if strings.Contains(updatedModel.statusContent, "Pruned 0") {
+		t.Errorf("should not show 'Pruned 0' when no worktrees pruned, got %q", updatedModel.statusContent)
+	}
+	if !strings.Contains(updatedModel.statusContent, "deleted 3 orphaned") {
+		t.Errorf("expected status to include orphans deleted count, got %q", updatedModel.statusContent)
 	}
 }
 
@@ -3869,6 +3958,8 @@ func TestPRDataLoadedNotSetWhenNoPRData(t *testing.T) {
 func TestPRDataLoadedSyncAfterCachedWorktrees(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
+	// Disable git service to bypass worktree validation in tests
+	m.state.services.git = nil
 
 	m.state.data.worktrees = []*models.WorktreeInfo{
 		{Path: filepath.Join(cfg.WorktreeDir, "wt1"), Branch: "feature-1", PR: &models.PRInfo{Number: 123}},

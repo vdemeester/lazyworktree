@@ -124,9 +124,28 @@ func (m *Model) handleCachedWorktrees(msg cachedWorktreesMsg) (tea.Model, tea.Cm
 	if m.worktreesLoaded || len(msg.worktrees) == 0 {
 		return m, nil
 	}
+
+	// Filter out stale entries that no longer exist in git
+	// If validPaths is nil, git service is unavailable - skip validation
+	validPaths := m.getValidWorktreePaths()
+	var validated []*models.WorktreeInfo
+	if validPaths == nil {
+		validated = msg.worktrees
+	} else {
+		validated = make([]*models.WorktreeInfo, 0, len(msg.worktrees))
+		for _, wt := range msg.worktrees {
+			if validPaths[normalizePath(wt.Path)] {
+				validated = append(validated, wt)
+			}
+		}
+		if len(validated) == 0 {
+			return m, nil
+		}
+	}
+
 	// Preserve PR state across worktree reload to prevent race condition
 	prStateMap := extractPRState(m.state.data.worktrees)
-	m.state.data.worktrees = msg.worktrees
+	m.state.data.worktrees = validated
 	restorePRState(m.state.data.worktrees, prStateMap)
 	if !m.prDataLoaded && hasPRData(m.state.data.worktrees) {
 		m.prDataLoaded = true
@@ -161,11 +180,20 @@ func (m *Model) handlePruneResult(msg pruneResultMsg) (tea.Model, tea.Cmd) {
 		m.updateTable()
 		m.saveCache()
 	}
-	summary := fmt.Sprintf("Pruned %d merged worktrees", msg.pruned)
-	if msg.failed > 0 {
-		summary = fmt.Sprintf("%s (%d failed)", summary, msg.failed)
+	var parts []string
+	if msg.pruned > 0 {
+		parts = append(parts, fmt.Sprintf("Pruned %d merged worktrees", msg.pruned))
 	}
-	m.statusContent = summary
+	if msg.orphansDeleted > 0 {
+		parts = append(parts, fmt.Sprintf("deleted %d orphaned directories", msg.orphansDeleted))
+	}
+	if msg.failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", msg.failed))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "Nothing to prune")
+	}
+	m.statusContent = strings.Join(parts, ", ")
 	return m, nil
 }
 

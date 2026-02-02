@@ -157,7 +157,7 @@ func TestHandlePruneResult(t *testing.T) {
 	}
 	_, _ = m.handlePruneResult(msg)
 
-	if !strings.Contains(m.statusContent, "Pruned 2 merged worktrees") || !strings.Contains(m.statusContent, "(1 failed)") {
+	if !strings.Contains(m.statusContent, "Pruned 2 merged worktrees") || !strings.Contains(m.statusContent, "1 failed") {
 		t.Fatalf("unexpected prune status: %q", m.statusContent)
 	}
 	if len(m.state.data.worktrees) != 1 {
