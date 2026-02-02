@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chmouel/lazyworktree/internal/config"
@@ -55,11 +56,65 @@ func (k *KittyLauncher) Launch(ctx context.Context, cmd, cwd, title string, env 
 	return title, nil
 }
 
+// WezTermLauncher implements TerminalTabLauncher for WezTerm terminal.
+type WezTermLauncher struct {
+	commandRunner CommandRunner
+}
+
+// Name returns "WezTerm".
+func (w *WezTermLauncher) Name() string { return "WezTerm" }
+
+// IsAvailable checks if running inside WezTerm.
+func (w *WezTermLauncher) IsAvailable() bool {
+	return os.Getenv("WEZTERM_PANE") != "" || os.Getenv("WEZTERM_UNIX_SOCKET") != ""
+}
+
+// Launch opens a new WezTerm tab with the given command.
+func (w *WezTermLauncher) Launch(ctx context.Context, cmd, cwd, title string, env map[string]string) (string, error) {
+	args := []string{"cli", "spawn", "--cwd", cwd, "--"}
+	if len(env) > 0 {
+		args = append(args, "env")
+		for key, val := range env {
+			args = append(args, fmt.Sprintf("%s=%s", key, val))
+		}
+	}
+	args = append(args, "bash", "-lc", cmd)
+
+	c := w.commandRunner(ctx, "wezterm", args...)
+	output, err := c.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to launch WezTerm tab: %w (%s)", err, string(output))
+	}
+
+	if title != "" {
+		fields := strings.Fields(string(output))
+		if len(fields) > 0 {
+			if err := w.setTabTitle(ctx, fields[0], title); err != nil {
+				// Best-effort: tab is already created, so ignore title failures.
+				return title, nil
+			}
+		}
+	}
+
+	return title, nil
+}
+
+func (w *WezTermLauncher) setTabTitle(ctx context.Context, paneID, title string) error {
+	args := []string{"cli", "set-tab-title", "--pane-id", paneID, title}
+	c := w.commandRunner(ctx, "wezterm", args...)
+	output, err := c.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to set WezTerm tab title: %w (%s)", err, string(output))
+	}
+	return nil
+}
+
 // detectTerminalLauncher returns the first available terminal launcher.
 func detectTerminalLauncher(runner CommandRunner) TerminalTabLauncher {
 	launchers := []TerminalTabLauncher{
 		&KittyLauncher{commandRunner: runner},
-		// Future: &ITermLauncher{}, &WezTermLauncher{}, etc.
+		&WezTermLauncher{commandRunner: runner},
+		// Future: &ITermLauncher{}, &GhosttyLauncher{}, etc.
 	}
 	for _, l := range launchers {
 		if l.IsAvailable() {
@@ -89,7 +144,7 @@ func (m *Model) openTerminalTab(customCmd *config.CustomCommand, wt *models.Work
 	launcher := detectTerminalLauncher(m.commandRunner)
 	if launcher == nil {
 		return func() tea.Msg {
-			return terminalTabReadyMsg{err: fmt.Errorf("no supported terminal detected (Kitty required)")}
+			return terminalTabReadyMsg{err: fmt.Errorf("no supported terminal detected (Kitty or WezTerm required)")}
 		}
 	}
 
