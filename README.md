@@ -183,7 +183,7 @@ Deletes worktree and branch (if names match). Use `--no-branch` to skip branch d
 | `c` | Create new worktree (from branch, commit, PR/MR, or issue) |
 | `m` | Rename selected worktree |
 | `D` | Delete selected worktree |
-| `d` | View diff in pager (respects pager config) |
+| `d` | View diff in pager (worktree or commit, depending on pane) |
 | `A` | Absorb worktree into main |
 | `X` | Prune merged worktrees (refreshes PR data, checks merge status) |
 | `!` | Run arbitrary command in selected worktree (with command history) |
@@ -193,7 +193,7 @@ Deletes worktree and branch (if names match). Use `--no-branch` to skip branch d
 | `g` | Open LazyGit |
 | `r` | Refresh list (also refreshes PR/MR/CI for current worktree on GitHub/GitLab) |
 | `R` | Fetch all remotes |
-| `S` | Sync with upstream (pull + push, requires clean worktree) |
+| `S` | Synchronise with upstream (pull + push, requires clean worktree) |
 | `P` | Push to upstream (prompts to set upstream if missing) |
 | `f` | Filter focused pane (worktrees, files, commits) |
 | `/` | Search focused pane (incremental) |
@@ -203,6 +203,7 @@ Deletes worktree and branch (if names match). Use `--no-branch` to skip branch d
 | `Home` | Go to first item in focused pane |
 | `End` | Go to last item in focused pane |
 | `?` | Show help |
+| `q` | Quit |
 | `1` | Focus Worktree pane (toggle zoom if focused) |
 | `2` | Focus Status pane (toggle zoom if focused) |
 | `3` | Focus Log pane (toggle zoom if focused) |
@@ -231,6 +232,9 @@ Deletes worktree and branch (if names match). Use `--no-branch` to skip branch d
 | `f` | Filter files by name |
 | `/` | Search files (incremental) |
 | `n/N` | Next/previous search match |
+| `ctrl+d`, `Space` | Half page down |
+| `ctrl+u` | Half page up |
+| `g`, `G` | Jump to top/bottom |
 | `q`, `Esc` | Return to commit log |
 
 **Status Pane** (when focused on status):
@@ -250,6 +254,9 @@ Displays changed files in a collapsible tree view, grouped by directory (similar
 | `g` | Open LazyGit |
 | `ctrl+←`, `ctrl+→` | Jump to previous/next folder |
 | `/` | Search file/directory names (incremental) |
+| `ctrl+d`, `Space` | Half page down |
+| `ctrl+u` | Half page up |
+| `PageUp`, `PageDown` | Half page up/down |
 
 **CI Status Pane** (when viewing CI checks):
 
@@ -406,7 +413,7 @@ git config --local --get-regexp "^lw\."
 **Search and palette**
 
 * `search_auto_select`: start with filter focused (or use `--search-auto-select`).
-* `fuzzy_finder_input`: show fuzzy suggestions in input dialogs.
+* `fuzzy_finder_input`: show fuzzy suggestions in input dialogues.
 * `palette_mru`: enable MRU sorting in command palette (default: true). Control count with `palette_mru_limit` (default: 5).
 
 **Diff, pager, and editor**

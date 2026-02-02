@@ -37,10 +37,11 @@ func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.Cu
 - [ / ]: Previous / Next pane
 - Tab: Cycle to next pane
 - Enter: Jump to selected worktree (exit and cd)
+- q: Quit application
 
 **{{HELP_STATUS_PANE}}Status Pane (when focused)**
 - j / k: Navigate files and directories, or CI checks (when visible)
-- Enter: Show diff for selected file in pager, or open selected CI check URL
+- Enter: Toggle directory collapse, show file diff, or open selected CI check URL
 - Ctrl+v: View selected CI check logs in pager (when CI check is selected)
 - e: Open selected file in editor
 - d: Show full diff (all files) in pager
@@ -49,11 +50,10 @@ func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.Cu
 - c: Commit staged changes
 - C: Stage all changes and commit
 - Ctrl+{{ARROW_LEFT}} / {{ARROW_RIGHT}}: Jump to previous / next folder
-- /: Search file names
+- /: Search file or directory names
 - Ctrl+D / Space: Half page down
 - Ctrl+U: Half page up
-- PageUp / PageDown: Full page up/down
-- g / G: Jump to top / bottom
+- PageUp / PageDown: Half page up/down
 
 **{{HELP_CI_CHECKS}}CI Checks Navigation (in Status Pane)**
 When CI checks are displayed in the info panel:
@@ -65,6 +65,7 @@ When CI checks are displayed in the info panel:
 - j / k: Move between commits
 - Ctrl+J: Next commit and open file tree
 - Enter: Open commit file tree (browse changed files)
+- d: Show full commit diff in pager
 - C: Cherry-pick commit to another worktree
 - /: Search commit titles
 
@@ -75,6 +76,9 @@ When CI checks are displayed in the info panel:
 - f: Filter files by name
 - /: Search files (incremental)
 - n / N: Next / previous search match
+- Ctrl+D / Space: Half page down
+- Ctrl+U: Half page up
+- g / G: Jump to top / bottom
 - q / Esc: Return to commit log
 
 **{{HELP_WORKTREE_ACTIONS}}Worktree Actions**
@@ -85,7 +89,7 @@ When CI checks are displayed in the info panel:
 - Space: Toggle "Include current file changes"
 - m: Rename selected worktree
 - D: Delete selected worktree
-- A: Absorb worktree into main (merge + delete)
+- A: Absorb worktree into main (merge or rebase based on configuration, then delete)
 - X: Prune merged worktrees (auto-refreshes PR data, then checks PR/branch merge status)
 - !: Run arbitrary command in selected worktree
 
@@ -97,7 +101,7 @@ Special characters in branch names are automatically converted to hyphens for co
 Supported: Letters (a-z, A-Z), numbers (0-9), and hyphens (-). See help for full details.
 
 **{{HELP_VIEWING_TOOLS}}Viewing & Tools**
-- d: Full-screen diff viewer
+- d: Show diff in pager (worktree or commit)
 - o: Open PR/MR in browser (or root repo in editor if main branch with merged/closed/no PR)
 - g: Open LazyGit (or go to top in diff pane)
 - =: Toggle zoom for focused pane
@@ -134,7 +138,7 @@ Search Mode:
 - Esc: Clear search
 
 **{{HELP_STATUS_INDICATORS}}Status Indicators**
-- -: Clean and synced with remote
+- -: Clean and synchronised with remote
 - {{STATUS_DIRTY}}: Uncommitted changes (dirty)
 - {{STATUS_AHEAD}}N: Ahead of remote by N commits
 - {{STATUS_BEHIND}}N: Behind remote by N commits
@@ -170,7 +174,7 @@ Custom commands can set new_tab: true to open in a new terminal tab (Kitty with 
 - disable_pr: Disable all PR/MR fetching and display. Default: false.
 
 {{HELP_TIP}}Tip: PR data is not fetched by default for speed.
-       Press 'p' to fetch PR information on demand.`
+       Use the command palette and choose "Fetch PR data (p)" to refresh it on demand.`
 
 	replacer := strings.NewReplacer(
 		"{{HELP_TITLE}}", iconPrefix(UIIconHelpTitle, showIcons),

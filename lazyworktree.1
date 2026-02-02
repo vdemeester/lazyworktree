@@ -280,6 +280,10 @@ Quit application.
 Jump to worktree (exit and cd), or open commit file tree in log pane.
 .
 .TP
+.B d
+Show diff in pager for the selected worktree (or selected commit in the log pane).
+.
+.TP
 .B c
 Create new worktree (from branch, commit, PR/MR, or issue).
 .
@@ -352,16 +356,40 @@ Stage all changes and commit.
 .
 .TP
 .B d
-View diff in pager.
+Show full diff (all files) in pager.
 .
 .TP
 .B ctrl+Left, ctrl+Right
 Jump to previous/next folder.
 .
+.TP
+.B /
+Search file or directory names (incremental).
+.
+.TP
+.B Ctrl+d, Space
+Half page down.
+.
+.TP
+.B Ctrl+u
+Half page up.
+.
+.TP
+.B PageUp, PageDown
+Half page up/down.
+.
 .SS Log Pane
+.TP
+.B j, k, Up, Down
+Move between commits.
+.
 .TP
 .B Enter
 Open commit file tree view.
+.
+.TP
+.B d
+Show full commit diff in pager.
 .
 .TP
 .B C
@@ -371,8 +399,16 @@ Cherry-pick commit to another worktree (interactive picker).
 .B ctrl+j
 Move to next commit and open commit file tree.
 .
+.TP
+.B /
+Search commit titles (incremental).
+.
 .SS Commit File Tree
 When pressing Enter on a commit in the log pane, a file tree view opens showing all files changed in that commit. The tree is collapsible by directory and includes icons from the selected icon set when enabled.
+.
+.TP
+.B j, k, Up, Down
+Navigate files and directories.
 .
 .TP
 .B Enter
@@ -383,6 +419,30 @@ Toggle directory expand/collapse, or show diff for selected file.
 Show full commit diff in pager.
 .
 .TP
+.B f
+Filter files by name.
+.
+.TP
+.B /
+Search files (incremental).
+.
+.TP
+.B n, N
+Next/previous search match.
+.
+.TP
+.B Ctrl+d, Space
+Half page down.
+.
+.TP
+.B Ctrl+u
+Half page up.
+.
+.TP
+.B g, G
+Jump to top/bottom.
+.
+.TP
 .B q, Esc
 Return to commit log.
 .
@@ -390,6 +450,14 @@ Return to commit log.
 .TP
 .B f
 Filter focused pane by fuzzy matching. When a filter is active, the pane title shows a filter indicator with [Esc] Clear hint. Filtering narrows the visible items to those matching your input. In selection menus, press f to show the filter input; Esc returns to the list and keeps the current filter.
+.
+.TP
+.B Alt+n, Alt+p
+Move selection and fill filter input (worktree filter only).
+.
+.TP
+.B Up, Down, Ctrl+j, Ctrl+k
+Move selection without changing filter input.
 .
 .TP
 .B /
@@ -724,7 +792,7 @@ Non-interactive formatters like delta and diff-so-fancy should keep this false.
 .B pager
 Pager command for show_output custom commands and diff viewer.
 .br
-Default: $PAGER, fallback: less --use-color --wordwrap -qcR -P 'Press q to exit..', then more, then cat.
+Default: $PAGER, fallback: less --use-co\%lor --wordwrap -qcR -P 'Press q to exit..', then more, then cat.
 .br
 When the pager is less, lazyworktree configures LESS= and LESSHISTFILE=- to ignore user defaults.
 .
