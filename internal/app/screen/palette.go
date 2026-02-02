@@ -25,6 +25,7 @@ type CommandPaletteScreen struct {
 	Items        []PaletteItem
 	Filtered     []PaletteItem
 	FilterInput  textinput.Model
+	FilterActive bool
 	Cursor       int
 	ScrollOffset int
 	Width        int
@@ -46,7 +47,7 @@ func NewCommandPaletteScreen(items []PaletteItem, maxWidth, maxHeight int, thm *
 	ti.Placeholder = "Type a command..."
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Focus()
+	ti.Blur()
 	ti.Width = width - 4 // fits inside box with padding
 
 	// Find first non-section item for initial cursor
@@ -62,6 +63,7 @@ func NewCommandPaletteScreen(items []PaletteItem, maxWidth, maxHeight int, thm *
 		Items:        items,
 		Filtered:     items,
 		FilterInput:  ti,
+		FilterActive: false,
 		Cursor:       initialCursor,
 		ScrollOffset: 0,
 		Width:        width,
@@ -81,14 +83,66 @@ func (s *CommandPaletteScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	const maxVisible = 12
 	keyStr := msg.String()
 
+	if !s.FilterActive {
+		switch keyStr {
+		case "f":
+			s.FilterActive = true
+			s.FilterInput.Focus()
+			return s, textinput.Blink
+		case "esc", "ctrl+c":
+			if s.OnCancel != nil {
+				cmd := s.OnCancel()
+				return nil, cmd
+			}
+			return nil, nil
+		case "enter":
+			if s.Cursor >= 0 && s.Cursor < len(s.Filtered) && !s.Filtered[s.Cursor].IsSection {
+				item := s.Filtered[s.Cursor]
+				if s.OnSelect != nil {
+					cmd := s.OnSelect(item.ID)
+					return nil, cmd
+				}
+			}
+			return nil, nil
+		case "up", "k", "ctrl+k":
+			if s.Cursor > 0 {
+				s.Cursor--
+				// Skip sections when navigating
+				for s.Cursor > 0 && s.Filtered[s.Cursor].IsSection {
+					s.Cursor--
+				}
+				if s.Cursor < s.ScrollOffset {
+					s.ScrollOffset = s.Cursor
+				}
+			}
+			return s, nil
+		case "down", "j", "ctrl+j":
+			if s.Cursor < len(s.Filtered)-1 {
+				s.Cursor++
+				// Skip sections when navigating
+				for s.Cursor < len(s.Filtered)-1 && s.Filtered[s.Cursor].IsSection {
+					s.Cursor++
+				}
+				if s.Cursor >= s.ScrollOffset+maxVisible {
+					s.ScrollOffset = s.Cursor - maxVisible + 1
+				}
+			}
+			return s, nil
+		}
+		return s, nil
+	}
+
 	switch keyStr {
-	case "esc", "ctrl+c":
+	case "esc":
+		s.FilterActive = false
+		s.FilterInput.Blur()
+		return s, nil
+	case "ctrl+c":
 		if s.OnCancel != nil {
 			cmd := s.OnCancel()
 			return nil, cmd
 		}
 		return nil, nil
-
 	case "enter":
 		if s.Cursor >= 0 && s.Cursor < len(s.Filtered) && !s.Filtered[s.Cursor].IsSection {
 			item := s.Filtered[s.Cursor]
@@ -98,7 +152,6 @@ func (s *CommandPaletteScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return nil, nil
-
 	case "up", "ctrl+k":
 		if s.Cursor > 0 {
 			s.Cursor--
@@ -111,7 +164,6 @@ func (s *CommandPaletteScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return s, nil
-
 	case "down", "ctrl+j":
 		if s.Cursor < len(s.Filtered)-1 {
 			s.Cursor++
@@ -196,6 +248,9 @@ func (s *CommandPaletteScreen) View() string {
 	// Calculate maxVisible based on available height
 	// Reserve: 1 input + 1 separator + 1 footer + 2 border = ~5 lines
 	maxVisible := s.Height - 5
+	if !s.FilterActive {
+		maxVisible += 2
+	}
 	maxVisible = max(5, min(20, maxVisible))
 	if s.Height == 0 {
 		maxVisible = 12 // fallback for tests
@@ -241,9 +296,6 @@ func (s *CommandPaletteScreen) View() string {
 		Width(width - 2).
 		Foreground(s.Thm.Accent).
 		Bold(true)
-
-	// Render Input
-	inputView := inputStyle.Render(s.FilterInput.View())
 
 	// Render Items
 	var itemViews []string
@@ -304,14 +356,19 @@ func (s *CommandPaletteScreen) View() string {
 		Align(lipgloss.Right).
 		Width(width - 2).
 		PaddingTop(1)
-	footer := footerStyle.Render("esc to close")
+	footerText := "j/k to move • f to filter • Enter to select • Esc to close"
+	if s.FilterActive {
+		footerText = "Esc to return • Enter to select"
+	}
+	footer := footerStyle.Render(footerText)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		inputView,
-		separator,
-		strings.Join(itemViews, "\n"),
-		footer,
-	)
+	contentLines := []string{}
+	if s.FilterActive {
+		inputView := inputStyle.Render(s.FilterInput.View())
+		contentLines = append(contentLines, inputView, separator)
+	}
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
 }

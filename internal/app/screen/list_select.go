@@ -27,6 +27,7 @@ type ListSelectionScreen struct {
 
 	// UI state
 	FilterInput  textinput.Model
+	FilterActive bool
 	Cursor       int
 	ScrollOffset int
 	Width        int
@@ -75,7 +76,7 @@ func NewListSelectionScreen(items []SelectionItem, title, placeholder, noResults
 	ti.Placeholder = placeholder
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Focus()
+	ti.Blur()
 	ti.Width = width - 4
 
 	cursor := 0
@@ -95,6 +96,7 @@ func NewListSelectionScreen(items []SelectionItem, title, placeholder, noResults
 		Items:        items,
 		Filtered:     items,
 		FilterInput:  ti,
+		FilterActive: false,
 		Cursor:       cursor,
 		ScrollOffset: 0,
 		Width:        width,
@@ -115,9 +117,82 @@ func (s *ListSelectionScreen) Type() Type {
 // Update handles keyboard input and returns nil to signal the screen should close.
 func (s *ListSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	var cmd tea.Cmd
-	maxVisible := s.Height - 6
+	maxVisible := s.maxVisible()
+	keyStr := msg.String()
 
-	switch msg.String() {
+	if !s.FilterActive {
+		switch keyStr {
+		case "f":
+			s.FilterActive = true
+			s.FilterInput.Focus()
+			return s, textinput.Blink
+		case "ctrl+v":
+			if s.OnCtrlV != nil {
+				if item, ok := s.Selected(); ok {
+					return s, s.OnCtrlV(item)
+				}
+			}
+			return s, nil
+		case "ctrl+r":
+			if s.OnCtrlR != nil {
+				if item, ok := s.Selected(); ok {
+					return s, s.OnCtrlR(item)
+				}
+			}
+			return s, nil
+		case "enter":
+			if s.OnEnter != nil {
+				if item, ok := s.Selected(); ok {
+					return s, s.OnEnter(item)
+				}
+				return s, nil
+			}
+			if s.OnSelect != nil {
+				if item, ok := s.Selected(); ok {
+					return nil, s.OnSelect(item)
+				}
+			}
+			return nil, nil
+		case "esc", "ctrl+c":
+			if s.OnCancel != nil {
+				return nil, s.OnCancel()
+			}
+			return nil, nil
+		case "up", "k", "ctrl+k":
+			if s.Cursor > 0 {
+				s.Cursor--
+				if s.Cursor < s.ScrollOffset {
+					s.ScrollOffset = s.Cursor
+				}
+				if s.OnCursorChange != nil {
+					if item, ok := s.Selected(); ok {
+						s.OnCursorChange(item)
+					}
+				}
+			}
+			return s, nil
+		case "down", "j", "ctrl+j":
+			if s.Cursor < len(s.Filtered)-1 {
+				s.Cursor++
+				if s.Cursor >= s.ScrollOffset+maxVisible {
+					s.ScrollOffset = s.Cursor - maxVisible + 1
+				}
+				if s.OnCursorChange != nil {
+					if item, ok := s.Selected(); ok {
+						s.OnCursorChange(item)
+					}
+				}
+			}
+			return s, nil
+		}
+		return s, nil
+	}
+
+	switch keyStr {
+	case "esc":
+		s.FilterActive = false
+		s.FilterInput.Blur()
+		return s, nil
 	case "ctrl+v":
 		if s.OnCtrlV != nil {
 			if item, ok := s.Selected(); ok {
@@ -145,7 +220,7 @@ func (s *ListSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return nil, nil
-	case "esc", "ctrl+c":
+	case "ctrl+c":
 		if s.OnCancel != nil {
 			return nil, s.OnCancel()
 		}
@@ -185,7 +260,7 @@ func (s *ListSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 
 // View renders the list selection screen.
 func (s *ListSelectionScreen) View() string {
-	maxVisible := s.Height - 6
+	maxVisible := s.maxVisible()
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -229,8 +304,6 @@ func (s *ListSelectionScreen) View() string {
 		Width(s.Width - 2).
 		Foreground(s.Thm.MutedFg).
 		Italic(true)
-
-	inputView := inputStyle.Render(s.FilterInput.View())
 
 	var itemViews []string
 
@@ -280,19 +353,22 @@ func (s *ListSelectionScreen) View() string {
 		Align(lipgloss.Right).
 		Width(s.Width - 2).
 		PaddingTop(1)
-	footerText := "Enter to select • Esc to cancel"
+	footerText := "j/k to move • f to filter • Enter to select • Esc to cancel"
+	if s.FilterActive {
+		footerText = "Esc to return • Enter to select"
+	}
 	if s.FooterHint != "" {
 		footerText = s.FooterHint + " • " + footerText
 	}
 	footer := footerStyle.Render(footerText)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle,
-		inputView,
-		separator,
-		strings.Join(itemViews, "\n"),
-		footer,
-	)
+	contentLines := []string{titleStyle}
+	if s.FilterActive {
+		inputView := inputStyle.Render(s.FilterInput.View())
+		contentLines = append(contentLines, inputView, separator)
+	}
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
 }
@@ -327,4 +403,12 @@ func (s *ListSelectionScreen) applyFilter() {
 		s.Cursor = 0
 	}
 	s.ScrollOffset = 0
+}
+
+func (s *ListSelectionScreen) maxVisible() int {
+	maxVisible := s.Height - 6
+	if !s.FilterActive {
+		maxVisible += 2
+	}
+	return maxVisible
 }

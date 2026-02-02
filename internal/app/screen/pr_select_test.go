@@ -86,6 +86,50 @@ func TestPRSelectionScreenFiltering(t *testing.T) {
 	}
 }
 
+func TestPRSelectionScreenFilterToggle(t *testing.T) {
+	prs := []*models.PRInfo{
+		{Number: 1, Title: "First"},
+		{Number: 2, Title: "Second"},
+	}
+	scr := NewPRSelectionScreen(prs, 80, 30, theme.Dracula(), true)
+	if scr.FilterActive {
+		t.Fatal("expected filter to be inactive by default")
+	}
+
+	next, _ := scr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	nextScr, ok := next.(*PRSelectionScreen)
+	if !ok || nextScr == nil {
+		t.Fatal("expected Update to return PR selection screen after f")
+	}
+	scr = nextScr
+	if !scr.FilterActive {
+		t.Fatal("expected filter to be active after f")
+	}
+
+	next, _ = scr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	nextScr, ok = next.(*PRSelectionScreen)
+	if !ok || nextScr == nil {
+		t.Fatal("expected Update to return PR selection screen after typing")
+	}
+	scr = nextScr
+	if len(scr.Filtered) != 1 || scr.Filtered[0].Number != 2 {
+		t.Fatalf("expected filtered results to include only #2, got %v", scr.Filtered)
+	}
+
+	next, _ = scr.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nextScr, ok = next.(*PRSelectionScreen)
+	if !ok || nextScr == nil {
+		t.Fatal("expected Update to return PR selection screen after Esc")
+	}
+	scr = nextScr
+	if scr.FilterActive {
+		t.Fatal("expected filter to be inactive after Esc")
+	}
+	if len(scr.Filtered) != 1 || scr.Filtered[0].Number != 2 {
+		t.Fatalf("expected filter to remain applied after Esc, got %v", scr.Filtered)
+	}
+}
+
 func TestPRSelectionScreenSelection(t *testing.T) {
 	prs := []*models.PRInfo{
 		{Number: 1, Title: "First", Branch: "branch1"},

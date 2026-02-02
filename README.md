@@ -179,6 +179,7 @@ Deletes worktree and branch (if names match). Use `--no-branch` to skip branch d
 | Key | Action |
 | --- | --- |
 | `Enter` | Jump to worktree (exit and cd) |
+| `j`, `k` | Move selection up/down in lists and menus |
 | `c` | Create new worktree (from branch, commit, PR/MR, or issue) |
 | `m` | Rename selected worktree |
 | `D` | Delete selected worktree |
@@ -261,6 +262,8 @@ Displays changed files in a collapsible tree view, grouped by directory (similar
 **Filter Mode:**
 
 Applies to focused pane (worktrees, files, commits). Active filter shows `[Esc] Clear` hint.
+
+Selection menus: press `f` to show the filter input; `Esc` returns to the list and keeps the current filter.
 
 * `alt+n`, `alt+p`: Navigate and update filter input
 * `↑`, `↓`, `ctrl+j`, `ctrl+k`: Navigate without changing input

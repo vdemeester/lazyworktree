@@ -26,6 +26,7 @@ type ChecklistScreen struct {
 
 	// UI state
 	FilterInput  textinput.Model
+	FilterActive bool
 	Cursor       int
 	ScrollOffset int
 	Width        int
@@ -65,7 +66,7 @@ func NewChecklistScreen(items []ChecklistItem, title, placeholder, noResults str
 	ti.Placeholder = placeholder
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Focus()
+	ti.Blur()
 	ti.Width = width - 4 // padding
 
 	cursor := 0
@@ -77,6 +78,7 @@ func NewChecklistScreen(items []ChecklistItem, title, placeholder, noResults str
 		Items:        items,
 		Filtered:     items,
 		FilterInput:  ti,
+		FilterActive: false,
 		Cursor:       cursor,
 		ScrollOffset: 0,
 		Width:        width,
@@ -97,17 +99,99 @@ func (s *ChecklistScreen) Type() Type {
 // Returns nil to signal the screen should close.
 func (s *ChecklistScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	var cmd tea.Cmd
-	maxVisible := (s.Height - 6) / 2 // Account for header, input, footer; divide by 2 since each item takes 2 lines
+	maxVisibleLines := s.Height - 6
+	if !s.FilterActive {
+		maxVisibleLines += 2
+	}
+	maxVisible := maxVisibleLines / 2 // Account for header, input, footer; divide by 2 since each item takes 2 lines
 
 	keyStr := msg.String()
-	switch keyStr {
-	case keyEnter:
-		if s.OnSubmit != nil {
-			selected := s.SelectedItems()
-			return nil, s.OnSubmit(selected)
+	if !s.FilterActive {
+		switch keyStr {
+		case "f":
+			s.FilterActive = true
+			s.FilterInput.Focus()
+			return s, textinput.Blink
+		case keyEnter:
+			if s.OnSubmit != nil {
+				selected := s.SelectedItems()
+				return nil, s.OnSubmit(selected)
+			}
+			return nil, nil
+		case keyEsc, keyCtrlC:
+			// Clear all selections on cancel
+			for i := range s.Items {
+				s.Items[i].Checked = false
+			}
+			s.applyFilter()
+			if s.OnCancel != nil {
+				return nil, s.OnCancel()
+			}
+			return nil, nil
+		case "up", "k", "ctrl+k":
+			if s.Cursor > 0 {
+				s.Cursor--
+				if s.Cursor < s.ScrollOffset {
+					s.ScrollOffset = s.Cursor
+				}
+			}
+			return s, nil
+		case "down", "j", "ctrl+j":
+			if s.Cursor < len(s.Filtered)-1 {
+				s.Cursor++
+				if s.Cursor >= s.ScrollOffset+maxVisible {
+					s.ScrollOffset = s.Cursor - maxVisible + 1
+				}
+			}
+			return s, nil
+		case " ":
+			// Toggle current item
+			if s.Cursor >= 0 && s.Cursor < len(s.Filtered) {
+				// Find the item in the original list and toggle it
+				id := s.Filtered[s.Cursor].ID
+				for i := range s.Items {
+					if s.Items[i].ID == id {
+						s.Items[i].Checked = !s.Items[i].Checked
+						break
+					}
+				}
+				s.applyFilter()
+			}
+			return s, nil
+		case "a":
+			// Select all filtered items
+			for _, f := range s.Filtered {
+				for i := range s.Items {
+					if s.Items[i].ID == f.ID {
+						s.Items[i].Checked = true
+						break
+					}
+				}
+			}
+			s.applyFilter()
+			return s, nil
+		case "n":
+			// Deselect all filtered items
+			for _, f := range s.Filtered {
+				for i := range s.Items {
+					if s.Items[i].ID == f.ID {
+						s.Items[i].Checked = false
+						break
+					}
+				}
+			}
+			s.applyFilter()
+			return s, nil
 		}
-		return nil, nil
-	case keyEsc, keyCtrlC:
+		return s, nil
+	}
+
+	switch keyStr {
+	case keyEsc:
+		s.FilterActive = false
+		s.FilterInput.Blur()
+		return s, nil
+	case keyCtrlC:
 		// Clear all selections on cancel
 		for i := range s.Items {
 			s.Items[i].Checked = false
@@ -117,7 +201,13 @@ func (s *ChecklistScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			return nil, s.OnCancel()
 		}
 		return nil, nil
-	case "up", "k", "ctrl+k":
+	case keyEnter:
+		if s.OnSubmit != nil {
+			selected := s.SelectedItems()
+			return nil, s.OnSubmit(selected)
+		}
+		return nil, nil
+	case "up", "ctrl+k":
 		if s.Cursor > 0 {
 			s.Cursor--
 			if s.Cursor < s.ScrollOffset {
@@ -125,51 +215,13 @@ func (s *ChecklistScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return s, nil
-	case "down", "j", "ctrl+j":
+	case "down", "ctrl+j":
 		if s.Cursor < len(s.Filtered)-1 {
 			s.Cursor++
 			if s.Cursor >= s.ScrollOffset+maxVisible {
 				s.ScrollOffset = s.Cursor - maxVisible + 1
 			}
 		}
-		return s, nil
-	case " ":
-		// Toggle current item
-		if s.Cursor >= 0 && s.Cursor < len(s.Filtered) {
-			// Find the item in the original list and toggle it
-			id := s.Filtered[s.Cursor].ID
-			for i := range s.Items {
-				if s.Items[i].ID == id {
-					s.Items[i].Checked = !s.Items[i].Checked
-					break
-				}
-			}
-			s.applyFilter()
-		}
-		return s, nil
-	case "a":
-		// Select all filtered items
-		for _, f := range s.Filtered {
-			for i := range s.Items {
-				if s.Items[i].ID == f.ID {
-					s.Items[i].Checked = true
-					break
-				}
-			}
-		}
-		s.applyFilter()
-		return s, nil
-	case "n":
-		// Deselect all filtered items
-		for _, f := range s.Filtered {
-			for i := range s.Items {
-				if s.Items[i].ID == f.ID {
-					s.Items[i].Checked = false
-					break
-				}
-			}
-		}
-		s.applyFilter()
 		return s, nil
 	}
 
@@ -218,7 +270,11 @@ func (s *ChecklistScreen) SelectedItems() []ChecklistItem {
 
 // View renders the checklist screen.
 func (s *ChecklistScreen) View() string {
-	maxVisible := (s.Height - 6) / 2 // Account for header, input, footer; divide by 2 since each item takes 2 lines
+	maxVisibleLines := s.Height - 6
+	if !s.FilterActive {
+		maxVisibleLines += 2
+	}
+	maxVisible := maxVisibleLines / 2 // Account for header, input, footer; divide by 2 since each item takes 2 lines
 
 	// Enhanced checklist modal with rounded border
 	boxStyle := lipgloss.NewStyle().
@@ -263,9 +319,6 @@ func (s *ChecklistScreen) View() string {
 		Width(s.Width - 2).
 		Foreground(s.Thm.MutedFg).
 		Italic(true)
-
-	// Render Input
-	inputView := inputStyle.Render(s.FilterInput.View())
 
 	// Render items
 	var itemViews []string
@@ -334,15 +387,19 @@ func (s *ChecklistScreen) View() string {
 		Align(lipgloss.Right).
 		Width(s.Width - 2).
 		PaddingTop(1)
-	footer := footerStyle.Render(fmt.Sprintf("%d selected • Space toggle • a/n all/none • Enter confirm • Esc cancel", selectedCount))
+	footerText := fmt.Sprintf("%d selected • j/k to move • f to filter • Space toggle • a/n all/none • Enter confirm • Esc cancel", selectedCount)
+	if s.FilterActive {
+		footerText = fmt.Sprintf("%d selected • Esc to return • Enter confirm", selectedCount)
+	}
+	footer := footerStyle.Render(footerText)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle,
-		inputView,
-		separator,
-		strings.Join(itemViews, "\n"),
-		footer,
-	)
+	contentLines := []string{titleStyle}
+	if s.FilterActive {
+		inputView := inputStyle.Render(s.FilterInput.View())
+		contentLines = append(contentLines, inputView, separator)
+	}
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
 }

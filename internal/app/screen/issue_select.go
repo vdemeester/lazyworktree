@@ -16,6 +16,7 @@ type IssueSelectionScreen struct {
 	Issues       []*models.IssueInfo
 	Filtered     []*models.IssueInfo
 	FilterInput  textinput.Model
+	FilterActive bool
 	Cursor       int
 	ScrollOffset int
 	Width        int
@@ -43,13 +44,14 @@ func NewIssueSelectionScreen(issues []*models.IssueInfo, maxWidth, maxHeight int
 	ti.Placeholder = "Filter issues by number or title..."
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Focus()
+	ti.Blur()
 	ti.Width = width - 4
 
 	return &IssueSelectionScreen{
 		Issues:       issues,
 		Filtered:     issues,
 		FilterInput:  ti,
+		FilterActive: false,
 		Cursor:       0,
 		ScrollOffset: 0,
 		Width:        width,
@@ -68,9 +70,54 @@ func (s *IssueSelectionScreen) Type() Type {
 func (s *IssueSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	var cmd tea.Cmd
 	maxVisible := s.Height - 6
+	if !s.FilterActive {
+		maxVisible += 2
+	}
 
 	keyStr := msg.String()
+	if !s.FilterActive {
+		switch keyStr {
+		case "f":
+			s.FilterActive = true
+			s.FilterInput.Focus()
+			return s, textinput.Blink
+		case keyEnter:
+			if s.OnSelect != nil {
+				if issue, ok := s.Selected(); ok {
+					return nil, s.OnSelect(issue)
+				}
+			}
+			return nil, nil
+		case keyEsc, keyQ, keyCtrlC:
+			if s.OnCancel != nil {
+				return nil, s.OnCancel()
+			}
+			return nil, nil
+		case "up", "k", "ctrl+k":
+			if s.Cursor > 0 {
+				s.Cursor--
+				if s.Cursor < s.ScrollOffset {
+					s.ScrollOffset = s.Cursor
+				}
+			}
+			return s, nil
+		case "down", "j", "ctrl+j":
+			if s.Cursor < len(s.Filtered)-1 {
+				s.Cursor++
+				if s.Cursor >= s.ScrollOffset+maxVisible {
+					s.ScrollOffset = s.Cursor - maxVisible + 1
+				}
+			}
+			return s, nil
+		}
+		return s, nil
+	}
+
 	switch keyStr {
+	case keyEsc:
+		s.FilterActive = false
+		s.FilterInput.Blur()
+		return s, nil
 	case keyEnter:
 		if s.OnSelect != nil {
 			if issue, ok := s.Selected(); ok {
@@ -78,12 +125,12 @@ func (s *IssueSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return nil, nil
-	case keyEsc, keyQ, keyCtrlC:
+	case keyQ, keyCtrlC:
 		if s.OnCancel != nil {
 			return nil, s.OnCancel()
 		}
 		return nil, nil
-	case "up", "k", "ctrl+k":
+	case "up", "ctrl+k":
 		if s.Cursor > 0 {
 			s.Cursor--
 			if s.Cursor < s.ScrollOffset {
@@ -91,7 +138,7 @@ func (s *IssueSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return s, nil
-	case "down", "j", "ctrl+j":
+	case "down", "ctrl+j":
 		if s.Cursor < len(s.Filtered)-1 {
 			s.Cursor++
 			if s.Cursor >= s.ScrollOffset+maxVisible {
@@ -109,6 +156,9 @@ func (s *IssueSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 // View renders the issue selection screen.
 func (s *IssueSelectionScreen) View() string {
 	maxVisible := s.Height - 6
+	if !s.FilterActive {
+		maxVisible += 2
+	}
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -146,8 +196,6 @@ func (s *IssueSelectionScreen) View() string {
 		Width(s.Width - 2).
 		Foreground(s.Thm.MutedFg).
 		Italic(true)
-
-	inputView := inputStyle.Render(s.FilterInput.View())
 
 	var itemViews []string
 
@@ -211,15 +259,19 @@ func (s *IssueSelectionScreen) View() string {
 		Align(lipgloss.Right).
 		Width(s.Width - 2).
 		PaddingTop(1)
-	footer := footerStyle.Render("Enter to select • Esc to cancel")
+	footerText := "j/k to move • f to filter • Enter to select • Esc to cancel"
+	if s.FilterActive {
+		footerText = "Esc to return • Enter to select"
+	}
+	footer := footerStyle.Render(footerText)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle,
-		inputView,
-		separator,
-		strings.Join(itemViews, "\n"),
-		footer,
-	)
+	contentLines := []string{titleStyle}
+	if s.FilterActive {
+		inputView := inputStyle.Render(s.FilterInput.View())
+		contentLines = append(contentLines, inputView, separator)
+	}
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
 }

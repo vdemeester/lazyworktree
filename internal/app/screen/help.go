@@ -31,8 +31,8 @@ func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.Cu
 	helpTextTemplate := `{{HELP_TITLE}}LazyWorktree Help Guide
 
 **{{HELP_NAV}}Navigation**
-- j / {{ARROW_DOWN}}: Move cursor down
-- k / {{ARROW_UP}}: Move cursor up
+- j / {{ARROW_DOWN}}: Move cursor down in lists and menus
+- k / {{ARROW_UP}}: Move cursor up in lists and menus
 - 1 / 2 / 3: Switch to pane (or toggle zoom if already focused)
 - [ / ]: Previous / Next pane
 - Tab: Cycle to next pane
@@ -120,6 +120,7 @@ Supported: Letters (a-z, A-Z), numbers (0-9), and hyphens (-). See help for full
 
 **{{HELP_FILTERING_SEARCH}}Filtering & Search**
 - f: Filter focused pane
+- Selection menus: press f to show the filter, Esc returns to the list
 - /: Search focused pane (incremental)
 - Alt+N / Alt+P: Move selection and fill filter input
 - {{ARROW_UP}} / {{ARROW_DOWN}}: Move selection (filter active, no fill)

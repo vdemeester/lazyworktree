@@ -19,6 +19,7 @@ type PRSelectionScreen struct {
 
 	// UI state
 	FilterInput  textinput.Model
+	FilterActive bool
 	Cursor       int
 	ScrollOffset int
 	Width        int
@@ -55,13 +56,14 @@ func NewPRSelectionScreen(prs []*models.PRInfo, maxWidth, maxHeight int, thm *th
 	ti.Placeholder = "Filter PRs by number or title..."
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Focus()
+	ti.Blur()
 	ti.Width = width - 4 // padding
 
 	return &PRSelectionScreen{
 		PRs:          prs,
 		Filtered:     prs,
 		FilterInput:  ti,
+		FilterActive: false,
 		Cursor:       0,
 		ScrollOffset: 0,
 		Width:        width,
@@ -81,9 +83,61 @@ func (s *PRSelectionScreen) Type() Type {
 func (s *PRSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	var cmd tea.Cmd
 	maxVisible := s.Height - 6 // Account for header, input, footer
+	if !s.FilterActive {
+		maxVisible += 2
+	}
 
 	keyStr := msg.String()
+	if !s.FilterActive {
+		switch keyStr {
+		case "f":
+			s.FilterActive = true
+			s.FilterInput.Focus()
+			return s, textinput.Blink
+		case keyEnter:
+			if s.OnSelect != nil {
+				if pr, ok := s.Selected(); ok {
+					// Check if PR's branch is already attached to a worktree
+					if wtName, attached := s.isAttached(pr); attached {
+						s.StatusMessage = fmt.Sprintf("Branch already checked out in %q", wtName)
+						return s, nil
+					}
+					return nil, s.OnSelect(pr)
+				}
+			}
+			return nil, nil
+		case keyEsc, keyQ, keyCtrlC:
+			if s.OnCancel != nil {
+				return nil, s.OnCancel()
+			}
+			return nil, nil
+		case "up", "k", "ctrl+k":
+			s.StatusMessage = "" // Clear status on navigation
+			if s.Cursor > 0 {
+				s.Cursor--
+				if s.Cursor < s.ScrollOffset {
+					s.ScrollOffset = s.Cursor
+				}
+			}
+			return s, nil
+		case "down", "j", "ctrl+j":
+			s.StatusMessage = "" // Clear status on navigation
+			if s.Cursor < len(s.Filtered)-1 {
+				s.Cursor++
+				if s.Cursor >= s.ScrollOffset+maxVisible {
+					s.ScrollOffset = s.Cursor - maxVisible + 1
+				}
+			}
+			return s, nil
+		}
+		return s, nil
+	}
+
 	switch keyStr {
+	case keyEsc:
+		s.FilterActive = false
+		s.FilterInput.Blur()
+		return s, nil
 	case keyEnter:
 		if s.OnSelect != nil {
 			if pr, ok := s.Selected(); ok {
@@ -96,12 +150,12 @@ func (s *PRSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return nil, nil
-	case keyEsc, keyQ, keyCtrlC:
+	case keyQ, keyCtrlC:
 		if s.OnCancel != nil {
 			return nil, s.OnCancel()
 		}
 		return nil, nil
-	case "up", "k", "ctrl+k":
+	case "up", "ctrl+k":
 		s.StatusMessage = "" // Clear status on navigation
 		if s.Cursor > 0 {
 			s.Cursor--
@@ -110,7 +164,7 @@ func (s *PRSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 		}
 		return s, nil
-	case "down", "j", "ctrl+j":
+	case "down", "ctrl+j":
 		s.StatusMessage = "" // Clear status on navigation
 		if s.Cursor < len(s.Filtered)-1 {
 			s.Cursor++
@@ -129,6 +183,9 @@ func (s *PRSelectionScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 // View renders the PR selection screen.
 func (s *PRSelectionScreen) View() string {
 	maxVisible := s.Height - 6 // Account for header, input, footer
+	if !s.FilterActive {
+		maxVisible += 2
+	}
 
 	// Enhanced PR selection modal with rounded border
 	boxStyle := lipgloss.NewStyle().
@@ -180,9 +237,6 @@ func (s *PRSelectionScreen) View() string {
 		Background(s.Thm.BorderDim).
 		Foreground(s.Thm.MutedFg).
 		Italic(true)
-
-	// Render Input
-	inputView := inputStyle.Render(s.FilterInput.View())
 
 	// Render PRs
 	var itemViews []string
@@ -291,20 +345,23 @@ func (s *PRSelectionScreen) View() string {
 		Align(lipgloss.Right).
 		Width(s.Width - 2).
 		PaddingTop(1)
-	footerText := "Enter to select • Esc to cancel"
+	footerText := "j/k to move • f to filter • Enter to select • Esc to cancel"
+	if s.FilterActive {
+		footerText = "Esc to return • Enter to select"
+	}
 	if s.StatusMessage != "" {
 		statusStyle := lipgloss.NewStyle().Foreground(s.Thm.WarnFg)
 		footerText = statusStyle.Render(s.StatusMessage) + "  •  " + footerText
 	}
 	footer := footerStyle.Render(footerText)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle,
-		inputView,
-		separator,
-		strings.Join(itemViews, "\n"),
-		footer,
-	)
+	contentLines := []string{titleStyle}
+	if s.FilterActive {
+		inputView := inputStyle.Render(s.FilterInput.View())
+		contentLines = append(contentLines, inputView, separator)
+	}
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
 }
