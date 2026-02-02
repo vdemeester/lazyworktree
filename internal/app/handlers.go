@@ -625,11 +625,13 @@ func (m *Model) handleNavigationDown(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// No commit changes but CI checks are available, navigate to first CI check
 			m.ciCheckIndex = 0
 			m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])
+			m.rebuildStatusContentWithHighlight()
 		case hasCIChecks && m.ciCheckIndex >= 0:
 			// Navigate CI checks
 			if m.ciCheckIndex < len(ciChecks)-1 {
 				m.ciCheckIndex++
 				m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])
+				m.rebuildStatusContentWithHighlight()
 			} else {
 				// At last CI check, wrap to file tree
 				m.ciCheckIndex = -1
@@ -685,15 +687,18 @@ func (m *Model) handleNavigationUp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.ciCheckIndex > 0 {
 				m.ciCheckIndex--
 				m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])
+				m.rebuildStatusContentWithHighlight()
 			}
 		case hasCIChecks && m.ciCheckIndex == -1 && len(m.state.services.statusTree.TreeFlat) == 0 && !wasReset:
 			// No commit changes but CI checks available, wrap to last CI check
 			m.ciCheckIndex = len(ciChecks) - 1
 			m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])
+			m.rebuildStatusContentWithHighlight()
 		case hasCIChecks && m.ciCheckIndex == -1 && m.state.services.statusTree.Index == 0:
 			// At top of file tree, wrap to last CI check
 			m.ciCheckIndex = len(ciChecks) - 1
 			m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])
+			m.rebuildStatusContentWithHighlight()
 		default:
 			// Navigate through status tree items
 			if len(m.state.services.statusTree.TreeFlat) > 0 {

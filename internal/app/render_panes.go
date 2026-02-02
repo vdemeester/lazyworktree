@@ -364,7 +364,7 @@ func (m *Model) renderStatusFiles() string {
 
 		// Apply styling based on selection and node type
 		switch {
-		case m.state.view.FocusedPane == 1 && i == m.state.services.statusTree.Index:
+		case m.state.view.FocusedPane == 1 && m.ciCheckIndex < 0 && i == m.state.services.statusTree.Index:
 			if viewportWidth > 0 && len(lineContent) < viewportWidth {
 				lineContent += strings.Repeat(" ", viewportWidth-len(lineContent))
 			}
