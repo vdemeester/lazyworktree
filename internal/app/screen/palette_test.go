@@ -14,22 +14,13 @@ func TestCommandPaletteFilterToggle(t *testing.T) {
 	}
 
 	scr := NewCommandPaletteScreen(items, 80, 24, theme.Dracula())
-	if scr.FilterActive {
-		t.Fatal("expected filter to be inactive by default")
-	}
-
-	next, _ := scr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
-	nextScr, ok := next.(*CommandPaletteScreen)
-	if !ok || nextScr == nil {
-		t.Fatal("expected Update to return command palette screen after f")
-	}
-	scr = nextScr
 	if !scr.FilterActive {
-		t.Fatal("expected filter to be active after f")
+		t.Fatal("expected filter to be active by default")
 	}
 
-	next, _ = scr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
-	nextScr, ok = next.(*CommandPaletteScreen)
+	// Type directly to filter (filter is already active)
+	next, _ := scr.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	nextScr, ok := next.(*CommandPaletteScreen)
 	if !ok || nextScr == nil {
 		t.Fatal("expected Update to return command palette screen after typing")
 	}
@@ -38,6 +29,7 @@ func TestCommandPaletteFilterToggle(t *testing.T) {
 		t.Fatalf("expected filtered results to include only 'beta', got %v", scr.Filtered)
 	}
 
+	// Esc exits filter mode but preserves filter text
 	next, _ = scr.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	nextScr, ok = next.(*CommandPaletteScreen)
 	if !ok || nextScr == nil {

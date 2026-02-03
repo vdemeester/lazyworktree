@@ -47,7 +47,7 @@ func NewCommandPaletteScreen(items []PaletteItem, maxWidth, maxHeight int, thm *
 	ti.Placeholder = "Type a command..."
 	ti.CharLimit = 100
 	ti.Prompt = "> "
-	ti.Blur()
+	ti.Focus()
 	ti.Width = width - 4 // fits inside box with padding
 
 	// Find first non-section item for initial cursor
@@ -63,7 +63,7 @@ func NewCommandPaletteScreen(items []PaletteItem, maxWidth, maxHeight int, thm *
 		Items:        items,
 		Filtered:     items,
 		FilterInput:  ti,
-		FilterActive: false,
+		FilterActive: true,
 		Cursor:       initialCursor,
 		ScrollOffset: 0,
 		Width:        width,

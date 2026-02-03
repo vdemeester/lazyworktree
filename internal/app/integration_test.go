@@ -322,7 +322,11 @@ func TestCommandPalette(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 	time.Sleep(50 * time.Millisecond)
 
-	// Press escape to close palette
+	// First Esc exits filter mode (filter is active by default)
+	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+	time.Sleep(50 * time.Millisecond)
+
+	// Second Esc closes the palette
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
 	time.Sleep(50 * time.Millisecond)
 
@@ -338,7 +342,7 @@ func TestCommandPalette(t *testing.T) {
 	}
 
 	if m.state.ui.screenManager.IsActive() && m.state.ui.screenManager.Type() == appscreen.TypePalette {
-		t.Error("Command palette should be closed after pressing escape")
+		t.Error("Command palette should be closed after pressing escape twice")
 	}
 }
 

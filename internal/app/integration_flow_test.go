@@ -175,8 +175,7 @@ func TestIntegrationPaletteSelectsCustomCommand(t *testing.T) {
 
 	_ = m.showCommandPalette()
 
-	_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
-
+	// Filter is now active by default, type directly to filter
 	for _, r := range strings.ToLower(customLabel) {
 		_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
