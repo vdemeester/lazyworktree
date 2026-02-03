@@ -23,6 +23,8 @@ _See other [Screenshots below](#screenshots)_
   * Checkout existing branch or create a new branch from it.
   * From GitHub/GitLab issue with automatic branch naming.
   * From open GitHub/GitLab PR or MR.
+* VIM style keybinding and a VSCode-like command palette (and as configurable
+as emacs!).
 * View CI logs from GitHub Actions.
 * Display linked PR/MR, CI status, and checks.
 * Stage, unstage, commit, edit, and diff files.
