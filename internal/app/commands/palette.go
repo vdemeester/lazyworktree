@@ -4,6 +4,26 @@ import "github.com/chmouel/lazyworktree/internal/app/services"
 
 const defaultMRUSectionLabel = "Recently Used"
 
+// sectionIcons maps section names to their icons.
+var sectionIcons = map[string]string{
+	sectionWorktreeActions: IconWorktree,
+	sectionCreateShortcuts: IconCreate,
+	sectionGitOperations:   IconGit,
+	sectionStatusPane:      IconStatus,
+	sectionLogPane:         IconLog,
+	sectionNavigation:      IconNavigation,
+	sectionSettings:        IconSettings,
+	defaultMRUSectionLabel: IconRecent,
+}
+
+// getSectionIcon returns the icon for a section name.
+func getSectionIcon(section string) string {
+	if icon, ok := sectionIcons[section]; ok {
+		return icon
+	}
+	return "" // Default icon
+}
+
 // PaletteItem represents a palette entry.
 type PaletteItem struct {
 	ID          string
@@ -11,6 +31,8 @@ type PaletteItem struct {
 	Description string
 	IsSection   bool
 	IsMRU       bool
+	Shortcut    string // Keyboard shortcut display (e.g., "g")
+	Icon        string // Category icon (Nerd Font)
 }
 
 // PaletteOptions controls palette item building.
@@ -36,6 +58,8 @@ func BuildPaletteItems(opts PaletteOptions) []PaletteItem {
 			ID:          action.ID,
 			Label:       action.Label,
 			Description: action.Description,
+			Shortcut:    action.Shortcut,
+			Icon:        action.Icon,
 		}
 	}
 
@@ -52,7 +76,7 @@ func BuildPaletteItems(opts PaletteOptions) []PaletteItem {
 		if label == "" {
 			label = defaultMRUSectionLabel
 		}
-		items = append(items, PaletteItem{Label: label, IsSection: true})
+		items = append(items, PaletteItem{Label: label, IsSection: true, Icon: getSectionIcon(label)})
 		items = append(items, mruItems...)
 		for _, item := range mruItems {
 			if item.ID != "" {
@@ -64,7 +88,7 @@ func BuildPaletteItems(opts PaletteOptions) []PaletteItem {
 	currentSection := ""
 	for _, action := range opts.Actions {
 		if action.Section != "" && action.Section != currentSection {
-			items = append(items, PaletteItem{Label: action.Section, IsSection: true})
+			items = append(items, PaletteItem{Label: action.Section, IsSection: true, Icon: getSectionIcon(action.Section)})
 			currentSection = action.Section
 		}
 		if action.ID == "" || mruIDs[action.ID] {
@@ -77,6 +101,8 @@ func BuildPaletteItems(opts PaletteOptions) []PaletteItem {
 			ID:          action.ID,
 			Label:       action.Label,
 			Description: action.Description,
+			Shortcut:    action.Shortcut,
+			Icon:        action.Icon,
 		})
 	}
 

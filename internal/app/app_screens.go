@@ -74,6 +74,8 @@ func (m *Model) showCommandPalette() tea.Cmd {
 			Description: item.Description,
 			IsSection:   item.IsSection,
 			IsMRU:       item.IsMRU,
+			Shortcut:    item.Shortcut,
+			Icon:        item.Icon,
 		}
 	}
 
@@ -652,11 +654,14 @@ func (m *Model) customPaletteItems() []commands.PaletteItem {
 			ID:          key,
 			Label:       label,
 			Description: description,
+			Icon:        commands.IconCustom,
 		}
 		switch {
 		case cmd.Tmux != nil:
+			item.Icon = commands.IconMultiplex
 			tmuxItems = append(tmuxItems, item)
 		case cmd.Zellij != nil:
+			item.Icon = commands.IconMultiplex
 			zellijItems = append(zellijItems, item)
 		default:
 			regularItems = append(regularItems, item)
@@ -678,6 +683,7 @@ func (m *Model) customPaletteItems() []commands.PaletteItem {
 				ID:          "tmux-attach:" + sessionName,
 				Label:       sessionName,
 				Description: "active tmux session",
+				Icon:        commands.IconMultiplex,
 			})
 		}
 	}
@@ -691,6 +697,7 @@ func (m *Model) customPaletteItems() []commands.PaletteItem {
 				ID:          "zellij-attach:" + sessionName,
 				Label:       sessionName,
 				Description: "active zellij session",
+				Icon:        commands.IconMultiplex,
 			})
 		}
 	}
@@ -698,13 +705,13 @@ func (m *Model) customPaletteItems() []commands.PaletteItem {
 	// Build result with sections
 	var items []commands.PaletteItem
 	if len(regularItems) > 0 {
-		items = append(items, commands.PaletteItem{Label: "Custom Commands", IsSection: true})
+		items = append(items, commands.PaletteItem{Label: "Custom Commands", IsSection: true, Icon: commands.IconCustom})
 		items = append(items, regularItems...)
 	}
 
 	// Multiplexer section for custom tmux/zellij commands
 	if hasTmux || hasZellij {
-		items = append(items, commands.PaletteItem{Label: "Multiplexer", IsSection: true})
+		items = append(items, commands.PaletteItem{Label: "Multiplexer", IsSection: true, Icon: commands.IconMultiplex})
 		if hasTmux {
 			items = append(items, tmuxItems...)
 		}
@@ -715,13 +722,13 @@ func (m *Model) customPaletteItems() []commands.PaletteItem {
 
 	// Active Tmux Sessions section (appears after Multiplexer)
 	if len(activeTmuxSessions) > 0 {
-		items = append(items, commands.PaletteItem{Label: "Active Tmux Sessions", IsSection: true})
+		items = append(items, commands.PaletteItem{Label: "Active Tmux Sessions", IsSection: true, Icon: commands.IconMultiplex})
 		items = append(items, activeTmuxSessions...)
 	}
 
 	// Active Zellij Sessions section (appears after Active Tmux Sessions)
 	if len(activeZellijSessions) > 0 {
-		items = append(items, commands.PaletteItem{Label: "Active Zellij Sessions", IsSection: true})
+		items = append(items, commands.PaletteItem{Label: "Active Zellij Sessions", IsSection: true, Icon: commands.IconMultiplex})
 		items = append(items, activeZellijSessions...)
 	}
 

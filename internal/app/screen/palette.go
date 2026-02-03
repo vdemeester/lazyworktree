@@ -16,8 +16,10 @@ type PaletteItem struct {
 	ID          string
 	Label       string
 	Description string
-	IsSection   bool // Non-selectable section headers
-	IsMRU       bool // Recently used items
+	IsSection   bool   // Non-selectable section headers
+	IsMRU       bool   // Recently used items
+	Shortcut    string // Keyboard shortcut display (e.g., "g")
+	Icon        string // Category icon (Nerd Font)
 }
 
 // CommandPaletteScreen is the command picker modal.
@@ -46,9 +48,9 @@ func NewCommandPaletteScreen(items []PaletteItem, maxWidth, maxHeight int, thm *
 	ti := textinput.New()
 	ti.Placeholder = "Type a command..."
 	ti.CharLimit = 100
-	ti.Prompt = "> "
+	ti.Prompt = "  " // Search icon (Nerd Font)
 	ti.Focus()
-	ti.Width = width - 4 // fits inside box with padding
+	ti.Width = width - 6 // fits inside box with padding and icon
 
 	// Find first non-section item for initial cursor
 	initialCursor := 0
@@ -238,6 +240,40 @@ func (s *CommandPaletteScreen) applyFilter() {
 	s.ScrollOffset = 0
 }
 
+// highlightMatches highlights matching characters in text based on the query.
+func (s *CommandPaletteScreen) highlightMatches(text, query string) string {
+	if query == "" {
+		return text
+	}
+
+	var result strings.Builder
+	textLower := strings.ToLower(text)
+	queryLower := strings.ToLower(query)
+	pos := 0
+
+	accentStyle := lipgloss.NewStyle().Foreground(s.Thm.Accent).Bold(true)
+	normalStyle := lipgloss.NewStyle().Foreground(s.Thm.TextFg)
+
+	for _, qch := range queryLower {
+		idx := strings.IndexRune(textLower[pos:], qch)
+		if idx == -1 {
+			break
+		}
+		// Render unmatched portion
+		if idx > 0 {
+			result.WriteString(normalStyle.Render(text[pos : pos+idx]))
+		}
+		// Render matched char
+		result.WriteString(accentStyle.Render(string(text[pos+idx])))
+		pos += idx + 1
+	}
+	// Remainder
+	if pos < len(text) {
+		result.WriteString(normalStyle.Render(text[pos:]))
+	}
+	return result.String()
+}
+
 // View renders the command palette.
 func (s *CommandPaletteScreen) View() string {
 	width := s.Width
@@ -268,22 +304,36 @@ func (s *CommandPaletteScreen) View() string {
 		Width(width - 2).
 		Foreground(s.Thm.TextFg)
 
+	// Section header with background tint and icon
+	sectionStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Width(width - 2).
+		Background(s.Thm.AccentDim).
+		Foreground(s.Thm.Accent).
+		Bold(true)
+
+	// Normal item style
 	itemStyle := lipgloss.NewStyle().
 		Padding(0, 1).
 		Width(width - 2)
 
+	// Selected item - subtle style with pointer, no full background
 	selectedStyle := lipgloss.NewStyle().
 		Padding(0, 1).
-		Width(width - 2).
-		Background(s.Thm.Accent).
-		Foreground(s.Thm.AccentFg).
+		Width(width - 4). // Narrower to accommodate pointer
+		Foreground(s.Thm.TextFg).
+		Bold(true)
+
+	// Selection pointer for selected item
+	pointerStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.Accent).
 		Bold(true)
 
 	descStyle := lipgloss.NewStyle().
 		Foreground(s.Thm.MutedFg)
 
 	selectedDescStyle := lipgloss.NewStyle().
-		Foreground(s.Thm.TextFg)
+		Foreground(s.Thm.MutedFg)
 
 	noResultsStyle := lipgloss.NewStyle().
 		Padding(0, 1).
@@ -291,11 +341,28 @@ func (s *CommandPaletteScreen) View() string {
 		Foreground(s.Thm.MutedFg).
 		Italic(true)
 
-	sectionStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		Width(width - 2).
+	// Shortcut badge style - simple muted text
+	shortcutStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.MutedFg)
+
+	selectedShortcutStyle := lipgloss.NewStyle().
 		Foreground(s.Thm.Accent).
 		Bold(true)
+
+	// Icon style
+	iconStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.MutedFg)
+
+	selectedIconStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.Accent).
+		Bold(true)
+
+	// MRU indicator
+	mruStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.WarnFg)
+
+	// Get current query for highlighting
+	query := strings.TrimSpace(s.FilterInput.Value())
 
 	// Render Items
 	var itemViews []string
@@ -309,33 +376,123 @@ func (s *CommandPaletteScreen) View() string {
 		start = end
 	}
 
+	// Calculate available width for label and description
+	// Width breakdown: 2 padding + 2 icon + 1 space + label + desc + shortcut badge (4 chars max)
+	labelWidth := 32
+	descWidth := width - labelWidth - 14 // Leave room for icon, padding, and shortcut
+
 	for i := start; i < end; i++ {
 		it := s.Filtered[i]
 
-		// Render section headers differently
+		// Render section headers with icon and background
 		if it.IsSection {
-			itemViews = append(itemViews, sectionStyle.Render("── "+it.Label+" ──"))
+			icon := it.Icon
+			if icon == "" {
+				icon = "" // Default section icon
+			}
+			leftPart := icon + "  " + it.Label
+			sectionText := leftPart
+
+			// Add "Key" label only on the first section header
+			if len(itemViews) == 0 {
+				keyLabel := "Shortcut"
+				contentWidth := width - 4 // Account for padding
+				// Use lipgloss.Width for proper display width calculation
+				leftWidth := lipgloss.Width(leftPart)
+				padding := contentWidth - leftWidth - len(keyLabel)
+				if padding < 1 {
+					padding = 1
+				}
+				sectionText = leftPart + strings.Repeat(" ", padding) + keyLabel
+			}
+
+			itemViews = append(itemViews, sectionStyle.Render(sectionText))
 			continue
 		}
 
 		// Truncate label if too long
 		label := it.Label
-		desc := it.Description
-
-		// Pad label to align descriptions somewhat
-		labelPad := 45
-		if len(label) > labelPad {
-			label = label[:labelPad-1] + "…"
+		if len(label) > labelWidth {
+			label = label[:labelWidth-1] + "…"
 		}
-		paddedLabel := fmt.Sprintf("%-45s", label)
 
-		var line string
+		// Truncate description
+		desc := it.Description
+		if len(desc) > descWidth {
+			desc = desc[:descWidth-1] + "…"
+		}
+
+		// Build the item icon
+		icon := it.Icon
+		if icon == "" {
+			icon = " " // Space placeholder for alignment
+		}
+
+		// Build MRU indicator
+		mruIndicator := ""
+		if it.IsMRU {
+			mruIndicator = " " // Clock icon for recently used
+		}
+
+		// Build shortcut badge
+		shortcutBadge := ""
+		shortcutLen := 0
+		if it.Shortcut != "" {
+			shortcutLen = len(it.Shortcut) + 2 // Padding included
+		}
+
+		// Calculate padding for alignment
+		paddedLabel := fmt.Sprintf("%-*s", labelWidth, label)
+		paddedDesc := fmt.Sprintf("%-*s", descWidth, desc)
+
 		if i == s.Cursor {
-			line = fmt.Sprintf("%s %s", paddedLabel, selectedDescStyle.Render(desc))
-			itemViews = append(itemViews, selectedStyle.Render(line))
+			// Selected item with left border
+			styledIcon := selectedIconStyle.Render(icon)
+			styledMRU := ""
+			if mruIndicator != "" {
+				styledMRU = selectedIconStyle.Render(mruIndicator)
+			}
+			styledLabel := paddedLabel
+			styledDesc := selectedDescStyle.Render(paddedDesc)
+			if it.Shortcut != "" {
+				shortcutBadge = selectedShortcutStyle.Render(it.Shortcut)
+			}
+
+			line := styledIcon + " " + styledMRU + styledLabel + " " + styledDesc
+			if shortcutLen > 0 {
+				line += " " + shortcutBadge
+			}
+
+			// Add selection pointer
+			pointer := pointerStyle.Render("▸")
+			itemContent := selectedStyle.Render(line)
+			itemViews = append(itemViews, pointer+itemContent)
 		} else {
-			line = fmt.Sprintf("%s %s", paddedLabel, descStyle.Render(desc))
-			itemViews = append(itemViews, itemStyle.Render(line))
+			// Normal item
+			styledIcon := iconStyle.Render(icon)
+			styledMRU := ""
+			if mruIndicator != "" {
+				styledMRU = mruStyle.Render(mruIndicator)
+			}
+
+			// Apply match highlighting when filtering
+			styledLabel := paddedLabel
+			if query != "" {
+				styledLabel = s.highlightMatches(paddedLabel, query)
+			}
+
+			styledDesc := descStyle.Render(paddedDesc)
+			if it.Shortcut != "" {
+				shortcutBadge = shortcutStyle.Render(it.Shortcut)
+			}
+
+			line := styledIcon + " " + styledMRU + styledLabel + " " + styledDesc
+			if shortcutLen > 0 {
+				line += " " + shortcutBadge
+			}
+
+			// Add space to align with selected item border
+			itemViews = append(itemViews, itemStyle.Render(" "+line))
 		}
 	}
 
@@ -350,24 +507,51 @@ func (s *CommandPaletteScreen) View() string {
 		Width(width - 2).
 		Render("")
 
-	// Footer
-	footerStyle := lipgloss.NewStyle().
-		Foreground(s.Thm.MutedFg).
-		Align(lipgloss.Right).
-		Width(width - 2).
-		PaddingTop(1)
-	footerText := "j/k to move • f to filter • Enter to select • Esc to close"
-	if s.FilterActive {
-		footerText = "Esc to return • Enter to select"
+	// Footer with item count and keyboard hints
+	countText := fmt.Sprintf("%d of %d", s.Cursor+1, len(s.Filtered))
+	if len(s.Filtered) == 0 {
+		countText = "No matches"
 	}
-	footer := footerStyle.Render(footerText)
+
+	// Add scroll indicator
+	if len(s.Filtered) > maxVisible {
+		switch {
+		case s.ScrollOffset > 0 && end < len(s.Filtered):
+			countText += " ↕"
+		case s.ScrollOffset > 0:
+			countText += " ▲"
+		case end < len(s.Filtered):
+			countText += " ▼"
+		}
+	}
+
+	hints := "↑↓ navigate • ⏎ select • Esc close"
+	if !s.FilterActive {
+		hints = "f filter • ↑↓ navigate • ⏎ select • Esc close"
+	}
+
+	leftStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.MutedFg).
+		Width((width - 4) / 2)
+	rightStyle := lipgloss.NewStyle().
+		Foreground(s.Thm.MutedFg).
+		Width((width - 4) / 2).
+		Align(lipgloss.Right)
+
+	footer := lipgloss.JoinHorizontal(lipgloss.Top,
+		leftStyle.Render(countText),
+		rightStyle.Render(hints),
+	)
+
+	// Add top padding to footer
+	footerWithPadding := lipgloss.NewStyle().PaddingTop(1).Render(footer)
 
 	contentLines := []string{}
 	if s.FilterActive {
 		inputView := inputStyle.Render(s.FilterInput.View())
 		contentLines = append(contentLines, inputView, separator)
 	}
-	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footer)
+	contentLines = append(contentLines, strings.Join(itemViews, "\n"), footerWithPadding)
 	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return boxStyle.Render(content)
