@@ -36,7 +36,7 @@ _See other [Screenshots below](#screenshots)_
 * Automatic branch naming via scripts (e.g., LLM tools).
 
 ## Getting Started
-    
+
 * Install lazyworktree using one of the methods below
 * Navigate to a Git repository in your terminal
 * Run lazyworktree to launch the TUI
@@ -49,10 +49,14 @@ _See other [Screenshots below](#screenshots)_
 
 **Optional:**
 
-* **Nerd Font**: Icons default to Nerd Font glyphs. If they render as placeholders, set `icon_set: text` or install a font patched with Nerd Font.
-* **delta**: Syntax-highlighted diffs (recommended)
-* **lazygit**: Full TUI git control
-* **tmux** / **zellij**: Session management
+* Nerd Font: Icons default to Nerd Font glyphs.
+
+> [!IMPORTANT]
+> If you see weird characters when starting lazyworktree, set `icon_set: text` or install a font patched with Nerd Font.
+
+* delta: Syntax-highlighted diffs (recommended)
+* lazygit: Full TUI git control
+* tmux / zellij: Session management
 
 **Build-time only:**
 
@@ -714,7 +718,7 @@ branch_name_script: |
 
 ## CLI Usage
 
-### Config overrides:
+### Config overrides
 
 ```bash
 lazyworktree --worktree-dir ~/worktrees
