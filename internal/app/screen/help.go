@@ -168,6 +168,7 @@ Example: lazyworktree --config=lw.theme=nord --config=lw.auto_fetch_prs=true
 
 Custom themes: define custom_themes in the configuration file. Without a base theme, all 11 colour fields are required.
 Custom commands can set new_tab: true to open in a new terminal tab (Kitty with remote control enabled, WezTerm, or iTerm).
+For command-style diff tools such as lumen, set git_pager_command_mode: true.
 
 **{{HELP_ICON_CONFIGURATION}}Icon Configuration**
 - icon_set: Choose icon set ("nerd-font-v3", "text"). Default: "nerd-font-v3". Applies to file icons, UI indicators, and help headings. The text set uses plain labels.

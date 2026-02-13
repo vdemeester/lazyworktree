@@ -92,6 +92,18 @@ git_pager_args:
 #
 git_pager_interactive: false
 
+# Set to true for command-based diff viewers that run their own git commands (default: false)
+# Tools like lumen (https://github.com/jnsahaj/lumen) invoke git internally and accept
+# subcommands such as `lumen diff`, `lumen diff <commit>`, rather than reading piped input.
+# When true, lazyworktree calls `<git_pager> diff [args...]` directly instead of piping
+# git diff output through the pager.
+#
+# Examples:
+#   git_pager: lumen
+#   git_pager_command_mode: true
+#
+git_pager_command_mode: false
+
 # Pager used for show_output custom commands
 # Default: $PAGER environment variable or less if unset
 pager: "less --use-color --wordwrap -qcR -P 'Press q to exit..'"

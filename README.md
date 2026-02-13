@@ -364,6 +364,7 @@ git config --local --get-regexp "^lw\."
 * `git_pager`: diff formatter (default: `delta`). Empty string disables formatting.
 * `git_pager_args`: arguments for git_pager. Auto-selects syntax theme for delta.
 * `git_pager_interactive`: set `true` for interactive viewers like `diffnav` or `tig`.
+* `git_pager_command_mode`: set `true` for command-based diff viewers like `lumen` that run their own git commands (e.g. `lumen diff`).
 * `pager`: pager for output display (default: `$PAGER`, fallback to `less`).
 * `ci_script_pager`: pager for CI logs with direct terminal control. Falls back to `pager`. Example to strip GitHub Actions timestamps:
 

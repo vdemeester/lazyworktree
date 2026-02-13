@@ -466,6 +466,114 @@ func TestShowCommitFileDiffInteractiveUsesConfiguredPager(t *testing.T) {
 	}
 }
 
+func TestShowCommitDiffCommandModeUsesOwnDiff(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerArgs:        []string{"--theme", "dark"},
+		GitPagerCommandMode: true,
+	}
+	m := NewModel(cfg, "")
+	wt := &models.WorktreeInfo{Path: testWorktreePath, Branch: "feat"}
+
+	capture := &commandCapture{}
+	m.commandRunner = capture.runner
+	m.execProcess = capture.exec
+
+	if cmd := m.showCommitDiff("abc123", wt); cmd == nil {
+		t.Fatal("expected diff command")
+	}
+
+	if capture.name != testBashCmd {
+		t.Fatalf("expected bash command, got %q", capture.name)
+	}
+	if len(capture.args) != 2 || capture.args[0] != "-c" {
+		t.Fatalf("expected bash -c args, got %v", capture.args)
+	}
+	cmdStr := capture.args[1]
+	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123") {
+		t.Fatalf("expected lumen diff with commit, got %q", cmdStr)
+	}
+	if strings.Contains(cmdStr, "|") {
+		t.Fatalf("command mode should not use pipes, got %q", cmdStr)
+	}
+	if capture.dir != testWorktreePath {
+		t.Fatalf("expected worktree dir, got %q", capture.dir)
+	}
+}
+
+func TestShowFileDiffCommandModeUsesFileFlag(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerArgs:        []string{"--theme", "dark"},
+		GitPagerCommandMode: true,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: testWorktreePath, Branch: "feat"}}
+	m.state.data.selectedIndex = 0
+
+	capture := &commandCapture{}
+	m.commandRunner = capture.runner
+	m.execProcess = capture.exec
+
+	if cmd := m.showFileDiff(StatusFile{Filename: "file.txt"}); cmd == nil {
+		t.Fatal("expected file diff command")
+	}
+
+	if capture.name != testBashCmd {
+		t.Fatalf("expected bash command, got %q", capture.name)
+	}
+	if len(capture.args) != 2 || capture.args[0] != "-c" {
+		t.Fatalf("expected bash -c args, got %v", capture.args)
+	}
+	cmdStr := capture.args[1]
+	if !strings.Contains(cmdStr, "lumen diff --theme dark --file 'file.txt'") {
+		t.Fatalf("expected lumen diff with --file, got %q", cmdStr)
+	}
+	if strings.Contains(cmdStr, "|") {
+		t.Fatalf("command mode should not use pipes, got %q", cmdStr)
+	}
+	if capture.dir != testWorktreePath {
+		t.Fatalf("expected worktree dir, got %q", capture.dir)
+	}
+}
+
+func TestShowCommitFileDiffCommandModeUsesOwnDiff(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerArgs:        []string{"--theme", "dark"},
+		GitPagerCommandMode: true,
+	}
+	m := NewModel(cfg, "")
+
+	capture := &commandCapture{}
+	m.commandRunner = capture.runner
+	m.execProcess = capture.exec
+
+	if cmd := m.showCommitFileDiff("abc123", "file.txt", testWorktreePath); cmd == nil {
+		t.Fatal("expected file diff command")
+	}
+
+	if capture.name != testBashCmd {
+		t.Fatalf("expected bash command, got %q", capture.name)
+	}
+	if len(capture.args) != 2 || capture.args[0] != "-c" {
+		t.Fatalf("expected bash -c args, got %v", capture.args)
+	}
+	cmdStr := capture.args[1]
+	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123 --file 'file.txt'") {
+		t.Fatalf("expected lumen diff with commit and file, got %q", cmdStr)
+	}
+	if strings.Contains(cmdStr, "|") {
+		t.Fatalf("command mode should not use pipes, got %q", cmdStr)
+	}
+	if capture.dir != testWorktreePath {
+		t.Fatalf("expected worktree dir, got %q", capture.dir)
+	}
+}
+
 func TestShowCommitDiffVSCodeUsesGitDifftool(t *testing.T) {
 	repoDir, branch := setupCommitDiffRepo(t)
 	cfg := &config.AppConfig{

@@ -85,6 +85,7 @@ type AppConfig struct {
 	GitPagerArgsSet         bool `yaml:"-"`
 	GitPager                string
 	GitPagerInteractive     bool // Interactive tools need terminal control, skip piping to less
+	GitPagerCommandMode     bool // Command-mode tools run their own git commands (e.g. lumen diff)
 	TrustMode               string
 	DebugLog                string
 	Pager                   string
@@ -299,6 +300,7 @@ func parseConfig(data map[string]any) (*AppConfig, error) {
 	}
 
 	cfg.GitPagerInteractive = coerceBool(data["git_pager_interactive"], false)
+	cfg.GitPagerCommandMode = coerceBool(data["git_pager_command_mode"], false)
 
 	if branchNameScript, ok := data["branch_name_script"].(string); ok {
 		branchNameScript = strings.TrimSpace(branchNameScript)
@@ -826,6 +828,9 @@ func (cfg *AppConfig) ApplyCLIOverrides(overrides []string) error {
 	}
 	if _, ok := overrideData["git_pager_interactive"]; ok {
 		cfg.GitPagerInteractive = overrideCfg.GitPagerInteractive
+	}
+	if _, ok := overrideData["git_pager_command_mode"]; ok {
+		cfg.GitPagerCommandMode = overrideCfg.GitPagerCommandMode
 	}
 	if _, ok := overrideData["fuzzy_finder_input"]; ok {
 		cfg.FuzzyFinderInput = overrideCfg.FuzzyFinderInput

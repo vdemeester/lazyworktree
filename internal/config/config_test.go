@@ -1020,6 +1020,31 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "git_pager_command_mode true",
+			data: map[string]interface{}{
+				"git_pager_command_mode": true,
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.True(t, cfg.GitPagerCommandMode)
+			},
+		},
+		{
+			name: "git_pager_command_mode false",
+			data: map[string]interface{}{
+				"git_pager_command_mode": false,
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.False(t, cfg.GitPagerCommandMode)
+			},
+		},
+		{
+			name: "git_pager_command_mode defaults to false",
+			data: map[string]interface{}{},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.False(t, cfg.GitPagerCommandMode)
+			},
+		},
+		{
 			name: "custom_create_menus parsing",
 			data: map[string]interface{}{
 				"custom_create_menus": []interface{}{

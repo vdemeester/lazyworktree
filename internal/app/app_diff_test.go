@@ -207,3 +207,81 @@ func TestShowDiffVSCodeWithChanges(t *testing.T) {
 		t.Fatal("expected bash command containing 'git difftool' to be executed")
 	}
 }
+
+func TestShowDiffCommandModeNoDiff(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerCommandMode: true,
+		MaxUntrackedDiffs:   0,
+		MaxDiffChars:        1000,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir, Branch: featureBranch}}
+	m.state.data.selectedIndex = 0
+
+	cmd := m.showDiff()
+	if cmd != nil {
+		t.Fatal("expected no command when there are no changes in command mode")
+	}
+
+	if !m.state.ui.screenManager.IsActive() {
+		t.Fatal("expected screen manager to be active")
+	}
+	if m.state.ui.screenManager.Type() != screen.TypeInfo {
+		t.Fatalf("expected info screen, got %v", m.state.ui.screenManager.Type())
+	}
+	infoScreen, ok := m.state.ui.screenManager.Current().(*screen.InfoScreen)
+	if !ok {
+		t.Fatal("expected InfoScreen in screen manager")
+	}
+	if infoScreen.Message != testNoDiffMessage {
+		t.Fatalf("expected message %q, got %q", testNoDiffMessage, infoScreen.Message)
+	}
+}
+
+func TestShowDiffCommandModeWithChanges(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerCommandMode: true,
+		MaxUntrackedDiffs:   5,
+		MaxDiffChars:        1000,
+	}
+	m := NewModel(cfg, "")
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: cfg.WorktreeDir, Branch: featureBranch}}
+	m.state.data.selectedIndex = 0
+
+	m.state.data.statusFilesAll = []StatusFile{
+		{Filename: "test.go", Status: ".M", IsUntracked: false},
+	}
+
+	recorder := &commandRecorder{}
+	m.commandRunner = recorder.runner
+	m.execProcess = recorder.exec
+
+	cmd := m.showDiff()
+	if cmd == nil {
+		t.Fatal("expected a command when there are changes in command mode")
+	}
+
+	_ = cmd()
+
+	if len(recorder.execs) == 0 {
+		t.Fatal("expected at least one command to be executed")
+	}
+
+	found := false
+	for _, exec := range recorder.execs {
+		if exec.name == "bash" && len(exec.args) >= 2 && exec.args[0] == "-c" {
+			// Command mode: pager runs its own diff, no pipe
+			if strings.Contains(exec.args[1], "lumen diff") && !strings.Contains(exec.args[1], "|") {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected bash command containing 'lumen diff' without pipe to be executed")
+	}
+}

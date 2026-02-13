@@ -430,6 +430,7 @@ func TestIntegrationDiffViewerModesWithNoChanges(t *testing.T) {
 		name                string
 		gitPager            string
 		gitPagerInteractive bool
+		gitPagerCommandMode bool
 	}{
 		{
 			name:                "Non-interactive mode",
@@ -446,6 +447,11 @@ func TestIntegrationDiffViewerModesWithNoChanges(t *testing.T) {
 			gitPager:            "code --wait --diff",
 			gitPagerInteractive: false,
 		},
+		{
+			name:                "Command mode",
+			gitPager:            "lumen",
+			gitPagerCommandMode: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -454,6 +460,7 @@ func TestIntegrationDiffViewerModesWithNoChanges(t *testing.T) {
 				WorktreeDir:         t.TempDir(),
 				GitPager:            tc.gitPager,
 				GitPagerInteractive: tc.gitPagerInteractive,
+				GitPagerCommandMode: tc.gitPagerCommandMode,
 				MaxUntrackedDiffs:   5,
 				MaxDiffChars:        1000,
 			}
@@ -506,6 +513,7 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 		name                string
 		gitPager            string
 		gitPagerInteractive bool
+		gitPagerCommandMode bool
 		expectedCommand     string
 	}{
 		{
@@ -526,6 +534,12 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 			gitPagerInteractive: false,
 			expectedCommand:     "bash",
 		},
+		{
+			name:                "Command mode",
+			gitPager:            "lumen",
+			gitPagerCommandMode: true,
+			expectedCommand:     "bash",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -534,6 +548,7 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 				WorktreeDir:         t.TempDir(),
 				GitPager:            tc.gitPager,
 				GitPagerInteractive: tc.gitPagerInteractive,
+				GitPagerCommandMode: tc.gitPagerCommandMode,
 				MaxUntrackedDiffs:   5,
 				MaxDiffChars:        1000,
 			}
@@ -582,18 +597,25 @@ func TestIntegrationDiffViewerModesWithChanges(t *testing.T) {
 			for _, exec := range recorder.execs {
 				if exec.name == testBashCmd && len(exec.args) >= 2 && exec.args[0] == "-c" {
 					script := exec.args[1]
-					if strings.Contains(tc.gitPager, "code") {
+					switch {
+					case strings.Contains(tc.gitPager, "code"):
 						// VSCode mode uses git difftool
 						if strings.Contains(script, "git difftool") {
 							found = true
-							break
 						}
-					} else {
+					case tc.gitPagerCommandMode:
+						// Command mode: pager runs its own diff command
+						if strings.Contains(script, tc.gitPager+" diff") {
+							found = true
+						}
+					default:
 						// Non-interactive and interactive modes use git diff
 						if strings.Contains(script, "git diff") {
 							found = true
-							break
 						}
+					}
+					if found {
+						break
 					}
 				}
 			}

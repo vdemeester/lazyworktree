@@ -62,6 +62,7 @@ const (
 	diffModeNonInteractive diffMode = iota
 	diffModeInteractive
 	diffModeVSCode
+	diffModeCommand
 )
 
 // ShowDiff routes a worktree diff to the configured viewer.
@@ -79,6 +80,8 @@ func (r *DiffRouter) ShowDiff(params WorktreeDiffParams) tea.Cmd {
 	switch r.mode() {
 	case diffModeVSCode:
 		return r.showDiffVSCode(params)
+	case diffModeCommand:
+		return r.showDiffCommand(params)
 	case diffModeInteractive:
 		return r.showDiffInteractive(params)
 	default:
@@ -90,6 +93,10 @@ func (r *DiffRouter) ShowDiff(params WorktreeDiffParams) tea.Cmd {
 func (r *DiffRouter) ShowFileDiff(params FileDiffParams) tea.Cmd {
 	if params.Worktree == nil {
 		return nil
+	}
+
+	if r.mode() == diffModeCommand {
+		return r.showFileDiffCommand(params)
 	}
 
 	// Build environment variables
@@ -166,6 +173,8 @@ func (r *DiffRouter) ShowCommitDiff(params CommitDiffParams) tea.Cmd {
 	switch r.mode() {
 	case diffModeVSCode:
 		return r.showCommitDiffVSCode(params)
+	case diffModeCommand:
+		return r.showCommitDiffCommand(params)
 	case diffModeInteractive:
 		return r.showCommitDiffInteractive(params)
 	default:
@@ -178,6 +187,8 @@ func (r *DiffRouter) ShowCommitFileDiff(params CommitFileDiffParams) tea.Cmd {
 	switch r.mode() {
 	case diffModeVSCode:
 		return r.showCommitFileDiffVSCode(params)
+	case diffModeCommand:
+		return r.showCommitFileDiffCommand(params)
 	case diffModeInteractive:
 		return r.showCommitFileDiffInteractive(params)
 	default:
@@ -201,6 +212,99 @@ func (r *DiffRouter) showDiffInteractive(params WorktreeDiffParams) tea.Cmd {
 	// #nosec G204 -- command constructed from config and controlled inputs
 	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
 	c.Dir = params.Worktree.Path
+	c.Env = envVars
+
+	return r.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return r.errorMsg(err)
+		}
+		return r.refreshMsg()
+	})
+}
+
+func (r *DiffRouter) showDiffCommand(params WorktreeDiffParams) tea.Cmd {
+	env := r.buildCommandEnv(params.BuildCommandEnv, params.Worktree.Branch, params.Worktree.Path)
+	envVars := r.envVars(env, false)
+
+	gitPagerArgs := ""
+	if len(r.Config.GitPagerArgs) > 0 {
+		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
+	}
+	cmdStr := fmt.Sprintf("%s diff%s", r.Config.GitPager, gitPagerArgs)
+
+	// #nosec G204 -- command constructed from config and controlled inputs
+	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
+	c.Dir = params.Worktree.Path
+	c.Env = envVars
+
+	return r.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return r.errorMsg(err)
+		}
+		return r.refreshMsg()
+	})
+}
+
+func (r *DiffRouter) showFileDiffCommand(params FileDiffParams) tea.Cmd {
+	env := r.buildCommandEnv(params.BuildCommandEnv, params.Worktree.Branch, params.Worktree.Path)
+	envVars := r.envVars(env, false)
+
+	gitPagerArgs := ""
+	if len(r.Config.GitPagerArgs) > 0 {
+		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
+	}
+	escapedFilename := r.shellQuote(params.File.Filename)
+	cmdStr := fmt.Sprintf("%s diff%s --file %s", r.Config.GitPager, gitPagerArgs, escapedFilename)
+
+	// #nosec G204 -- command constructed from config and controlled inputs
+	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
+	c.Dir = params.Worktree.Path
+	c.Env = envVars
+
+	return r.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return r.errorMsg(err)
+		}
+		return r.refreshMsg()
+	})
+}
+
+func (r *DiffRouter) showCommitDiffCommand(params CommitDiffParams) tea.Cmd {
+	env := r.buildCommandEnv(params.BuildCommandEnv, params.Worktree.Branch, params.Worktree.Path)
+	envVars := r.envVars(env, false)
+
+	gitPagerArgs := ""
+	if len(r.Config.GitPagerArgs) > 0 {
+		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
+	}
+	cmdStr := fmt.Sprintf("%s diff%s %s", r.Config.GitPager, gitPagerArgs, params.CommitSHA)
+
+	// #nosec G204 -- command constructed from config and controlled inputs
+	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
+	c.Dir = params.Worktree.Path
+	c.Env = envVars
+
+	return r.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return r.errorMsg(err)
+		}
+		return r.refreshMsg()
+	})
+}
+
+func (r *DiffRouter) showCommitFileDiffCommand(params CommitFileDiffParams) tea.Cmd {
+	envVars := r.envVars(nil, false)
+
+	gitPagerArgs := ""
+	if len(r.Config.GitPagerArgs) > 0 {
+		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
+	}
+	escapedFilename := r.shellQuote(params.Filename)
+	cmdStr := fmt.Sprintf("%s diff%s %s --file %s", r.Config.GitPager, gitPagerArgs, params.CommitSHA, escapedFilename)
+
+	// #nosec G204 -- command constructed from config and controlled inputs
+	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
+	c.Dir = params.WorktreePath
 	c.Env = envVars
 
 	return r.ExecProcess(c, func(err error) tea.Msg {
@@ -481,6 +585,9 @@ func (r *DiffRouter) mode() diffMode {
 	}
 	if strings.Contains(r.Config.GitPager, "code") {
 		return diffModeVSCode
+	}
+	if r.Config.GitPagerCommandMode {
+		return diffModeCommand
 	}
 	if r.Config.GitPagerInteractive {
 		return diffModeInteractive

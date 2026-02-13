@@ -99,7 +99,7 @@ Override config values from the command line (repeatable).
 .br
 Format: \fB--config=lw.key=value\fR
 .br
-Supported keys: \fBtheme\fR, \fBworktree_dir\fR, \fBsort_mode\fR, \fBauto_refresh\fR, \fBdisable_pr\fR, \fBsearch_auto_select\fR, \fBfuzzy_finder_input\fR, \fBicon_set\fR, \fBpalette_mru\fR, \fBpalette_mru_limit\fR, \fBgit_pager\fR, \fBgit_pager_args\fR, \fBgit_pager_interactive\fR, \fBpager\fR, \fBeditor\fR, \fBmax_untracked_diffs\fR, \fBmax_diff_chars\fR, \fBrefresh_interval_seconds\fR, \fBtrust_mode\fR, \fBmerge_method\fR, \fBbranch_name_script\fR, \fBissue_branch_name_template\fR, \fBsession_prefix\fR, \fBinit_commands\fR, \fBterminate_commands\fR.
+Supported keys: \fBtheme\fR, \fBworktree_dir\fR, \fBsort_mode\fR, \fBauto_refresh\fR, \fBdisable_pr\fR, \fBsearch_auto_select\fR, \fBfuzzy_finder_input\fR, \fBicon_set\fR, \fBpalette_mru\fR, \fBpalette_mru_limit\fR, \fBgit_pager\fR, \fBgit_pager_args\fR, \fBgit_pager_interactive\fR, \fBgit_pager_command_mode\fR, \fBpager\fR, \fBeditor\fR, \fBmax_untracked_diffs\fR, \fBmax_diff_chars\fR, \fBrefresh_interval_seconds\fR, \fBtrust_mode\fR, \fBmerge_method\fR, \fBbranch_name_script\fR, \fBissue_branch_name_template\fR, \fBsession_prefix\fR, \fBinit_commands\fR, \fBterminate_commands\fR.
 .br
 Examples: \fB--config=lw.theme=nord\fR, \fB--config=lw.sort_mode=active\fR
 .br
@@ -856,6 +856,14 @@ Set to true for tools like diffnav, ftdv, or tig that provide keyboard navigatio
 When enabled, only unstaged changes (git diff) are shown.
 .br
 Non-interactive formatters like delta and diff-so-fancy should keep this false.
+.
+.TP
+.B git_pager_command_mode
+Enables command-based diff viewers that run their own git commands (default: false).
+.br
+Set to true for tools like lumen that accept subcommands such as \fBlumen diff\fR, \fBlumen diff <commit>\fR.
+.br
+When enabled, lazyworktree calls \fB<git_pager> diff [args...]\fR directly instead of piping git diff output.
 .
 .TP
 .B pager
