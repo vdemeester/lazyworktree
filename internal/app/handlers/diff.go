@@ -277,7 +277,8 @@ func (r *DiffRouter) showCommitDiffCommand(params CommitDiffParams) tea.Cmd {
 	if len(r.Config.GitPagerArgs) > 0 {
 		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
 	}
-	cmdStr := fmt.Sprintf("%s diff%s %s", r.Config.GitPager, gitPagerArgs, params.CommitSHA)
+	commitRef := fmt.Sprintf("%s^..%s", params.CommitSHA, params.CommitSHA)
+	cmdStr := fmt.Sprintf("%s diff%s %s", r.Config.GitPager, gitPagerArgs, commitRef)
 
 	// #nosec G204 -- command constructed from config and controlled inputs
 	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)
@@ -299,8 +300,9 @@ func (r *DiffRouter) showCommitFileDiffCommand(params CommitFileDiffParams) tea.
 	if len(r.Config.GitPagerArgs) > 0 {
 		gitPagerArgs = " " + strings.Join(r.Config.GitPagerArgs, " ")
 	}
+	commitRef := fmt.Sprintf("%s^..%s", params.CommitSHA, params.CommitSHA)
 	escapedFilename := r.shellQuote(params.Filename)
-	cmdStr := fmt.Sprintf("%s diff%s %s --file %s", r.Config.GitPager, gitPagerArgs, params.CommitSHA, escapedFilename)
+	cmdStr := fmt.Sprintf("%s diff%s %s --file %s", r.Config.GitPager, gitPagerArgs, commitRef, escapedFilename)
 
 	// #nosec G204 -- command constructed from config and controlled inputs
 	c := r.CommandRunner(r.Context, "bash", "-c", cmdStr)

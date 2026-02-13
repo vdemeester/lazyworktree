@@ -491,8 +491,8 @@ func TestShowCommitDiffCommandModeUsesOwnDiff(t *testing.T) {
 		t.Fatalf("expected bash -c args, got %v", capture.args)
 	}
 	cmdStr := capture.args[1]
-	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123") {
-		t.Fatalf("expected lumen diff with commit, got %q", cmdStr)
+	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123^..abc123") {
+		t.Fatalf("expected lumen diff with commit range, got %q", cmdStr)
 	}
 	if strings.Contains(cmdStr, "|") {
 		t.Fatalf("command mode should not use pipes, got %q", cmdStr)
@@ -563,8 +563,8 @@ func TestShowCommitFileDiffCommandModeUsesOwnDiff(t *testing.T) {
 		t.Fatalf("expected bash -c args, got %v", capture.args)
 	}
 	cmdStr := capture.args[1]
-	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123 --file 'file.txt'") {
-		t.Fatalf("expected lumen diff with commit and file, got %q", cmdStr)
+	if !strings.Contains(cmdStr, "lumen diff --theme dark abc123^..abc123 --file 'file.txt'") {
+		t.Fatalf("expected lumen diff with commit range and file, got %q", cmdStr)
 	}
 	if strings.Contains(cmdStr, "|") {
 		t.Fatalf("command mode should not use pipes, got %q", cmdStr)

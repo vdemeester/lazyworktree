@@ -932,6 +932,42 @@ func TestStatusFileEnterShowsDiff(t *testing.T) {
 	}
 }
 
+func TestLogPaneDiffCommandModeUsesCommitRange(t *testing.T) {
+	cfg := &config.AppConfig{
+		WorktreeDir:         t.TempDir(),
+		GitPager:            "lumen",
+		GitPagerCommandMode: true,
+	}
+	m := NewModel(cfg, "")
+	m.state.view.FocusedPane = 2
+	m.state.data.filteredWts = []*models.WorktreeInfo{
+		{Path: testWorktreePath, Branch: testFeat},
+	}
+	m.state.data.selectedIndex = 0
+	m.setLogEntries([]commitLogEntry{
+		{sha: "abc123", authorInitials: "ab", message: "Fix parser"},
+	}, true)
+
+	capture := &commandCapture{}
+	m.commandRunner = capture.runner
+	m.execProcess = capture.exec
+
+	_, cmd := m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+
+	if capture.name != testBashCmd {
+		t.Fatalf("expected bash command, got %q", capture.name)
+	}
+	if len(capture.args) != 2 || capture.args[0] != "-c" {
+		t.Fatalf("expected bash -c args, got %v", capture.args)
+	}
+	if !strings.Contains(capture.args[1], "lumen diff abc123^..abc123") {
+		t.Fatalf("expected commit range command, got %q", capture.args[1])
+	}
+}
+
 func TestStatusFileEditOpensEditor(t *testing.T) {
 	cfg := &config.AppConfig{
 		WorktreeDir: t.TempDir(),
