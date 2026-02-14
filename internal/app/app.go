@@ -479,6 +479,11 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 		sortMode = sortModeLastSwitched
 	}
 
+	layoutMode := state.LayoutDefault
+	if cfg.Layout == "top" {
+		layoutMode = state.LayoutTop
+	}
+
 	m := &Model{
 		config:   cfg,
 		theme:    thm,
@@ -493,6 +498,7 @@ func NewModel(cfg *config.AppConfig, initialFilter string) *Model {
 				ZoomedPane:   -1,
 				WindowWidth:  80,
 				WindowHeight: 24,
+				Layout:       layoutMode,
 			},
 		},
 		infoContent:   errNoWorktreeSelected,

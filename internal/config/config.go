@@ -102,6 +102,7 @@ type AppConfig struct {
 	IconSet                 string // Icon set: "nerd-font-v3", "text" (default: "nerd-font-v3"). Legacy "emoji" and "none" map to "text".
 	IssueBranchNameTemplate string // Template for issue branch names with placeholders: {number}, {title} (default: "issue-{number}-{title}")
 	SessionPrefix           string // Prefix for tmux/zellij session names (default: "wt-")
+	Layout                  string // Pane arrangement: "default" or "top" (default: "default")
 	PaletteMRU              bool   // Enable MRU sorting for command palette (default: false)
 	PaletteMRULimit         int    // Number of MRU items to show (default: 5)
 	CustomCreateMenus       []*CustomCreateMenu
@@ -135,6 +136,7 @@ func DefaultConfig() *AppConfig {
 		MergeMethod:             "rebase",
 		IssueBranchNameTemplate: "issue-{number}-{title}",
 		SessionPrefix:           "wt-",
+		Layout:                  "default",
 		PaletteMRU:              true,
 		PaletteMRULimit:         5,
 		IconSet:                 "nerd-font-v3",
@@ -334,6 +336,13 @@ func parseConfig(data map[string]any) (*AppConfig, error) {
 	cfg.PaletteMRULimit = coerceInt(data["palette_mru_limit"], 5)
 	if cfg.PaletteMRULimit <= 0 {
 		cfg.PaletteMRULimit = 5
+	}
+
+	if layout, ok := data["layout"].(string); ok {
+		layout = strings.ToLower(strings.TrimSpace(layout))
+		if layout == "default" || layout == "top" {
+			cfg.Layout = layout
+		}
 	}
 
 	if cfg.MaxUntrackedDiffs < 0 {
@@ -853,6 +862,10 @@ func (cfg *AppConfig) ApplyCLIOverrides(overrides []string) error {
 	}
 	if _, ok := overrideData["palette_mru_limit"]; ok {
 		cfg.PaletteMRULimit = overrideCfg.PaletteMRULimit
+	}
+
+	if _, ok := overrideData["layout"]; ok {
+		cfg.Layout = overrideCfg.Layout
 	}
 
 	return nil

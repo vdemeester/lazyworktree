@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
+	"github.com/chmouel/lazyworktree/internal/app/state"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
@@ -340,8 +341,22 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "h":
-		// Navigate left - go to pane 0 if not already there
-		if m.state.view.FocusedPane != 0 {
+		if m.state.view.Layout == state.LayoutTop {
+			// Top layout: h navigates left among bottom panes, or up to top
+			switch m.state.view.FocusedPane {
+			case 1:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 0
+				m.state.ui.worktreeTable.Focus()
+				m.ciCheckIndex = -1
+				m.rebuildStatusContentWithHighlight()
+			case 2:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 1
+				m.rebuildStatusContentWithHighlight()
+			}
+		} else if m.state.view.FocusedPane != 0 {
+			// Default layout: navigate left - go to pane 0 if not already there
 			m.state.view.ZoomedPane = -1
 			wasPane1 := m.state.view.FocusedPane == 1
 			m.state.view.FocusedPane = 0
@@ -354,24 +369,36 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "l":
-		// Navigate right - cycle through right panels (1, 2)
-		switch m.state.view.FocusedPane {
-		case 0:
-			// From left panel, go to status panel (1)
-			m.state.view.ZoomedPane = -1
-			m.state.view.FocusedPane = 1
-			m.rebuildStatusContentWithHighlight()
-		case 1:
-			// From status panel, go to log panel (2)
-			m.state.view.ZoomedPane = -1
-			m.state.view.FocusedPane = 2
-			m.ciCheckIndex = -1
-			m.state.ui.logTable.Focus()
-		default:
-			// From log panel (2), go back to status panel (1)
-			m.state.view.ZoomedPane = -1
-			m.state.view.FocusedPane = 1
-			m.rebuildStatusContentWithHighlight()
+		if m.state.view.Layout == state.LayoutTop {
+			// Top layout: l navigates right among panes
+			switch m.state.view.FocusedPane {
+			case 0:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 1
+				m.rebuildStatusContentWithHighlight()
+			case 1:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 2
+				m.ciCheckIndex = -1
+				m.state.ui.logTable.Focus()
+			}
+		} else {
+			// Default layout: navigate right - cycle through right panels (1, 2)
+			switch m.state.view.FocusedPane {
+			case 0:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 1
+				m.rebuildStatusContentWithHighlight()
+			case 1:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 2
+				m.ciCheckIndex = -1
+				m.state.ui.logTable.Focus()
+			default:
+				m.state.view.ZoomedPane = -1
+				m.state.view.FocusedPane = 1
+				m.rebuildStatusContentWithHighlight()
+			}
 		}
 		return m, nil
 
@@ -588,6 +615,15 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.commitAllChanges()
 		}
 		return m, m.showCherryPick()
+
+	case "L":
+		if m.state.view.Layout == state.LayoutDefault {
+			m.state.view.Layout = state.LayoutTop
+		} else {
+			m.state.view.Layout = state.LayoutDefault
+		}
+		m.state.view.ZoomedPane = -1
+		return m, nil
 
 	case "=":
 		if m.state.view.ZoomedPane >= 0 {
@@ -978,34 +1014,50 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		headerOffset = 2
 	}
 
-	// Left pane boundaries (worktree table)
-	leftX := 0
-	leftY := headerOffset
-	leftMaxX := layout.leftWidth
-	leftMaxY := headerOffset + layout.bodyHeight
-
-	// Right top pane boundaries (info/diff viewport)
-	rightX := layout.leftWidth + layout.gapX
-	rightTopY := headerOffset
-	rightTopMaxX := rightX + layout.rightWidth
-	rightTopMaxY := headerOffset + layout.rightTopHeight
-
-	// Right bottom pane boundaries (log table)
-	rightBottomY := headerOffset + layout.rightTopHeight + layout.gapY
-	rightBottomMaxY := headerOffset + layout.bodyHeight
-
-	// Determine which pane the mouse is in
 	mouseX := msg.X
 	mouseY := msg.Y
-
 	targetPane := -1
-	switch {
-	case mouseX >= leftX && mouseX < leftMaxX && mouseY >= leftY && mouseY < leftMaxY:
-		targetPane = 0 // Worktree table
-	case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightTopY && mouseY < rightTopMaxY:
-		targetPane = 1 // Status viewport
-	case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightBottomY && mouseY < rightBottomMaxY:
-		targetPane = 2 // Log table
+
+	if layout.layoutMode == state.LayoutTop {
+		// Top layout: worktree at top (full width), status+log side-by-side at bottom
+		topY := headerOffset
+		topMaxY := headerOffset + layout.topHeight
+
+		bottomY := headerOffset + layout.topHeight + layout.gapY
+		bottomMaxY := headerOffset + layout.bodyHeight
+		bottomLeftMaxX := layout.bottomLeftWidth
+		bottomRightX := layout.bottomLeftWidth + layout.gapX
+
+		switch {
+		case mouseY >= topY && mouseY < topMaxY:
+			targetPane = 0
+		case mouseX < bottomLeftMaxX && mouseY >= bottomY && mouseY < bottomMaxY:
+			targetPane = 1
+		case mouseX >= bottomRightX && mouseY >= bottomY && mouseY < bottomMaxY:
+			targetPane = 2
+		}
+	} else {
+		// Default layout: worktree on left, status+log stacked on right
+		leftMaxX := layout.leftWidth
+		leftY := headerOffset
+		leftMaxY := headerOffset + layout.bodyHeight
+
+		rightX := layout.leftWidth + layout.gapX
+		rightTopY := headerOffset
+		rightTopMaxX := rightX + layout.rightWidth
+		rightTopMaxY := headerOffset + layout.rightTopHeight
+
+		rightBottomY := headerOffset + layout.rightTopHeight + layout.gapY
+		rightBottomMaxY := headerOffset + layout.bodyHeight
+
+		switch {
+		case mouseX < leftMaxX && mouseY >= leftY && mouseY < leftMaxY:
+			targetPane = 0
+		case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightTopY && mouseY < rightTopMaxY:
+			targetPane = 1
+		case mouseX >= rightX && mouseX < rightTopMaxX && mouseY >= rightBottomY && mouseY < rightBottomMaxY:
+			targetPane = 2
+		}
 	}
 
 	switch {
@@ -1025,22 +1077,23 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if targetPane == 0 && len(m.state.data.filteredWts) > 0 {
 			// Calculate which row was clicked in the worktree table
 			// Account for pane border and title
-			relativeY := mouseY - leftY - 4
+			paneTopY := headerOffset
+			relativeY := mouseY - paneTopY - 4
 			if relativeY >= 0 && relativeY < len(m.state.data.filteredWts) {
-				// Create a key message to move cursor
-				for i := 0; i < len(m.state.data.filteredWts); i++ {
-					if i == relativeY {
-						m.state.ui.worktreeTable.SetCursor(i)
-						m.state.data.selectedIndex = i
-						m.updateWorktreeArrows()
-						cmds = append(cmds, m.debouncedUpdateDetailsView())
-						break
-					}
-				}
+				m.state.ui.worktreeTable.SetCursor(relativeY)
+				m.state.data.selectedIndex = relativeY
+				m.updateWorktreeArrows()
+				cmds = append(cmds, m.debouncedUpdateDetailsView())
 			}
 		} else if targetPane == 2 && len(m.state.data.logEntries) > 0 {
 			// Calculate which row was clicked in the log table
-			relativeY := mouseY - rightBottomY - 4
+			var logPaneTopY int
+			if layout.layoutMode == state.LayoutTop {
+				logPaneTopY = headerOffset + layout.topHeight + layout.gapY
+			} else {
+				logPaneTopY = headerOffset + layout.rightTopHeight + layout.gapY
+			}
+			relativeY := mouseY - logPaneTopY - 4
 			if relativeY >= 0 && relativeY < len(m.state.data.logEntries) {
 				m.state.ui.logTable.SetCursor(relativeY)
 			}

@@ -35,6 +35,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.Contains(t, cfg.CustomCommands, "Z")
 	assert.Equal(t, "Zellij", cfg.CustomCommands["Z"].Description)
 	assert.Empty(t, cfg.BranchNameScript)
+	assert.Equal(t, "default", cfg.Layout)
 }
 
 func TestSyntaxThemeForUITheme(t *testing.T) {
@@ -1120,6 +1121,42 @@ func TestParseConfig(t *testing.T) {
 			validate: func(t *testing.T, cfg *AppConfig) {
 				require.Len(t, cfg.CustomCreateMenus, 1)
 				assert.Equal(t, "Valid", cfg.CustomCreateMenus[0].Label)
+			},
+		},
+		{
+			name: "layout default",
+			data: map[string]interface{}{
+				"layout": "default",
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Equal(t, "default", cfg.Layout)
+			},
+		},
+		{
+			name: "layout top",
+			data: map[string]interface{}{
+				"layout": "top",
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Equal(t, "top", cfg.Layout)
+			},
+		},
+		{
+			name: "layout invalid falls back to default",
+			data: map[string]interface{}{
+				"layout": "invalid",
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Equal(t, "default", cfg.Layout)
+			},
+		},
+		{
+			name: "layout case insensitive",
+			data: map[string]interface{}{
+				"layout": "TOP",
+			},
+			validate: func(t *testing.T, cfg *AppConfig) {
+				assert.Equal(t, "top", cfg.Layout)
 			},
 		},
 	}

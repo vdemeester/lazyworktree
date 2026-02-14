@@ -184,6 +184,7 @@ func RegisterLogPaneActions(r *Registry, h LogHandlers) {
 // NavigationHandlers holds callbacks for navigation actions.
 type NavigationHandlers struct {
 	ToggleZoom    func() tea.Cmd
+	ToggleLayout  func() tea.Cmd
 	Filter        func() tea.Cmd
 	Search        func() tea.Cmd
 	FocusWorktree func() tea.Cmd
@@ -196,6 +197,7 @@ type NavigationHandlers struct {
 func RegisterNavigationActions(r *Registry, h NavigationHandlers) {
 	r.Register(
 		CommandAction{ID: "zoom-toggle", Label: "Toggle zoom", Description: "Toggle zoom on focused pane", Section: sectionNavigation, Shortcut: "=", Icon: IconNavigation, Handler: h.ToggleZoom},
+		CommandAction{ID: "toggle-layout", Label: "Toggle layout", Description: "Switch between default and top layout", Section: sectionNavigation, Shortcut: "L", Icon: IconNavigation, Handler: h.ToggleLayout},
 		CommandAction{ID: "filter", Label: "Filter", Description: "Filter items in focused pane", Section: sectionNavigation, Shortcut: "f", Icon: IconNavigation, Handler: h.Filter},
 		CommandAction{ID: "search", Label: "Search", Description: "Search items in focused pane", Section: sectionNavigation, Shortcut: "/", Icon: IconNavigation, Handler: h.Search},
 		CommandAction{ID: "focus-worktrees", Label: "Focus worktrees", Description: "Focus worktree pane", Section: sectionNavigation, Shortcut: "1", Icon: IconNavigation, Handler: h.FocusWorktree},

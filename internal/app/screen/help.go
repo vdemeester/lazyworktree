@@ -37,6 +37,7 @@ func NewHelpScreen(maxWidth, maxHeight int, customCommands map[string]*config.Cu
 - h / l: Left / Right pane
 - [ / ]: Previous / Next pane
 - Tab: Cycle to next pane
+- L: Toggle layout (default / top)
 - Enter: Jump to selected worktree (exit and cd)
 - q: Quit application
 

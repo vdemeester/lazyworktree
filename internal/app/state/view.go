@@ -20,6 +20,15 @@ const (
 	FilterTargetLog
 )
 
+// LayoutMode describes the pane arrangement.
+type LayoutMode int
+
+// Layout mode options.
+const (
+	LayoutDefault LayoutMode = iota
+	LayoutTop
+)
+
 // ViewState holds UI-related state for the model.
 type ViewState struct {
 	ShowingFilter bool
@@ -30,4 +39,5 @@ type ViewState struct {
 	ZoomedPane    int
 	WindowWidth   int
 	WindowHeight  int
+	Layout        LayoutMode
 }

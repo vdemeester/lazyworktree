@@ -155,6 +155,7 @@ Zsh helpers are in `shell/functions.zsh`. See [./shell/README.md](./shell/README
 | `Tab`, `]` | Cycle to next pane |
 | `[` | Cycle to previous pane |
 | `=` | Toggle zoom for focused pane (full screen) |
+| `L` | Toggle layout (default / top) |
 
 In the annotation editor (`i`): `Ctrl+S` saves, `Enter` adds a new line, `Tab` switches focus to the pinned checkbox, and `Esc` cancels.
 
@@ -256,6 +257,7 @@ Reads `~/.config/lazyworktree/config.yaml`. Example (also in [config.example.yam
 ```yaml
 worktree_dir: ~/.local/share/worktrees
 sort_mode: switched  # Options: "path", "active" (commit date), "switched" (last accessed)
+layout: default      # Pane arrangement: "default" or "top"
 auto_refresh: true
 refresh_interval: 10  # Seconds
 disable_pr: false     # Disable all PR/MR fetching and display (default: false)
@@ -349,6 +351,7 @@ git config --local --get-regexp "^lw\."
 **Worktree list and refresh**
 
 * `sort_mode`: `"switched"` (last accessed, default), `"active"` (commit date), or `"path"` (alphabetical).
+* `layout`: pane arrangement — `"default"` (worktrees left, status/log stacked right) or `"top"` (worktrees full-width top, status/log side-by-side bottom). Toggle at runtime with `L`.
 * `auto_refresh`: background refresh of git metadata (default: true).
 * `ci_auto_refresh`: periodically refresh CI status for GitHub repositories (default: false).
 * `refresh_interval`: refresh frequency in seconds (default: 10).

@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/chmouel/lazyworktree/internal/app/state"
 )
 
 // layoutDims holds computed layout dimensions for the UI.
@@ -23,6 +24,19 @@ type layoutDims struct {
 	rightBottomHeight      int
 	rightTopInnerHeight    int
 	rightBottomInnerHeight int
+
+	// Top layout fields
+	layoutMode             state.LayoutMode
+	topHeight              int
+	topInnerWidth          int
+	topInnerHeight         int
+	bottomHeight           int
+	bottomLeftWidth        int
+	bottomRightWidth       int
+	bottomLeftInnerWidth   int
+	bottomRightInnerWidth  int
+	bottomLeftInnerHeight  int
+	bottomRightInnerHeight int
 }
 
 // setWindowSize updates the window dimensions and applies the layout.
@@ -81,6 +95,10 @@ func (m *Model) computeLayout() layoutDims {
 			rightTopInnerHeight:    fullInnerHeight,
 			rightBottomInnerHeight: fullInnerHeight,
 		}
+	}
+
+	if m.state.view.Layout == state.LayoutTop {
+		return m.computeTopLayoutDims(width, height, headerHeight, footerHeight, filterHeight, bodyHeight)
 	}
 
 	leftRatio := 0.55
@@ -159,22 +177,132 @@ func (m *Model) computeLayout() layoutDims {
 	}
 }
 
+// computeTopLayoutDims calculates dimensions for the top layout mode
+// where worktrees span the full width at top and status+log sit side-by-side at bottom.
+func (m *Model) computeTopLayoutDims(width, height, headerHeight, footerHeight, filterHeight, bodyHeight int) layoutDims {
+	gapX := 1
+	gapY := 1
+
+	paneFrameX := m.basePaneStyle().GetHorizontalFrameSize()
+	paneFrameY := m.basePaneStyle().GetVerticalFrameSize()
+
+	// Vertical split: top 30% / bottom 70% with focus adjustments
+	topRatio := 0.30
+	switch m.state.view.FocusedPane {
+	case 0:
+		topRatio = 0.45
+	case 1, 2:
+		topRatio = 0.20
+	}
+
+	topHeight := maxInt(4, int(float64(bodyHeight-gapY)*topRatio))
+	bottomHeight := bodyHeight - topHeight - gapY
+	if bottomHeight < 6 {
+		bottomHeight = 6
+		topHeight = bodyHeight - bottomHeight - gapY
+	}
+	if topHeight < 4 {
+		topHeight = 4
+	}
+
+	// Bottom horizontal split: status 70% / log 30% with focus adjustments
+	statusRatio := 0.70
+	switch m.state.view.FocusedPane {
+	case 1:
+		statusRatio = 0.80
+	case 2:
+		statusRatio = 0.40
+	}
+
+	bottomLeftWidth := maxInt(minLeftPaneWidth, int(float64(width-gapX)*statusRatio))
+	bottomRightWidth := width - bottomLeftWidth - gapX
+	if bottomRightWidth < minRightPaneWidth {
+		bottomRightWidth = minRightPaneWidth
+		bottomLeftWidth = width - bottomRightWidth - gapX
+	}
+	if bottomLeftWidth < minLeftPaneWidth {
+		bottomLeftWidth = minLeftPaneWidth
+	}
+	if bottomLeftWidth+bottomRightWidth+gapX > width {
+		bottomRightWidth = width - bottomLeftWidth - gapX
+	}
+	if bottomRightWidth < 0 {
+		bottomRightWidth = 0
+	}
+
+	topInnerWidth := maxInt(1, width-paneFrameX)
+	topInnerHeight := maxInt(1, topHeight-paneFrameY)
+	bottomLeftInnerWidth := maxInt(1, bottomLeftWidth-paneFrameX)
+	bottomRightInnerWidth := maxInt(1, bottomRightWidth-paneFrameX)
+	bottomLeftInnerHeight := maxInt(1, bottomHeight-paneFrameY)
+	bottomRightInnerHeight := maxInt(1, bottomHeight-paneFrameY)
+
+	return layoutDims{
+		width:        width,
+		height:       height,
+		headerHeight: headerHeight,
+		footerHeight: footerHeight,
+		filterHeight: filterHeight,
+		bodyHeight:   bodyHeight,
+		gapX:         gapX,
+		gapY:         gapY,
+		layoutMode:   state.LayoutTop,
+
+		// Top layout fields
+		topHeight:              topHeight,
+		topInnerWidth:          topInnerWidth,
+		topInnerHeight:         topInnerHeight,
+		bottomHeight:           bottomHeight,
+		bottomLeftWidth:        bottomLeftWidth,
+		bottomRightWidth:       bottomRightWidth,
+		bottomLeftInnerWidth:   bottomLeftInnerWidth,
+		bottomRightInnerWidth:  bottomRightInnerWidth,
+		bottomLeftInnerHeight:  bottomLeftInnerHeight,
+		bottomRightInnerHeight: bottomRightInnerHeight,
+
+		// Populate default-layout fields for zoom mode compatibility
+		leftWidth:              width,
+		rightWidth:             width,
+		leftInnerWidth:         topInnerWidth,
+		rightInnerWidth:        bottomLeftInnerWidth,
+		leftInnerHeight:        topInnerHeight,
+		rightTopHeight:         bottomHeight,
+		rightBottomHeight:      bottomHeight,
+		rightTopInnerHeight:    bottomLeftInnerHeight,
+		rightBottomInnerHeight: bottomRightInnerHeight,
+	}
+}
+
 // applyLayout applies the computed layout dimensions to UI components.
 func (m *Model) applyLayout(layout layoutDims) {
 	titleHeight := 1
 	tableHeaderHeight := 1 // bubbles table has its own header
 
-	// Subtract 2 extra lines for safety margin
-	// Minimum height of 3 is required to prevent viewport slice bounds panic
-	tableHeight := maxInt(3, layout.leftInnerHeight-titleHeight-tableHeaderHeight-2)
-	m.state.ui.worktreeTable.SetWidth(layout.leftInnerWidth)
-	m.state.ui.worktreeTable.SetHeight(tableHeight)
-	m.updateTableColumns(layout.leftInnerWidth)
+	if layout.layoutMode == state.LayoutTop && m.state.view.ZoomedPane < 0 {
+		// Top layout: worktree uses full width at top, log uses bottom right
+		tableHeight := maxInt(3, layout.topInnerHeight-titleHeight-tableHeaderHeight-2)
+		m.state.ui.worktreeTable.SetWidth(layout.topInnerWidth)
+		m.state.ui.worktreeTable.SetHeight(tableHeight)
+		m.updateTableColumns(layout.topInnerWidth)
 
-	logHeight := maxInt(3, layout.rightBottomInnerHeight-titleHeight-tableHeaderHeight-2)
-	m.state.ui.logTable.SetWidth(layout.rightInnerWidth)
-	m.state.ui.logTable.SetHeight(logHeight)
-	m.updateLogColumns(layout.rightInnerWidth)
+		logHeight := maxInt(3, layout.bottomRightInnerHeight-titleHeight-tableHeaderHeight-2)
+		m.state.ui.logTable.SetWidth(layout.bottomRightInnerWidth)
+		m.state.ui.logTable.SetHeight(logHeight)
+		m.updateLogColumns(layout.bottomRightInnerWidth)
+	} else {
+		// Default layout or zoom mode
+		// Subtract 2 extra lines for safety margin
+		// Minimum height of 3 is required to prevent viewport slice bounds panic
+		tableHeight := maxInt(3, layout.leftInnerHeight-titleHeight-tableHeaderHeight-2)
+		m.state.ui.worktreeTable.SetWidth(layout.leftInnerWidth)
+		m.state.ui.worktreeTable.SetHeight(tableHeight)
+		m.updateTableColumns(layout.leftInnerWidth)
+
+		logHeight := maxInt(3, layout.rightBottomInnerHeight-titleHeight-tableHeaderHeight-2)
+		m.state.ui.logTable.SetWidth(layout.rightInnerWidth)
+		m.state.ui.logTable.SetHeight(logHeight)
+		m.updateLogColumns(layout.rightInnerWidth)
+	}
 
 	m.state.ui.filterInput.Width = maxInt(20, layout.width-18)
 }

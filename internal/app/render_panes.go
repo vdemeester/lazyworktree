@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/chmouel/lazyworktree/internal/app/state"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
 // renderBody renders the main body area with panes.
 func (m *Model) renderBody(layout layoutDims) string {
-	// Handle zoom mode: only render the zoomed pane
+	// Handle zoom mode: only render the zoomed pane (layout agnostic)
 	if m.state.view.ZoomedPane >= 0 {
 		switch m.state.view.ZoomedPane {
 		case 0:
@@ -21,6 +22,10 @@ func (m *Model) renderBody(layout layoutDims) string {
 		case 2:
 			return m.renderZoomedRightBottomPane(layout)
 		}
+	}
+
+	if layout.layoutMode == state.LayoutTop {
+		return m.renderTopLayoutBody(layout)
 	}
 
 	left := m.renderLeftPane(layout)
@@ -93,6 +98,80 @@ func (m *Model) renderRightBottomPane(layout layoutDims) string {
 		Width(layout.rightWidth).
 		Height(layout.rightBottomHeight).
 		MaxHeight(layout.rightBottomHeight).
+		Render(content)
+}
+
+// renderTopLayoutBody renders the body for the top layout mode.
+func (m *Model) renderTopLayoutBody(layout layoutDims) string {
+	top := m.renderTopPane(layout)
+	bottom := m.renderBottomPane(layout)
+	gap := strings.Repeat("\n", layout.gapY)
+	return lipgloss.JoinVertical(lipgloss.Left, top, gap, bottom)
+}
+
+// renderTopPane renders the full-width worktree pane at the top.
+func (m *Model) renderTopPane(layout layoutDims) string {
+	title := m.renderPaneTitle(1, "Worktrees", m.state.view.FocusedPane == 0, layout.topInnerWidth)
+	tableView := m.state.ui.worktreeTable.View()
+	content := lipgloss.JoinVertical(lipgloss.Left, title, tableView)
+	return m.paneStyle(m.state.view.FocusedPane == 0).
+		Width(layout.width).
+		Height(layout.topHeight).
+		MaxHeight(layout.topHeight).
+		Render(content)
+}
+
+// renderBottomPane renders the bottom pane container (status + log side by side).
+func (m *Model) renderBottomPane(layout layoutDims) string {
+	left := m.renderBottomLeftPane(layout)
+	right := m.renderBottomRightPane(layout)
+	gap := lipgloss.NewStyle().
+		Width(layout.gapX).
+		Render(strings.Repeat(" ", layout.gapX))
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, gap, right)
+}
+
+// renderBottomLeftPane renders the status pane in the bottom left of the top layout.
+func (m *Model) renderBottomLeftPane(layout layoutDims) string {
+	title := m.renderPaneTitle(2, "Status", m.state.view.FocusedPane == 1, layout.bottomLeftInnerWidth)
+
+	innerBoxStyle := m.baseInnerBoxStyle()
+	minStatusBoxRendered := 3 + innerBoxStyle.GetVerticalFrameSize()
+	maxInfoBoxHeight := maxInt(3, layout.bottomLeftInnerHeight-lipgloss.Height(title)-minStatusBoxRendered)
+	infoBox := m.renderInnerBox("Info", m.infoContent, layout.bottomLeftInnerWidth, maxInfoBoxHeight)
+
+	statusBoxHeight := maxInt(layout.bottomLeftInnerHeight-lipgloss.Height(title)-lipgloss.Height(infoBox)-2, 3)
+	statusViewportWidth := maxInt(1, layout.bottomLeftInnerWidth-innerBoxStyle.GetHorizontalFrameSize())
+	statusViewportHeight := maxInt(1, statusBoxHeight-innerBoxStyle.GetVerticalFrameSize())
+	m.state.ui.statusViewport.Width = statusViewportWidth
+	m.state.ui.statusViewport.Height = statusViewportHeight
+	m.state.ui.statusViewport.SetContent(m.statusContent)
+	statusBox := innerBoxStyle.
+		Width(layout.bottomLeftInnerWidth).
+		Height(statusBoxHeight).
+		Render(m.state.ui.statusViewport.View())
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		infoBox,
+		statusBox,
+	)
+	return m.paneStyle(m.state.view.FocusedPane == 1).
+		Width(layout.bottomLeftWidth).
+		Height(layout.bottomHeight).
+		MaxHeight(layout.bottomHeight).
+		Render(content)
+}
+
+// renderBottomRightPane renders the log pane in the bottom right of the top layout.
+func (m *Model) renderBottomRightPane(layout layoutDims) string {
+	title := m.renderPaneTitle(3, "Log", m.state.view.FocusedPane == 2, layout.bottomRightInnerWidth)
+	content := lipgloss.JoinVertical(lipgloss.Left, title, m.state.ui.logTable.View())
+	return m.paneStyle(m.state.view.FocusedPane == 2).
+		Width(layout.bottomRightWidth).
+		Height(layout.bottomHeight).
+		MaxHeight(layout.bottomHeight).
 		Render(content)
 }
 

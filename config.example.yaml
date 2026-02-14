@@ -9,6 +9,12 @@ worktree_dir: ~/.local/share/worktrees
 # Options: "path" (alphabetical), "active" (last commit date), "switched" (last accessed by you)
 sort_mode: switched
 
+# Pane arrangement
+# Options: "default" (worktrees left, status/log stacked right),
+#          "top" (worktrees full-width top, status/log side-by-side bottom)
+# Toggle at runtime with L
+layout: default
+
 # Refresh git metadata and working tree status in the background
 # Set to false to rely on manual refresh (r)
 auto_refresh: true
@@ -329,7 +335,7 @@ custom_create_menus:
     description: "Create from JIRA issue"
     command: "jayrah browse 'SRVKP' --choose"
     interactive: true
-    post_command: "git commit --allow-empty -m 'Initial commit for ${WORKTREE_BRANCH}'"
+    post_command: "echo ${WORKTREE_BRANCH}|sed 's/[^a-zA-Z0-9._-]/-/g' > $WORKTREE_PATH/.branchname;echo 'Branch name saved to .branchname'"
     post_interactive: false
   - label: "From clipboard"
     description: "Use clipboard as branch name"

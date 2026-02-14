@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/chmouel/lazyworktree/internal/app/commands"
 	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
+	"github.com/chmouel/lazyworktree/internal/app/state"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
 	"github.com/chmouel/lazyworktree/internal/theme"
@@ -216,6 +217,15 @@ func (m *Model) registerPaletteActions(registry *commands.Registry) {
 			} else {
 				m.state.view.ZoomedPane = m.state.view.FocusedPane
 			}
+			return nil
+		},
+		ToggleLayout: func() tea.Cmd {
+			if m.state.view.Layout == state.LayoutDefault {
+				m.state.view.Layout = state.LayoutTop
+			} else {
+				m.state.view.Layout = state.LayoutDefault
+			}
+			m.state.view.ZoomedPane = -1
 			return nil
 		},
 		Filter: func() tea.Cmd {
