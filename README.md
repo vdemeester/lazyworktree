@@ -59,6 +59,8 @@ as emacs!).
 * delta: Syntax-highlighted diffs (recommended)
 * lazygit: Full TUI git control
 * tmux / zellij: Session management
+* [aichat](https://github.com/sigoden/aichat) or similar LLM cli for automatic
+branch naming from diffs/issues.
 
 **Build-time only:**
 
