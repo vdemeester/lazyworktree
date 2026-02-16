@@ -687,7 +687,7 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 		}
 		// URL styled with cyan for consistency
 		urlStyle := lipgloss.NewStyle().Foreground(m.theme.Cyan).Underline(true)
-		infoLines = append(infoLines, fmt.Sprintf("  %s", urlStyle.Render(wt.PR.URL)))
+		infoLines = append(infoLines, fmt.Sprintf("  %s", urlStyle.Render(osc8Hyperlink(wt.PR.URL, wt.PR.URL))))
 	} else if wt.PR == nil && !m.config.DisablePR && wt.HasUpstream {
 		// Show PR status/error when PR is nil
 		grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
