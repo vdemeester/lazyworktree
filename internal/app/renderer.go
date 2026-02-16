@@ -66,6 +66,11 @@ func (m *Model) View() string {
 				ns.Resize(m.state.view.WindowWidth, m.state.view.WindowHeight)
 			}
 			return m.overlayPopup(baseView, scr.View(), 2)
+		case screen.TypeTaskboard:
+			if ts, ok := scr.(*screen.TaskboardScreen); ok {
+				ts.Resize(m.state.view.WindowWidth, m.state.view.WindowHeight)
+			}
+			return m.overlayPopup(baseView, scr.View(), 2)
 		case screen.TypePRSelect:
 			// PR selection screen with 2-margin popup
 			return m.overlayPopup(baseView, scr.View(), 2)

@@ -203,6 +203,7 @@ func TestTypeString(t *testing.T) {
 		{TypeTextarea, "textarea"},
 		{TypeNoteView, "note-view"},
 		{TypeLoading, "loading"},
+		{TypeTaskboard, "taskboard"},
 		{TypeHelp, "help"},
 		{Type(999), "unknown"},
 	}

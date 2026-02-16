@@ -601,6 +601,9 @@ func (m *Model) handleBuiltInKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		return m, m.showAnnotateWorktree()
 
+	case "T":
+		return m, m.showTaskboard()
+
 	case "A":
 		return m, m.showAbsorbWorktree()
 

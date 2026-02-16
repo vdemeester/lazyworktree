@@ -367,7 +367,7 @@ func TestShowCommandPaletteHasAllActions(t *testing.T) {
 		"stage-file", "commit-staged", "commit-all", "edit-file", "delete-file",
 		"cherry-pick", "commit-view",
 		"zoom-toggle", "filter", "search", "focus-worktrees", "focus-status", "focus-log", "sort-cycle",
-		"theme", "help",
+		"theme", "taskboard", "help",
 	}
 
 	paletteScreen := m.state.ui.screenManager.Current().(*appscreen.CommandPaletteScreen)

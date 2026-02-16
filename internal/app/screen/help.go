@@ -95,6 +95,8 @@ When CI checks are displayed in the info panel:
 - i: Open selected worktree notes (viewer if present, editor if empty)
 - Note viewer: j/k scroll, Ctrl+D/Ctrl+U half-page, g/G top/bottom, e edit, q/Esc close
 - Note editor: Ctrl+S saves, Enter adds a new line, Esc cancels
+- T: Open Taskboard (grouped by worktree from markdown checkbox notes)
+- Taskboard: Enter/Space toggles selected checkbox task, f filters tasks, q/Esc closes
 - Worktrees with non-empty notes show a note marker beside the name
 - In the Info pane, notes render Markdown for headings, bold text, inline code, lists, quotes, links, and fenced code blocks
 - Uppercase note tags such as TODO, FIXME, or WARNING: are highlighted with icons outside fenced code blocks; lowercase tags are left unchanged

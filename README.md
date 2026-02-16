@@ -34,6 +34,7 @@ as emacs!).
 * Command palette with MRU-based navigation.
 * Custom commands: define keybindings, tmux/zellij layouts, and per-repo workflows.
 * Init/terminate hooks via `.wt` files with TOFU security.
+* Taskboard: view markdown checkbox tasks grouped by worktree and toggle completion.
 * Shell integration: jump into worktrees and return to the last-used one.
 * Automatic branch naming via scripts (e.g., LLM tools).
 
@@ -127,6 +128,7 @@ Zsh helpers are in `shell/functions.zsh`. See [./shell/README.md](./shell/README
 | `j`, `k` | Move selection up/down in lists and menus |
 | `c` | Create new worktree (from branch, commit, PR/MR, or issue) |
 | `i` | Open selected worktree notes (viewer if present, editor if empty) |
+| `T` | Open Taskboard (grouped view of markdown checkbox tasks across worktrees) |
 | `m` | Rename selected worktree |
 | `D` | Delete selected worktree |
 | `d` | View diff in pager (worktree or commit, depending on pane) |
@@ -174,6 +176,13 @@ pane renders Markdown formatting for headings, bold text, inline code, lists,
 quotes, links, and fenced code blocks. Uppercase note tags such as `TODO`,
 `FIXME`, or `WARNING:` are highlighted with icons outside fenced code blocks,
 whilst lowercase tags remain unchanged.
+
+**Taskboard**
+
+Press `T` to open Taskboard, a Kanban-lite view grouped by worktree. Taskboard
+collects only markdown checkbox items from notes (for example, `- [ ] draft
+release notes` and `- [x] update changelog`). Use `j`/`k` to move, `Enter` or
+`Space` to toggle completion, `f` to filter, and `q`/`Esc` to close.
 
 **Log Pane** (when focused on commit log):
 

@@ -209,14 +209,16 @@ func RegisterNavigationActions(r *Registry, h NavigationHandlers) {
 
 // SettingsHandlers holds callbacks for settings actions.
 type SettingsHandlers struct {
-	Theme func() tea.Cmd
-	Help  func() tea.Cmd
+	Theme     func() tea.Cmd
+	Help      func() tea.Cmd
+	Taskboard func() tea.Cmd
 }
 
 // RegisterSettingsActions registers settings actions.
 func RegisterSettingsActions(r *Registry, h SettingsHandlers) {
 	r.Register(
 		CommandAction{ID: "theme", Label: "Select theme", Description: "Change the application theme with live preview", Section: sectionSettings, Icon: IconSettings, Handler: h.Theme},
+		CommandAction{ID: "taskboard", Label: "Taskboard", Description: "Browse and toggle worktree tasks", Section: sectionSettings, Shortcut: "T", Icon: IconSettings, Handler: h.Taskboard},
 		CommandAction{ID: "help", Label: "Help", Description: "Show help", Section: sectionSettings, Shortcut: "?", Icon: IconSettings, Handler: h.Help},
 	)
 }

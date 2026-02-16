@@ -275,6 +275,9 @@ func (m *Model) registerPaletteActions(registry *commands.Registry) {
 
 	commands.RegisterSettingsActions(registry, commands.SettingsHandlers{
 		Theme: m.showThemeSelection,
+		Taskboard: func() tea.Cmd {
+			return m.showTaskboard()
+		},
 		Help: func() tea.Cmd {
 			helpScreen := appscreen.NewHelpScreen(m.state.view.WindowWidth, m.state.view.WindowHeight, m.config.CustomCommands, m.theme, m.config.IconsEnabled())
 			m.state.ui.screenManager.Push(helpScreen)
