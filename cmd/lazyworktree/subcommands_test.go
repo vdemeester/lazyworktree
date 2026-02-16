@@ -334,6 +334,101 @@ func TestCreateCompletionIncludesExecFlag(t *testing.T) {
 	}
 }
 
+func runSubcommandCompletion(t *testing.T, cmd *urfavecli.Command, args []string) string {
+	t.Helper()
+
+	return captureStdout(t, func() {
+		origArgs := os.Args
+		os.Args = append([]string(nil), args...)
+		defer func() {
+			os.Args = origArgs
+		}()
+
+		app := &urfavecli.Command{
+			Name:                  "lazyworktree",
+			EnableShellCompletion: true,
+			Commands:              []*urfavecli.Command{cmd},
+		}
+		err := app.Run(context.Background(), args)
+		require.NoError(t, err)
+	})
+}
+
+func TestRenameCompletionSuggestsWorktreeBasenames(t *testing.T) {
+	oldList := listSubcommandWorktreeNamesFunc
+	t.Cleanup(func() {
+		listSubcommandWorktreeNamesFunc = oldList
+	})
+	listSubcommandWorktreeNamesFunc = func(context.Context, *urfavecli.Command) []string {
+		return []string{"feature-a", "feature-b"}
+	}
+
+	out := runSubcommandCompletion(t, renameCommand(), []string{"lazyworktree", "rename", "--generate-shell-completion"})
+
+	assert.Contains(t, out, "feature-a")
+	assert.Contains(t, out, "feature-b")
+	assert.NotContains(t, out, "--silent")
+}
+
+func TestDeleteCompletionSuggestsWorktreeBasenames(t *testing.T) {
+	oldList := listSubcommandWorktreeNamesFunc
+	t.Cleanup(func() {
+		listSubcommandWorktreeNamesFunc = oldList
+	})
+	listSubcommandWorktreeNamesFunc = func(context.Context, *urfavecli.Command) []string {
+		return []string{"feature-a", "feature-b"}
+	}
+
+	out := runSubcommandCompletion(t, deleteCommand(), []string{"lazyworktree", "delete", "--no-branch", "--generate-shell-completion"})
+
+	assert.Contains(t, out, "feature-a")
+	assert.Contains(t, out, "feature-b")
+	assert.NotContains(t, out, "--no-branch")
+}
+
+func TestRenameCompletionWithFirstPositionalFallsBackToFlags(t *testing.T) {
+	oldList := listSubcommandWorktreeNamesFunc
+	t.Cleanup(func() {
+		listSubcommandWorktreeNamesFunc = oldList
+	})
+	listSubcommandWorktreeNamesFunc = func(context.Context, *urfavecli.Command) []string {
+		return []string{"feature-a", "feature-b"}
+	}
+
+	out := runSubcommandCompletion(t, renameCommand(), []string{"lazyworktree", "rename", "feature-a", "--generate-shell-completion"})
+
+	assert.Contains(t, out, "--silent")
+	assert.NotContains(t, out, "feature-b")
+}
+
+func TestDeleteCompletionWithPartialFlagFiltersFlags(t *testing.T) {
+	oldList := listSubcommandWorktreeNamesFunc
+	t.Cleanup(func() {
+		listSubcommandWorktreeNamesFunc = oldList
+	})
+	listSubcommandWorktreeNamesFunc = func(context.Context, *urfavecli.Command) []string {
+		return []string{"feature-a", "feature-b"}
+	}
+
+	out := runSubcommandCompletion(t, deleteCommand(), []string{"lazyworktree", "delete", "--n", "--generate-shell-completion"})
+
+	assert.Contains(t, out, "--no-branch")
+	assert.NotContains(t, out, "feature-a")
+}
+
+func TestUniqueSortedWorktreeBasenames(t *testing.T) {
+	worktrees := []*models.WorktreeInfo{
+		nil,
+		{Path: "/tmp/main", IsMain: true},
+		{Path: "/tmp/zeta"},
+		{Path: "/tmp/alpha"},
+		{Path: "/tmp/zeta"},
+		{Path: ""},
+	}
+
+	assert.Equal(t, []string{"alpha", "zeta"}, uniqueSortedWorktreeBasenames(worktrees))
+}
+
 func TestHandleListValidation(t *testing.T) {
 	tests := []struct {
 		name        string

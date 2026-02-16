@@ -58,11 +58,11 @@ var (
 
 // handleSubcommandCompletion checks if completion is being requested and outputs flags.
 // Returns true if completion was handled, false otherwise.
-func handleSubcommandCompletion(cmd *appiCli.Command) bool {
+func handleSubcommandCompletion(ctx context.Context, cmd *appiCli.Command) bool {
 	if !slices.Contains(os.Args, "--generate-shell-completion") {
 		return false
 	}
-	outputSubcommandFlags(cmd)
+	outputSubcommandCompletions(ctx, cmd)
 	return true
 }
 
@@ -92,15 +92,11 @@ func outputSubcommandFlags(cmd *appiCli.Command) {
 	}
 }
 
-// subcommandShellComplete handles shell completion for subcommands.
-// It handles the "--" case by outputting all flags, and filters flags for partial matches.
-func subcommandShellComplete(_ context.Context, cmd *appiCli.Command) {
-	args := os.Args
-	argsLen := len(args)
-	lastArg := ""
-	if argsLen > 1 {
-		lastArg = args[argsLen-2]
-	}
+var listSubcommandWorktreeNamesFunc = listSubcommandWorktreeNames
+
+// outputSubcommandCompletions routes shell completion output for subcommands.
+func outputSubcommandCompletions(ctx context.Context, cmd *appiCli.Command) {
+	lastArg := completionTokenFromArgs(os.Args)
 
 	// Handle the "--" case by outputting all flags
 	if lastArg == "--" {
@@ -109,13 +105,118 @@ func subcommandShellComplete(_ context.Context, cmd *appiCli.Command) {
 	}
 
 	// Handle partial flag matches (e.g., --n<TAB>)
-	if strings.HasPrefix(lastArg, "-") {
+	if strings.HasPrefix(lastArg, "-") && !isExactSubcommandFlag(cmd, lastArg) {
 		outputSubcommandFlagsFiltered(cmd, lastArg)
+		return
+	}
+
+	if names := completionWorktreeBasenames(ctx, cmd); len(names) > 0 {
+		outputCompletionLines(names)
 		return
 	}
 
 	// Default: output all flags
 	outputSubcommandFlags(cmd)
+}
+
+func completionTokenFromArgs(args []string) string {
+	if len(args) <= 1 {
+		return ""
+	}
+	return args[len(args)-2]
+}
+
+func isExactSubcommandFlag(cmd *appiCli.Command, candidate string) bool {
+	for _, flag := range cmd.Flags {
+		for _, name := range flag.Names() {
+			prefix := "--"
+			if len(name) == 1 {
+				prefix = "-"
+			}
+			if candidate == prefix+name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func completionWorktreeBasenames(ctx context.Context, cmd *appiCli.Command) []string {
+	if (cmd.Name != "delete" && cmd.Name != "rename") || cmd.NArg() != 0 {
+		return nil
+	}
+
+	return listSubcommandWorktreeNamesFunc(ctx, cmd)
+}
+
+func outputCompletionLines(lines []string) {
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func listSubcommandWorktreeNames(ctx context.Context, cmd *appiCli.Command) []string {
+	cfg, err := loadCompletionConfig(cmd)
+	if err != nil {
+		return nil
+	}
+
+	gitSvc := newCLIGitServiceFunc(cfg)
+	worktrees, err := gitSvc.GetWorktrees(ctx)
+	if err != nil {
+		return nil
+	}
+
+	return uniqueSortedWorktreeBasenames(worktrees)
+}
+
+func loadCompletionConfig(cmd *appiCli.Command) (*config.AppConfig, error) {
+	cfg, err := config.LoadConfig(cmd.String("config-file"))
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	if err := applyWorktreeDirConfig(cfg, cmd.String("worktree-dir")); err != nil {
+		return nil, err
+	}
+
+	if configOverrides := cmd.StringSlice("config"); len(configOverrides) > 0 {
+		if err := cfg.ApplyCLIOverrides(configOverrides); err != nil {
+			return nil, err
+		}
+	}
+
+	return cfg, nil
+}
+
+func uniqueSortedWorktreeBasenames(worktrees []*models.WorktreeInfo) []string {
+	seen := make(map[string]struct{}, len(worktrees))
+	names := make([]string, 0, len(worktrees))
+
+	for _, wt := range worktrees {
+		if wt == nil || wt.IsMain {
+			continue
+		}
+
+		name := filepath.Base(strings.TrimSpace(wt.Path))
+		if name == "" || name == "." || name == string(filepath.Separator) {
+			continue
+		}
+
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+	return names
+}
+
+// subcommandShellComplete handles shell completion for subcommands.
+func subcommandShellComplete(ctx context.Context, cmd *appiCli.Command) {
+	outputSubcommandCompletions(ctx, cmd)
 }
 
 // outputSubcommandFlagsFiltered prints flags matching the given prefix.
@@ -154,7 +255,7 @@ func createCommand() *appiCli.Command {
 		Name:  "create",
 		Usage: "Create a new worktree",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
-			if handleSubcommandCompletion(cmd) {
+			if handleSubcommandCompletion(ctx, cmd) {
 				return nil
 			}
 			if err := validateCreateFlags(ctx, cmd); err != nil {
@@ -222,7 +323,7 @@ func deleteCommand() *appiCli.Command {
 		Usage:     "Delete a worktree",
 		ArgsUsage: "[worktree-path]",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
-			if handleSubcommandCompletion(cmd) {
+			if handleSubcommandCompletion(ctx, cmd) {
 				return nil
 			}
 			return handleDeleteAction(ctx, cmd)
@@ -247,7 +348,7 @@ func renameCommand() *appiCli.Command {
 		Usage:     "Rename a worktree",
 		ArgsUsage: "[worktree-path-or-name] [new-name]",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
-			if handleSubcommandCompletion(cmd) {
+			if handleSubcommandCompletion(ctx, cmd) {
 				return nil
 			}
 			return handleRenameAction(ctx, cmd)
@@ -569,7 +670,7 @@ func listCommand() *appiCli.Command {
 		Aliases: []string{"ls"},
 		Usage:   "List all worktrees",
 		Action: func(ctx context.Context, cmd *appiCli.Command) error {
-			if handleSubcommandCompletion(cmd) {
+			if handleSubcommandCompletion(ctx, cmd) {
 				return nil
 			}
 			return handleListAction(ctx, cmd)
