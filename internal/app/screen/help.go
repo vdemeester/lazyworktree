@@ -95,7 +95,8 @@ When CI checks are displayed in the info panel:
 - i: Edit selected worktree notes
 - Note editor: Ctrl+S saves, Enter adds a new line, Esc cancels
 - Worktrees with non-empty notes show a note marker beside the name
-- In the Info pane, uppercase note tags such as TODO, FIXME, or WARNING: are highlighted with icons; lowercase tags are left unchanged
+- In the Info pane, notes render Markdown for headings, bold text, inline code, lists, quotes, links, and fenced code blocks
+- Uppercase note tags such as TODO, FIXME, or WARNING: are highlighted with icons outside fenced code blocks; lowercase tags are left unchanged
 - m: Rename selected worktree
 - D: Delete selected worktree
 - A: Absorb worktree into main (merge or rebase based on configuration, then delete)

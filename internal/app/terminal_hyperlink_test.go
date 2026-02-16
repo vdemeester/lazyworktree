@@ -9,10 +9,17 @@ import (
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
-var ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var (
+	ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	osc8EscapeRegex = regexp.MustCompile(`\x1b]8;;[^\x1b]*\x1b\\`)
+)
 
 func stripANSISequences(s string) string {
 	return ansiEscapeRegex.ReplaceAllString(s, "")
+}
+
+func stripTerminalSequences(s string) string {
+	return stripANSISequences(osc8EscapeRegex.ReplaceAllString(s, ""))
 }
 
 func TestBuildInfoContentPRNumberUsesOSCHyperlink(t *testing.T) {
@@ -221,5 +228,66 @@ func TestBuildInfoContentAnnotationKeywordsNerdFontIcons(t *testing.T) {
 	}
 	if !strings.Contains(plain, "⏲ TEST:") {
 		t.Fatalf("expected TEST nerd-font icon badge with colon, got %q", plain)
+	}
+}
+
+func TestBuildInfoContentNotesRenderMarkdown(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.WorktreeDir = t.TempDir()
+	cfg.IconSet = "text"
+	m := NewModel(cfg, "")
+
+	wt := &models.WorktreeInfo{
+		Path:   "/tmp/wt-md",
+		Branch: "feature/notes-markdown",
+	}
+	m.worktreeNotes[worktreeNoteKey(wt.Path)] = models.WorktreeNote{
+		Note: "# Heading\n**Implementation Notes:**\n- **Problem:** `create_comment` was called repeatedly\n1. second item\n> quoted line\n[docs](https://example.com/docs)\n```go\nTODO: inside code fence\n```",
+	}
+
+	info := m.buildInfoContent(wt)
+	if !strings.Contains(info, osc8Hyperlink("docs", "https://example.com/docs")) {
+		t.Fatalf("expected markdown link to render as hyperlink, got %q", info)
+	}
+
+	plain := stripTerminalSequences(info)
+	if strings.Contains(plain, "# Heading") {
+		t.Fatalf("expected heading marker to be stripped, got %q", plain)
+	}
+	if !strings.Contains(plain, "Heading") {
+		t.Fatalf("expected heading text to be shown, got %q", plain)
+	}
+	if strings.Contains(plain, "**Implementation Notes:**") {
+		t.Fatalf("expected bold markdown markers to be removed, got %q", plain)
+	}
+	if !strings.Contains(plain, "Implementation Notes:") {
+		t.Fatalf("expected bold markdown text to remain visible, got %q", plain)
+	}
+	if !strings.Contains(plain, "- Problem: create_comment was called repeatedly") {
+		t.Fatalf("expected markdown bullet list item, got %q", plain)
+	}
+	if strings.Contains(plain, "`create_comment`") {
+		t.Fatalf("expected inline code markers to be removed, got %q", plain)
+	}
+	if !strings.Contains(plain, "create_comment") {
+		t.Fatalf("expected inline code content to remain visible, got %q", plain)
+	}
+	if !strings.Contains(plain, "1. second item") {
+		t.Fatalf("expected markdown ordered list item, got %q", plain)
+	}
+	if !strings.Contains(plain, "| quoted line") {
+		t.Fatalf("expected markdown blockquote, got %q", plain)
+	}
+	if strings.Contains(plain, "[docs](https://example.com/docs)") {
+		t.Fatalf("expected markdown link syntax to be removed, got %q", plain)
+	}
+	if strings.Contains(plain, "```") {
+		t.Fatalf("expected code fence markers to be hidden, got %q", plain)
+	}
+	if !strings.Contains(plain, "TODO: inside code fence") {
+		t.Fatalf("expected code fence content to remain visible, got %q", plain)
+	}
+	if strings.Contains(plain, "[ ] TODO: inside code fence") {
+		t.Fatalf("did not expect annotation keyword replacement inside fenced code, got %q", plain)
 	}
 }

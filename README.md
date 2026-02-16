@@ -159,7 +159,14 @@ Zsh helpers are in `shell/functions.zsh`. See [./shell/README.md](./shell/README
 | `=` | Toggle zoom for focused pane (full screen) |
 | `L` | Toggle layout (default / top) |
 
-In the note editor (`i`): `Ctrl+S` saves, `Enter` adds a new line, and `Esc` cancels. Worktrees with non-empty notes show a note marker beside the name. In the Info pane, uppercase note tags such as `TODO`, `FIXME`, or `WARNING:` are highlighted with icons. Lowercase tags are left unchanged.
+**Note Editor**
+
+In the note editor (`i`), use `Ctrl+S` to save, `Enter` to add a new line, and
+`Esc` to cancel. Worktrees with notes display a note marker beside the name.
+The Info pane renders Markdown formatting for headings, bold text, inline code,
+lists, quotes, links, and fenced code blocks. Uppercase note tags such as
+`TODO`, `FIXME`, or `WARNING:` are highlighted with icons outside fenced code
+blocks, whilst lowercase tags remain unchanged.
 
 **Log Pane** (when focused on commit log):
 

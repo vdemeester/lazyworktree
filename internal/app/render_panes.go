@@ -67,6 +67,9 @@ var annotationKeywordSpecs = []annotationKeywordSpec{
 var (
 	annotationAliasMap     = buildAnnotationAliasMap()
 	annotationKeywordRegex = regexp.MustCompile(buildAnnotationKeywordPattern())
+	markdownInlineLinkRe   = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
+	markdownStrongRe       = regexp.MustCompile(`\*\*([^*]+)\*\*|__([^_]+)__`)
+	markdownInlineCodeRe   = regexp.MustCompile("`([^`]+)`")
 )
 
 func buildAnnotationAliasMap() map[string]annotationKeywordSpec {
@@ -167,6 +170,207 @@ func (m *Model) renderAnnotationKeywords(line string, valueStyle lipgloss.Style)
 		b.WriteString(valueStyle.Render(line[last:]))
 	}
 	return b.String()
+}
+
+func parseMarkdownHeading(line string) (string, bool) {
+	level := 0
+	for level < len(line) && line[level] == '#' {
+		level++
+	}
+	if level == 0 || level > 6 || level >= len(line) || line[level] != ' ' {
+		return "", false
+	}
+
+	return strings.TrimSpace(line[level+1:]), true
+}
+
+func parseMarkdownUnorderedList(line string) (int, string, bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) < 3 {
+		return 0, "", false
+	}
+
+	marker := trimmed[0]
+	if marker != '-' && marker != '*' && marker != '+' {
+		return 0, "", false
+	}
+	if trimmed[1] != ' ' {
+		return 0, "", false
+	}
+
+	leading := len(line) - len(trimmed)
+	return leading / 2, strings.TrimSpace(trimmed[2:]), true
+}
+
+func parseMarkdownOrderedList(line string) (int, string, string, bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) < 4 {
+		return 0, "", "", false
+	}
+
+	i := 0
+	for i < len(trimmed) && trimmed[i] >= '0' && trimmed[i] <= '9' {
+		i++
+	}
+	if i == 0 || i+1 >= len(trimmed) {
+		return 0, "", "", false
+	}
+	if (trimmed[i] != '.' && trimmed[i] != ')') || trimmed[i+1] != ' ' {
+		return 0, "", "", false
+	}
+
+	leading := len(line) - len(trimmed)
+	return leading / 2, trimmed[:i+1], strings.TrimSpace(trimmed[i+2:]), true
+}
+
+func isMarkdownHorizontalRule(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if len(trimmed) < 3 {
+		return false
+	}
+
+	var marker byte
+	count := 0
+	for i := 0; i < len(trimmed); i++ {
+		ch := trimmed[i]
+		if ch == ' ' {
+			continue
+		}
+		if marker == 0 {
+			if ch != '-' && ch != '*' && ch != '_' {
+				return false
+			}
+			marker = ch
+		}
+		if ch != marker {
+			return false
+		}
+		count++
+	}
+
+	return count >= 3
+}
+
+func (m *Model) renderInlineMarkdown(line string) string {
+	codeStyle := lipgloss.NewStyle().Foreground(m.theme.Cyan)
+	strongStyle := lipgloss.NewStyle().Bold(true).Foreground(m.theme.TextFg)
+
+	line = markdownInlineCodeRe.ReplaceAllStringFunc(line, func(match string) string {
+		parts := markdownInlineCodeRe.FindStringSubmatch(match)
+		if len(parts) != 2 {
+			return match
+		}
+		return codeStyle.Render(parts[1])
+	})
+
+	line = markdownStrongRe.ReplaceAllStringFunc(line, func(match string) string {
+		parts := markdownStrongRe.FindStringSubmatch(match)
+		if len(parts) != 3 {
+			return match
+		}
+
+		content := parts[1]
+		if content == "" {
+			content = parts[2]
+		}
+		return strongStyle.Render(content)
+	})
+
+	return markdownInlineLinkRe.ReplaceAllStringFunc(line, func(match string) string {
+		parts := markdownInlineLinkRe.FindStringSubmatch(match)
+		if len(parts) != 3 {
+			return match
+		}
+
+		label := strings.TrimSpace(parts[1])
+		url := strings.TrimSpace(parts[2])
+		if label == "" {
+			label = url
+		}
+		return osc8Hyperlink(label, url)
+	})
+}
+
+func (m *Model) renderMarkdownNoteLines(noteText string, valueStyle lipgloss.Style) []string {
+	normalized := strings.ReplaceAll(noteText, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	rendered := make([]string, 0, len(lines))
+
+	headingStyle := valueStyle.Bold(true).Foreground(m.theme.Accent)
+	quoteStyle := valueStyle.Foreground(m.theme.MutedFg)
+	codeStyle := valueStyle.Foreground(m.theme.MutedFg)
+	ruleStyle := valueStyle.Foreground(m.theme.MutedFg)
+
+	inCodeFence := false
+	codeFenceMarker := ""
+
+	for _, rawLine := range lines {
+		trimmed := strings.TrimSpace(rawLine)
+
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			marker := trimmed[:3]
+			if !inCodeFence {
+				inCodeFence = true
+				codeFenceMarker = marker
+			} else if marker == codeFenceMarker {
+				inCodeFence = false
+				codeFenceMarker = ""
+			}
+			continue
+		}
+
+		if trimmed == "" {
+			rendered = append(rendered, "  ")
+			continue
+		}
+
+		if inCodeFence {
+			codeLine := strings.TrimLeft(rawLine, " \t")
+			rendered = append(rendered, "  "+codeStyle.Render(codeLine))
+			continue
+		}
+
+		if heading, ok := parseMarkdownHeading(trimmed); ok {
+			line := m.renderAnnotationKeywords(heading, headingStyle)
+			rendered = append(rendered, "  "+m.renderInlineMarkdown(line))
+			continue
+		}
+
+		if isMarkdownHorizontalRule(trimmed) {
+			rendered = append(rendered, "  "+ruleStyle.Render(strings.Repeat("-", 20)))
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, ">") {
+			quoted := strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
+			line := m.renderAnnotationKeywords("| "+quoted, quoteStyle)
+			rendered = append(rendered, "  "+m.renderInlineMarkdown(line))
+			continue
+		}
+
+		if indent, item, ok := parseMarkdownUnorderedList(rawLine); ok {
+			prefix := strings.Repeat("  ", indent) + "- "
+			line := m.renderAnnotationKeywords(prefix+item, valueStyle)
+			rendered = append(rendered, "  "+m.renderInlineMarkdown(line))
+			continue
+		}
+
+		if indent, marker, item, ok := parseMarkdownOrderedList(rawLine); ok {
+			prefix := strings.Repeat("  ", indent) + marker + " "
+			line := m.renderAnnotationKeywords(prefix+item, valueStyle)
+			rendered = append(rendered, "  "+m.renderInlineMarkdown(line))
+			continue
+		}
+
+		line := m.renderAnnotationKeywords(strings.TrimLeft(rawLine, " \t"), valueStyle)
+		rendered = append(rendered, "  "+m.renderInlineMarkdown(line))
+	}
+
+	if len(rendered) == 0 {
+		return []string{"  "}
+	}
+
+	return rendered
 }
 
 // renderBody renders the main body area with panes.
@@ -441,9 +645,7 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 	if note, ok := m.getWorktreeNote(wt.Path); ok {
 		infoLines = append(infoLines, "")
 		infoLines = append(infoLines, sectionStyle.Render("Notes:"))
-		for _, line := range strings.Split(note.Note, "\n") {
-			infoLines = append(infoLines, "  "+m.renderAnnotationKeywords(line, valueStyle))
-		}
+		infoLines = append(infoLines, m.renderMarkdownNoteLines(note.Note, valueStyle)...)
 	}
 	hidePRDetails := wt.PR != nil && wt.IsMain && (wt.PR.State == prStateMerged || wt.PR.State == prStateClosed)
 	if wt.PR != nil && !hidePRDetails && !m.config.DisablePR {
