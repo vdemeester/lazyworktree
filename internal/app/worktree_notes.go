@@ -40,7 +40,7 @@ func (m *Model) getWorktreeNote(path string) (models.WorktreeNote, bool) {
 	return note, ok
 }
 
-func (m *Model) setWorktreeNote(path, noteText string, pinned bool) {
+func (m *Model) setWorktreeNote(path, noteText string) {
 	if strings.TrimSpace(path) == "" {
 		return
 	}
@@ -50,7 +50,7 @@ func (m *Model) setWorktreeNote(path, noteText string, pinned bool) {
 
 	trimmed := strings.TrimSpace(noteText)
 	key := worktreeNoteKey(path)
-	if trimmed == "" && !pinned {
+	if trimmed == "" {
 		delete(m.worktreeNotes, key)
 		m.saveWorktreeNotes()
 		return
@@ -58,7 +58,6 @@ func (m *Model) setWorktreeNote(path, noteText string, pinned bool) {
 
 	m.worktreeNotes[key] = models.WorktreeNote{
 		Note:      trimmed,
-		Pinned:    pinned,
 		UpdatedAt: time.Now().Unix(),
 	}
 	m.saveWorktreeNotes()
@@ -117,16 +116,10 @@ func (m *Model) pruneStaleWorktreeNotes(worktrees []*models.WorktreeInfo) {
 	}
 }
 
-func (m *Model) worktreeNoteBadge(note models.WorktreeNote) string {
+func (m *Model) worktreeNoteBadge(_ models.WorktreeNote) string {
 	iconSet := strings.ToLower(strings.TrimSpace(m.config.IconSet))
 	if iconSet == "nerd-font-v3" {
-		if note.Pinned {
-			return "★"
-		}
 		return "✎"
-	}
-	if note.Pinned {
-		return "[P]"
 	}
 	return "[N]"
 }

@@ -591,7 +591,6 @@ func (m *Model) showAnnotateWorktree() tea.Cmd {
 		m.theme,
 		m.config.IconsEnabled(),
 	)
-	textareaScr.SetCheckbox("Pinned", existing.Pinned)
 	textareaScr.SetValidation(func(value string) string {
 		noteText := strings.TrimSpace(value)
 		if len([]rune(noteText)) > worktreeNoteMaxChars {
@@ -599,8 +598,8 @@ func (m *Model) showAnnotateWorktree() tea.Cmd {
 		}
 		return ""
 	})
-	textareaScr.OnSubmit = func(value string, checked bool) tea.Cmd {
-		m.setWorktreeNote(wt.Path, value, checked)
+	textareaScr.OnSubmit = func(value string) tea.Cmd {
+		m.setWorktreeNote(wt.Path, value)
 		m.updateTable()
 		if m.state.data.selectedIndex >= 0 && m.state.data.selectedIndex < len(m.state.data.filteredWts) {
 			m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])

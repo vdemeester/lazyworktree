@@ -10,7 +10,7 @@ import (
 	"github.com/chmouel/lazyworktree/internal/theme"
 )
 
-// TextareaScreen displays a modal multiline input with optional checkbox support.
+// TextareaScreen displays a modal multiline input.
 type TextareaScreen struct {
 	Prompt      string
 	Placeholder string
@@ -23,15 +23,8 @@ type TextareaScreen struct {
 	Validate func(string) string
 
 	// Callbacks
-	OnSubmit         func(value string, checked bool) tea.Cmd
-	OnCancel         func() tea.Cmd
-	OnCheckboxToggle func(checked bool) tea.Cmd
-
-	// Checkbox support
-	CheckboxEnabled bool
-	CheckboxChecked bool
-	CheckboxFocused bool
-	CheckboxLabel   string
+	OnSubmit func(value string) tea.Cmd
+	OnCancel func() tea.Cmd
 
 	boxWidth  int
 	boxHeight int
@@ -89,14 +82,6 @@ func (s *TextareaScreen) SetValidation(fn func(string) string) {
 	s.Validate = fn
 }
 
-// SetCheckbox enables a checkbox with the given label and default state.
-func (s *TextareaScreen) SetCheckbox(label string, defaultChecked bool) {
-	s.CheckboxEnabled = true
-	s.CheckboxLabel = label
-	s.CheckboxChecked = defaultChecked
-	s.CheckboxFocused = false
-}
-
 // Type returns the screen type.
 func (s *TextareaScreen) Type() Type {
 	return TypeTextarea
@@ -109,26 +94,6 @@ func (s *TextareaScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	keyStr := msg.String()
 
 	switch keyStr {
-	case keyTab, keyShiftTab:
-		if s.CheckboxEnabled {
-			s.CheckboxFocused = !s.CheckboxFocused
-			if s.CheckboxFocused {
-				s.Input.Blur()
-			} else {
-				cmd = s.Input.Focus()
-			}
-		}
-		return s, cmd
-
-	case " ":
-		if s.CheckboxEnabled && s.CheckboxFocused {
-			s.CheckboxChecked = !s.CheckboxChecked
-			if s.OnCheckboxToggle != nil {
-				return s, s.OnCheckboxToggle(s.CheckboxChecked)
-			}
-			return s, nil
-		}
-
 	case "ctrl+s":
 		value := s.Input.Value()
 		if s.Validate != nil {
@@ -139,7 +104,7 @@ func (s *TextareaScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 		}
 		s.ErrorMsg = ""
 		if s.OnSubmit != nil {
-			cmd = s.OnSubmit(value, s.CheckboxChecked)
+			cmd = s.OnSubmit(value)
 			if s.ErrorMsg != "" {
 				return s, cmd
 			}
@@ -151,10 +116,6 @@ func (s *TextareaScreen) Update(msg tea.KeyMsg) (Screen, tea.Cmd) {
 			return nil, s.OnCancel()
 		}
 		return nil, nil
-	}
-
-	if s.CheckboxFocused {
-		return s, nil
 	}
 
 	s.Input, cmd = s.Input.Update(msg)
@@ -188,25 +149,6 @@ func (s *TextareaScreen) View() string {
 		promptStyle.Render(s.Prompt),
 	}
 
-	if s.CheckboxEnabled {
-		checkbox := "[ ] "
-		if s.CheckboxChecked {
-			checkbox = "[x] "
-		}
-		checkboxStyle := lipgloss.NewStyle().
-			Width(width - 6)
-		if s.CheckboxFocused {
-			checkboxStyle = checkboxStyle.
-				Background(s.Thm.Accent).
-				Foreground(s.Thm.AccentFg).
-				Padding(0, 1).
-				Bold(true)
-		} else {
-			checkboxStyle = checkboxStyle.Foreground(s.Thm.Accent)
-		}
-		contentLines = append(contentLines, checkboxStyle.Render(checkbox+s.CheckboxLabel))
-	}
-
 	contentLines = append(contentLines, s.Input.View())
 
 	if s.ErrorMsg != "" {
@@ -217,11 +159,7 @@ func (s *TextareaScreen) View() string {
 		contentLines = append(contentLines, errorStyle.Render(s.ErrorMsg))
 	}
 
-	footerText := "Ctrl+S save • Esc cancel • Enter newline"
-	if s.CheckboxEnabled {
-		footerText = "Tab switch focus • Space toggle • Ctrl+S save • Esc cancel"
-	}
-	contentLines = append(contentLines, footerStyle.Render(footerText))
+	contentLines = append(contentLines, footerStyle.Render("Ctrl+S save • Esc cancel • Enter newline"))
 
 	return boxStyle.Render(strings.Join(contentLines, "\n\n"))
 }

@@ -25,7 +25,6 @@ func TestSaveAndLoadWorktreeNotes(t *testing.T) {
 	expected := map[string]models.WorktreeNote{
 		"/tmp/worktrees/feat": {
 			Note:      "first line\nsecond line",
-			Pinned:    true,
 			UpdatedAt: 1234,
 		},
 	}

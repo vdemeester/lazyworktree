@@ -15,7 +15,7 @@ func TestSetAndLoadWorktreeNotes(t *testing.T) {
 	m.repoKey = testRepoKey
 
 	path := "/tmp/worktrees/feature-a"
-	m.setWorktreeNote(path, "line one\nline two", true)
+	m.setWorktreeNote(path, "line one\nline two")
 
 	m2 := NewModel(cfg, "")
 	m2.repoKey = testRepoKey
@@ -28,19 +28,16 @@ func TestSetAndLoadWorktreeNotes(t *testing.T) {
 	if note.Note != "line one\nline two" {
 		t.Fatalf("unexpected note text: %q", note.Note)
 	}
-	if !note.Pinned {
-		t.Fatal("expected note to be pinned")
-	}
 }
 
-func TestSetWorktreeNoteClearsEntryWhenEmptyAndUnpinned(t *testing.T) {
+func TestSetWorktreeNoteClearsEntryWhenEmpty(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
 	m.repoKey = testRepoKey
 
 	path := "/tmp/worktrees/feature-a"
-	m.setWorktreeNote(path, "keep me", true)
-	m.setWorktreeNote(path, "   ", false)
+	m.setWorktreeNote(path, "keep me")
+	m.setWorktreeNote(path, "   ")
 
 	if _, ok := m.getWorktreeNote(path); ok {
 		t.Fatal("expected note to be deleted")
@@ -54,7 +51,7 @@ func TestMigrateWorktreeNote(t *testing.T) {
 
 	oldPath := "/tmp/worktrees/old-branch"
 	newPath := "/tmp/worktrees/new-branch"
-	m.setWorktreeNote(oldPath, "old note", true)
+	m.setWorktreeNote(oldPath, "old note")
 	m.migrateWorktreeNote(oldPath, newPath)
 
 	if _, ok := m.getWorktreeNote(oldPath); ok {
@@ -64,7 +61,7 @@ func TestMigrateWorktreeNote(t *testing.T) {
 	if !ok {
 		t.Fatal("expected note to be migrated")
 	}
-	if note.Note != "old note" || !note.Pinned {
+	if note.Note != "old note" {
 		t.Fatalf("unexpected migrated note: %#v", note)
 	}
 }
@@ -76,8 +73,8 @@ func TestPruneStaleWorktreeNotes(t *testing.T) {
 
 	keepPath := "/tmp/worktrees/keep"
 	dropPath := "/tmp/worktrees/drop"
-	m.setWorktreeNote(keepPath, "keep", false)
-	m.setWorktreeNote(dropPath, "drop", false)
+	m.setWorktreeNote(keepPath, "keep")
+	m.setWorktreeNote(dropPath, "drop")
 
 	m.pruneStaleWorktreeNotes([]*models.WorktreeInfo{{Path: keepPath, Branch: "keep"}})
 
@@ -137,11 +134,6 @@ func TestAnnotateWorktreeCtrlSSaves(t *testing.T) {
 	scr := m.state.ui.screenManager.Current().(*appscreen.TextareaScreen)
 	scr.Input.SetValue("one line\ntwo line")
 
-	// Toggle pinned via checkbox.
-	_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyTab})
-	_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
-	_, _ = m.handleScreenKey(tea.KeyMsg{Type: tea.KeyTab})
-
 	updated, _ := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = updated.(*Model)
 
@@ -155,9 +147,6 @@ func TestAnnotateWorktreeCtrlSSaves(t *testing.T) {
 	if note.Note != "one line\ntwo line" {
 		t.Fatalf("unexpected saved note: %q", note.Note)
 	}
-	if !note.Pinned {
-		t.Fatal("expected note to be pinned")
-	}
 }
 
 func TestUpdateRenameWorktreeResultMigratesNote(t *testing.T) {
@@ -167,7 +156,7 @@ func TestUpdateRenameWorktreeResultMigratesNote(t *testing.T) {
 	newPath := "/tmp/wt-new"
 
 	m.state.data.worktrees = []*models.WorktreeInfo{{Path: oldPath, Branch: "old"}}
-	m.setWorktreeNote(oldPath, "rename me", true)
+	m.setWorktreeNote(oldPath, "rename me")
 
 	updated, _ := m.Update(renameWorktreeResultMsg{
 		oldPath: oldPath,

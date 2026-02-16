@@ -90,7 +90,7 @@ When CI checks are displayed in the info panel:
 - Existing local branch: choose to checkout the branch or create a new one based on it
 - Tab / Shift+Tab: Move focus to the "Include current file changes" checkbox
 - Space: Toggle "Include current file changes"
-- i: Annotate selected worktree (multiline note editor)
+- i: Annotate selected worktree (multiline note)
 - Annotation editor: Ctrl+S saves, Enter adds a new line, Esc cancels
 - m: Rename selected worktree
 - D: Delete selected worktree

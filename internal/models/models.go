@@ -73,7 +73,6 @@ type WorktreeInfo struct {
 // WorktreeNote stores user-authored metadata for a worktree.
 type WorktreeNote struct {
 	Note      string
-	Pinned    bool
 	UpdatedAt int64
 }
 
