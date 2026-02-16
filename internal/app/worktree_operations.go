@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/models"
 	"github.com/chmouel/lazyworktree/internal/utils"
@@ -570,7 +571,7 @@ func (m *Model) showRenameWorktree() tea.Cmd {
 	return textinput.Blink
 }
 
-// showAnnotateWorktree opens a multiline note editor for the selected worktree.
+// showAnnotateWorktree opens notes for the selected worktree.
 func (m *Model) showAnnotateWorktree() tea.Cmd {
 	if m.state.view.FocusedPane != 0 {
 		return nil
@@ -581,7 +582,37 @@ func (m *Model) showAnnotateWorktree() tea.Cmd {
 	}
 
 	wt := m.state.data.filteredWts[m.state.data.selectedIndex]
-	existing, _ := m.getWorktreeNote(wt.Path)
+	existing, hasNote := m.getWorktreeNote(wt.Path)
+	if hasNote {
+		return m.showWorktreeNoteViewer(wt.Path, existing.Note)
+	}
+	return m.showWorktreeNoteEditor(wt.Path)
+}
+
+func (m *Model) showWorktreeNoteViewer(worktreePath, noteText string) tea.Cmd {
+	valueStyle := lipgloss.NewStyle().Foreground(m.theme.TextFg)
+	content := strings.Join(m.renderMarkdownNoteLines(noteText, valueStyle), "\n")
+	viewer := appscreen.NewNoteViewScreen(
+		"Worktree notes",
+		content,
+		m.state.view.WindowWidth,
+		m.state.view.WindowHeight,
+		m.theme,
+	)
+	viewer.OnEdit = func() tea.Cmd {
+		return func() tea.Msg {
+			return openNoteEditorMsg{worktreePath: worktreePath}
+		}
+	}
+	m.state.ui.screenManager.Push(viewer)
+	return nil
+}
+
+func (m *Model) showWorktreeNoteEditor(worktreePath string) tea.Cmd {
+	if strings.TrimSpace(worktreePath) == "" {
+		return nil
+	}
+	existing, _ := m.getWorktreeNote(worktreePath)
 	textareaScr := appscreen.NewTextareaScreen(
 		"Worktree notes",
 		"Add notes for this worktree...",
@@ -599,7 +630,7 @@ func (m *Model) showAnnotateWorktree() tea.Cmd {
 		return ""
 	})
 	textareaScr.OnSubmit = func(value string) tea.Cmd {
-		m.setWorktreeNote(wt.Path, value)
+		m.setWorktreeNote(worktreePath, value)
 		m.updateTable()
 		if m.state.data.selectedIndex >= 0 && m.state.data.selectedIndex < len(m.state.data.filteredWts) {
 			m.infoContent = m.buildInfoContent(m.state.data.filteredWts[m.state.data.selectedIndex])

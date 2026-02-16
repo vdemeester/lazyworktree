@@ -126,7 +126,7 @@ Zsh helpers are in `shell/functions.zsh`. See [./shell/README.md](./shell/README
 | `Enter` | Jump to worktree (exit and cd) |
 | `j`, `k` | Move selection up/down in lists and menus |
 | `c` | Create new worktree (from branch, commit, PR/MR, or issue) |
-| `i` | Edit selected worktree notes |
+| `i` | Open selected worktree notes (viewer if present, editor if empty) |
 | `m` | Rename selected worktree |
 | `D` | Delete selected worktree |
 | `d` | View diff in pager (worktree or commit, depending on pane) |
@@ -159,14 +159,21 @@ Zsh helpers are in `shell/functions.zsh`. See [./shell/README.md](./shell/README
 | `=` | Toggle zoom for focused pane (full screen) |
 | `L` | Toggle layout (default / top) |
 
-**Note Editor**
+**Notes Viewer and Editor**
 
-In the note editor (`i`), use `Ctrl+S` to save, `Enter` to add a new line, and
-`Esc` to cancel. Worktrees with notes display a note marker beside the name.
-The Info pane renders Markdown formatting for headings, bold text, inline code,
-lists, quotes, links, and fenced code blocks. Uppercase note tags such as
-`TODO`, `FIXME`, or `WARNING:` are highlighted with icons outside fenced code
-blocks, whilst lowercase tags remain unchanged.
+Press `i` to open notes for the selected worktree. If a note already exists,
+lazyworktree opens a viewer first; if no note exists, it opens the editor.
+
+In the note viewer, use `j`/`k` (or arrow keys) to scroll, `Ctrl+D`/`Ctrl+U`
+for half-page navigation, `g`/`G` for top/bottom, `e` to edit, and `q`/`Esc`
+to close.
+
+In the note editor, use `Ctrl+S` to save, `Enter` to add a new line, and `Esc`
+to cancel. Worktrees with notes display a note marker beside the name. The Info
+pane renders Markdown formatting for headings, bold text, inline code, lists,
+quotes, links, and fenced code blocks. Uppercase note tags such as `TODO`,
+`FIXME`, or `WARNING:` are highlighted with icons outside fenced code blocks,
+whilst lowercase tags remain unchanged.
 
 **Log Pane** (when focused on commit log):
 

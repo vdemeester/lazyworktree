@@ -61,6 +61,11 @@ func (m *Model) View() string {
 				cs.Viewport.Height = vpHeight
 			}
 			return m.overlayPopup(baseView, scr.View(), 2)
+		case screen.TypeNoteView:
+			if ns, ok := scr.(*screen.NoteViewScreen); ok {
+				ns.Resize(m.state.view.WindowWidth, m.state.view.WindowHeight)
+			}
+			return m.overlayPopup(baseView, scr.View(), 2)
 		case screen.TypePRSelect:
 			// PR selection screen with 2-margin popup
 			return m.overlayPopup(baseView, scr.View(), 2)

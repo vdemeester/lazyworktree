@@ -92,7 +92,8 @@ When CI checks are displayed in the info panel:
 - Existing local branch: choose to checkout the branch or create a new one based on it
 - Tab / Shift+Tab: Move focus to the "Include current file changes" checkbox
 - Space: Toggle "Include current file changes"
-- i: Edit selected worktree notes
+- i: Open selected worktree notes (viewer if present, editor if empty)
+- Note viewer: j/k scroll, Ctrl+D/Ctrl+U half-page, g/G top/bottom, e edit, q/Esc close
 - Note editor: Ctrl+S saves, Enter adds a new line, Esc cancels
 - Worktrees with non-empty notes show a note marker beside the name
 - In the Info pane, notes render Markdown for headings, bold text, inline code, lists, quotes, links, and fenced code blocks

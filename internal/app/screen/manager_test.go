@@ -201,6 +201,7 @@ func TestTypeString(t *testing.T) {
 		{TypeConfirm, "confirm"},
 		{TypeInfo, "info"},
 		{TypeTextarea, "textarea"},
+		{TypeNoteView, "note-view"},
 		{TypeLoading, "loading"},
 		{TypeHelp, "help"},
 		{Type(999), "unknown"},

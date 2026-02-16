@@ -220,6 +220,9 @@ type (
 		runURL string
 		err    error
 	}
+	openNoteEditorMsg struct {
+		worktreePath string
+	}
 )
 
 type commitLogEntry struct {
@@ -681,6 +684,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			worktrees: msg.worktrees,
 			err:       nil,
 		})
+
+	case openNoteEditorMsg:
+		return m, m.showWorktreeNoteEditor(msg.worktreePath)
 
 	case customCreateResultMsg:
 		m.loading = false

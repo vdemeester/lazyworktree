@@ -28,6 +28,7 @@ const (
 	TypeInfo
 	TypeInput
 	TypeTextarea
+	TypeNoteView
 	TypeHelp
 	TypeTrust
 	TypeWelcome
@@ -55,6 +56,8 @@ func (t Type) String() string {
 		return "input"
 	case TypeTextarea:
 		return "textarea"
+	case TypeNoteView:
+		return "note-view"
 	case TypeHelp:
 		return "help"
 	case TypeTrust:

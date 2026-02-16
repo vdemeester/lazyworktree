@@ -89,7 +89,7 @@ func TestPruneStaleWorktreeNotes(t *testing.T) {
 	}
 }
 
-func TestShowAnnotateWorktreeOpensTextarea(t *testing.T) {
+func TestShowAnnotateWorktreeOpensTextareaWhenNoNote(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
 	m.state.view.FocusedPane = 0
@@ -105,10 +105,29 @@ func TestShowAnnotateWorktreeOpensTextarea(t *testing.T) {
 	}
 }
 
+func TestShowAnnotateWorktreeOpensViewerWhenNoteExists(t *testing.T) {
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	path := "/tmp/wt"
+	m.state.view.FocusedPane = 0
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: path, Branch: "feat"}}
+	m.state.data.selectedIndex = 0
+	m.setWorktreeNote(path, "existing note")
+
+	cmd := m.showAnnotateWorktree()
+	if cmd != nil {
+		t.Fatal("expected no blink command when opening viewer")
+	}
+	if !m.state.ui.screenManager.IsActive() || m.state.ui.screenManager.Type() != appscreen.TypeNoteView {
+		t.Fatalf("expected note viewer screen, got active=%v type=%v", m.state.ui.screenManager.IsActive(), m.state.ui.screenManager.Type())
+	}
+}
+
 func TestHandleBuiltInKeyAnnotate(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")
-	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: "/tmp/wt", Branch: "feat"}}
+	path := "/tmp/wt"
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: path, Branch: "feat"}}
 	m.state.data.selectedIndex = 0
 
 	m.state.view.FocusedPane = 1
@@ -121,6 +140,13 @@ func TestHandleBuiltInKeyAnnotate(t *testing.T) {
 	_, _ = m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	if !m.state.ui.screenManager.IsActive() || m.state.ui.screenManager.Type() != appscreen.TypeTextarea {
 		t.Fatalf("expected textarea screen, got active=%v type=%v", m.state.ui.screenManager.IsActive(), m.state.ui.screenManager.Type())
+	}
+
+	m.state.ui.screenManager.Pop()
+	m.setWorktreeNote(path, "existing note")
+	_, _ = m.handleBuiltInKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if !m.state.ui.screenManager.IsActive() || m.state.ui.screenManager.Type() != appscreen.TypeNoteView {
+		t.Fatalf("expected note viewer screen, got active=%v type=%v", m.state.ui.screenManager.IsActive(), m.state.ui.screenManager.Type())
 	}
 }
 
@@ -149,6 +175,44 @@ func TestAnnotateWorktreeCtrlSSaves(t *testing.T) {
 	}
 	if note.Note != "one line\ntwo line" {
 		t.Fatalf("unexpected saved note: %q", note.Note)
+	}
+}
+
+func TestAnnotateWorktreeViewerEOpensEditor(t *testing.T) {
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	path := "/tmp/wt"
+	m.state.view.FocusedPane = 0
+	m.state.data.filteredWts = []*models.WorktreeInfo{{Path: path, Branch: "feat"}}
+	m.state.data.selectedIndex = 0
+	m.setWorktreeNote(path, "one line\ntwo line")
+
+	_ = m.showAnnotateWorktree()
+	if m.state.ui.screenManager.Type() != appscreen.TypeNoteView {
+		t.Fatalf("expected note viewer, got %v", m.state.ui.screenManager.Type())
+	}
+
+	updated, cmd := m.handleScreenKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = updated.(*Model)
+
+	if m.state.ui.screenManager.IsActive() {
+		t.Fatal("expected viewer to close before processing edit message")
+	}
+	if cmd == nil {
+		t.Fatal("expected edit command")
+	}
+
+	msg := cmd()
+	updated, _ = m.Update(msg)
+	m = updated.(*Model)
+
+	if !m.state.ui.screenManager.IsActive() || m.state.ui.screenManager.Type() != appscreen.TypeTextarea {
+		t.Fatalf("expected textarea screen after edit, got active=%v type=%v", m.state.ui.screenManager.IsActive(), m.state.ui.screenManager.Type())
+	}
+
+	scr := m.state.ui.screenManager.Current().(*appscreen.TextareaScreen)
+	if scr.Input.Value() != "one line\ntwo line" {
+		t.Fatalf("expected textarea to be prefilled with note, got %q", scr.Input.Value())
 	}
 }
 
