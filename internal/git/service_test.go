@@ -188,27 +188,40 @@ func TestRenameWorktree(t *testing.T) {
 	service := NewService(notify, notifyOnce)
 	ctx := context.Background()
 
-	t.Run("rename with temporary directory", func(t *testing.T) {
+	t.Run("renames branch when worktree name equals branch", func(t *testing.T) {
 		tmpDir := t.TempDir()
+		oldPath := filepath.Join(tmpDir, "feature")
+		newPath := filepath.Join(tmpDir, "new-feature")
+		require.NoError(t, os.MkdirAll(newPath, 0o750))
 
-		oldPath := filepath.Join(tmpDir, "old")
-		newPath := filepath.Join(tmpDir, "new")
+		var commands [][]string
+		service.SetCommandRunner(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+			commands = append(commands, append([]string{name}, args...))
+			return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+		})
 
-		// Create old directory
-		err := os.MkdirAll(oldPath, 0o750)
-		require.NoError(t, err)
+		ok := service.RenameWorktree(ctx, oldPath, newPath, "feature", "new-feature")
+		require.True(t, ok)
+		require.Len(t, commands, 2)
+		assert.Equal(t, []string{"git", "worktree", "move", oldPath, newPath}, commands[0])
+		assert.Equal(t, []string{"git", "branch", "-m", "feature", "new-feature"}, commands[1])
+	})
 
-		// Create a test file in old directory
-		testFile := filepath.Join(oldPath, "test.txt")
-		err = os.WriteFile(testFile, []byte("test"), 0o600)
-		require.NoError(t, err)
+	t.Run("skips branch rename when worktree name differs from branch", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		oldPath := filepath.Join(tmpDir, "worktree-custom-name")
+		newPath := filepath.Join(tmpDir, "new-worktree-name")
 
-		// Rename (this is essentially just a directory move, not a git worktree operation)
-		// Note: This will likely fail if git commands are involved, so we're testing basic logic
-		ok := service.RenameWorktree(ctx, oldPath, newPath, "old-branch", "new-branch")
+		var commands [][]string
+		service.SetCommandRunner(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+			commands = append(commands, append([]string{name}, args...))
+			return exec.CommandContext(ctx, "sh", "-c", "exit 0")
+		})
 
-		// Even if it returns false due to git errors, we're just testing the function runs
-		assert.IsType(t, true, ok)
+		ok := service.RenameWorktree(ctx, oldPath, newPath, "feature", "new-worktree-name")
+		require.True(t, ok)
+		require.Len(t, commands, 1)
+		assert.Equal(t, []string{"git", "worktree", "move", oldPath, newPath}, commands[0])
 	})
 }
 
@@ -628,8 +641,9 @@ func TestCreateWorktreeFromPR(t *testing.T) {
 
 	t.Run("create worktree from PR with temporary directory", func(t *testing.T) {
 		service := NewService(notify, notifyOnce)
-		tmpDir := t.TempDir()
-		targetPath := filepath.Join(tmpDir, "test-worktree")
+		// Run outside any real repository so this test cannot mutate the caller repo.
+		withCwd(t, t.TempDir())
+		targetPath := filepath.Join(t.TempDir(), "test-worktree")
 
 		// This will likely fail due to missing git repo/PR, but tests the function structure
 		ok := service.CreateWorktreeFromPR(ctx, 123, "feature-branch", "local-branch", targetPath)

@@ -783,7 +783,7 @@ lazyworktree --worktree-dir ~/worktrees
 lazyworktree --config lw.theme=nord --config lw.sort_mode=active
 ```
 
-Create, delete, and list worktrees from the command line. Legacy aliases `wt-create` and `wt-delete` still work.
+Create, rename, delete, and list worktrees from the command line. Legacy aliases `wt-create`, `wt-rename`, and `wt-delete` still work.
 
 ### Listing Worktrees
 
@@ -827,6 +827,15 @@ For complete CLI documentation, see `man lazyworktree` or `lazyworktree --help`.
 lazyworktree delete                # Delete worktree and branch
 lazyworktree delete --no-branch    # Delete worktree only
 ```
+
+### Renaming Worktrees
+
+```bash
+lazyworktree rename feature new-feature-name
+lazyworktree rename /path/to/worktree new-worktree-name
+```
+
+When renaming, the branch is renamed only if the current worktree directory name matches the branch name.
 
 ## Screenshots
 

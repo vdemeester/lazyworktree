@@ -618,6 +618,67 @@ func TestHandleDeleteFlags(t *testing.T) {
 	}
 }
 
+func TestHandleRenameFlags(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		silent   bool
+		worktree string
+		newName  string
+	}{
+		{
+			name:   "no arguments",
+			args:   []string{"lazyworktree", "rename"},
+			silent: false,
+		},
+		{
+			name:     "with worktree and new name",
+			args:     []string{"lazyworktree", "rename", "feature", "new-feature"},
+			silent:   false,
+			worktree: "feature",
+			newName:  "new-feature",
+		},
+		{
+			name:     "with silent flag",
+			args:     []string{"lazyworktree", "rename", "--silent", "feature", "new-feature"},
+			silent:   true,
+			worktree: "feature",
+			newName:  "new-feature",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := renameCommand()
+			var capturedSilent bool
+			var capturedWorktree string
+			var capturedNewName string
+
+			cmd.Action = func(_ context.Context, c *urfavecli.Command) error {
+				capturedSilent = c.Bool("silent")
+				if c.NArg() > 0 {
+					capturedWorktree = c.Args().Get(0)
+				}
+				if c.NArg() > 1 {
+					capturedNewName = c.Args().Get(1)
+				}
+				return nil
+			}
+
+			app := &urfavecli.Command{
+				Name:     "lazyworktree",
+				Commands: []*urfavecli.Command{cmd},
+			}
+
+			err := app.Run(context.Background(), tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.silent, capturedSilent, "silent flag mismatch")
+			assert.Equal(t, tt.worktree, capturedWorktree, "worktree arg mismatch")
+			assert.Equal(t, tt.newName, capturedNewName, "new name arg mismatch")
+		})
+	}
+}
+
 func TestListCommandFlags(t *testing.T) {
 	tests := []struct {
 		name     string

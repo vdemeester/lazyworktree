@@ -37,6 +37,7 @@ func main() {
 
 		Commands: []*cli.Command{
 			createCommand(),
+			renameCommand(),
 			deleteCommand(),
 			listCommand(),
 		},

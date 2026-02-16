@@ -52,6 +52,7 @@ type gitService interface {
 	GetAuthenticatedUsername(ctx context.Context) string
 	GetMainWorktreePath(ctx context.Context) string
 	GetWorktrees(ctx context.Context) ([]*models.WorktreeInfo, error)
+	RenameWorktree(ctx context.Context, oldPath, newPath, oldBranch, newBranch string) bool
 	ResolveRepoName(ctx context.Context) string
 	RunCommandChecked(ctx context.Context, args []string, cwd string, errorMsg string) bool
 	RunGit(ctx context.Context, args []string, cwd string, exitCodes []int, silent bool, ignoreErrors bool) string
@@ -575,6 +576,72 @@ func DeleteWorktree(ctx context.Context, gitSvc gitService, cfg *config.AppConfi
 		} else if !silent {
 			fmt.Fprintf(os.Stderr, "Skipping branch deletion: worktree name %q != branch %q\n", worktreeName, selectedWorktree.Branch)
 		}
+	}
+
+	return nil
+}
+
+// RenameWorktree renames a worktree. The branch is renamed only when the
+// current worktree name and branch name are the same.
+func RenameWorktree(ctx context.Context, gitSvc gitService, cfg *config.AppConfig, worktreePath, newName string, silent bool) error {
+	worktrees, err := gitSvc.GetWorktrees(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get worktrees: %w", err)
+	}
+
+	nonMainWorktrees := make([]*models.WorktreeInfo, 0, len(worktrees))
+	for _, wt := range worktrees {
+		if !wt.IsMain {
+			nonMainWorktrees = append(nonMainWorktrees, wt)
+		}
+	}
+
+	if len(nonMainWorktrees) == 0 {
+		return fmt.Errorf("no worktrees to rename")
+	}
+
+	if worktreePath == "" {
+		fmt.Fprintf(os.Stderr, "Available worktrees:\n")
+		for _, wt := range nonMainWorktrees {
+			fmt.Fprintf(os.Stderr, "  %s\n", formatWorktreeForList(wt))
+		}
+		fmt.Fprintf(os.Stderr, "\nUsage: lazyworktree rename <worktree-name-or-path> <new-name>\n")
+		return nil
+	}
+
+	newWorktreeName := strings.TrimSpace(newName)
+	if newWorktreeName == "" {
+		return fmt.Errorf("new name is required")
+	}
+
+	newWorktreeName = utils.SanitizeBranchName(newWorktreeName, 100)
+	if newWorktreeName == "" {
+		return fmt.Errorf("invalid new name: must contain at least one alphanumeric character")
+	}
+
+	selectedWorktree, err := findWorktreeByPathOrName(worktreePath, nonMainWorktrees, cfg.WorktreeDir, gitSvc.ResolveRepoName(ctx))
+	if err != nil {
+		return err
+	}
+
+	currentWorktreeName := filepath.Base(selectedWorktree.Path)
+	if currentWorktreeName == newWorktreeName {
+		return fmt.Errorf("new name must be different from current worktree name: %s", currentWorktreeName)
+	}
+
+	newPath := filepath.Join(filepath.Dir(selectedWorktree.Path), newWorktreeName)
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("destination already exists: %s", newPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check destination %s: %w", newPath, err)
+	}
+
+	if !gitSvc.RenameWorktree(ctx, selectedWorktree.Path, newPath, selectedWorktree.Branch, newWorktreeName) {
+		return fmt.Errorf("failed to rename worktree %s", selectedWorktree.Path)
+	}
+
+	if !silent && currentWorktreeName != selectedWorktree.Branch {
+		fmt.Fprintf(os.Stderr, "Skipping branch rename: worktree name %q != branch %q\n", currentWorktreeName, selectedWorktree.Branch)
 	}
 
 	return nil

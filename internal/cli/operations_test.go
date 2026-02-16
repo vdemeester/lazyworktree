@@ -22,6 +22,7 @@ type fakeGitService struct {
 	worktreesErr        error
 	runGitOutput        map[string]string
 	runCommandCheckedOK bool
+	renameWorktreeOK    bool
 	authUsername        string
 
 	checkedOutPRBranch   bool
@@ -44,6 +45,11 @@ type fakeGitService struct {
 	executedCommands      error
 	lastWorktreeAddPath   string
 	lastWorktreeAddBranch string
+	renameWorktreeCalled  bool
+	lastRenameOldPath     string
+	lastRenameNewPath     string
+	lastRenameOldBranch   string
+	lastRenameNewBranch   string
 }
 
 func (f *fakeGitService) CheckoutPRBranch(_ context.Context, _ int, _, localBranch string) bool {
@@ -109,6 +115,15 @@ func (f *fakeGitService) GetMainWorktreePath(_ context.Context) string {
 
 func (f *fakeGitService) GetWorktrees(_ context.Context) ([]*models.WorktreeInfo, error) {
 	return f.worktrees, f.worktreesErr
+}
+
+func (f *fakeGitService) RenameWorktree(_ context.Context, oldPath, newPath, oldBranch, newBranch string) bool {
+	f.renameWorktreeCalled = true
+	f.lastRenameOldPath = oldPath
+	f.lastRenameNewPath = newPath
+	f.lastRenameOldBranch = oldBranch
+	f.lastRenameNewBranch = newBranch
+	return f.renameWorktreeOK
 }
 
 func (f *fakeGitService) ResolveRepoName(_ context.Context) string {

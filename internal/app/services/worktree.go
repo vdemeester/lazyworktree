@@ -21,7 +21,7 @@ type WorktreeService interface {
 	// Delete removes a worktree and optionally its branch.
 	Delete(ctx context.Context, path, branch string, deleteBranch bool) error
 
-	// Rename moves and renames a worktree and its branch.
+	// Rename moves a worktree and conditionally renames its branch.
 	Rename(ctx context.Context, oldPath, newPath, oldBranch, newBranch string) error
 
 	// Push pushes a worktree's branch to its upstream.

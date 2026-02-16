@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
@@ -1586,16 +1587,19 @@ func (s *Service) GetMainWorktreePath(ctx context.Context) string {
 	return cwd
 }
 
-// RenameWorktree attempts to move and rename branches for a worktree migration.
+// RenameWorktree moves a worktree and renames its branch only when the
+// worktree directory name matches the old branch name.
 func (s *Service) RenameWorktree(ctx context.Context, oldPath, newPath, oldBranch, newBranch string) bool {
 	// 1. Move the worktree directory
 	if !s.RunCommandChecked(ctx, []string{"git", "worktree", "move", oldPath, newPath}, "", fmt.Sprintf("Failed to move worktree from %s to %s", oldPath, newPath)) {
 		return false
 	}
 
-	// 2. Rename the branch
-	if !s.RunCommandChecked(ctx, []string{"git", "branch", "-m", oldBranch, newBranch}, newPath, fmt.Sprintf("Failed to rename branch from %s to %s", oldBranch, newBranch)) {
-		return false
+	// 2. Rename the branch only when worktree and branch names are aligned.
+	if filepath.Base(oldPath) == oldBranch {
+		if !s.RunCommandChecked(ctx, []string{"git", "branch", "-m", oldBranch, newBranch}, newPath, fmt.Sprintf("Failed to rename branch from %s to %s", oldBranch, newBranch)) {
+			return false
+		}
 	}
 
 	return true

@@ -689,3 +689,78 @@ func TestDeleteWorktree_NoWorktrees(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
+
+func TestRenameWorktree(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := &config.AppConfig{WorktreeDir: "/worktrees"}
+
+	t.Run("renames selected worktree", func(t *testing.T) {
+		svc := &fakeGitService{
+			resolveRepoName:  "repo",
+			renameWorktreeOK: true,
+			worktrees: []*models.WorktreeInfo{
+				{Path: "/main", Branch: "main", IsMain: true},
+				{Path: "/worktrees/repo/feature", Branch: "feature"},
+			},
+		}
+
+		err := RenameWorktree(ctx, svc, cfg, "feature", "new-feature", true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !svc.renameWorktreeCalled {
+			t.Fatalf("expected rename to be called")
+		}
+		if svc.lastRenameOldPath != "/worktrees/repo/feature" {
+			t.Fatalf("unexpected old path: %q", svc.lastRenameOldPath)
+		}
+		if svc.lastRenameNewPath != "/worktrees/repo/new-feature" {
+			t.Fatalf("unexpected new path: %q", svc.lastRenameNewPath)
+		}
+		if svc.lastRenameOldBranch != "feature" {
+			t.Fatalf("unexpected old branch: %q", svc.lastRenameOldBranch)
+		}
+		if svc.lastRenameNewBranch != "new-feature" {
+			t.Fatalf("unexpected new branch: %q", svc.lastRenameNewBranch)
+		}
+	})
+
+	t.Run("rejects empty new name", func(t *testing.T) {
+		svc := &fakeGitService{
+			resolveRepoName: "repo",
+			worktrees: []*models.WorktreeInfo{
+				{Path: "/main", Branch: "main", IsMain: true},
+				{Path: "/worktrees/repo/feature", Branch: "feature"},
+			},
+		}
+
+		err := RenameWorktree(ctx, svc, cfg, "feature", "   ", true)
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+		if !strings.Contains(err.Error(), "new name is required") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when git rename fails", func(t *testing.T) {
+		svc := &fakeGitService{
+			resolveRepoName:  "repo",
+			renameWorktreeOK: false,
+			worktrees: []*models.WorktreeInfo{
+				{Path: "/main", Branch: "main", IsMain: true},
+				{Path: "/worktrees/repo/feature", Branch: "feature"},
+			},
+		}
+
+		err := RenameWorktree(ctx, svc, cfg, "feature", "new-feature", true)
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+		if !strings.Contains(err.Error(), "failed to rename worktree") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}

@@ -12,6 +12,9 @@ lazyworktree \- A TUI tool to manage git worktrees
 | [\-\-from\-issue\-interactive|\-I]
 [\-\-with\-change] [\-\-silent]
 .br
+.B lazyworktree wt\-rename
+[\-\-silent] [\fIWORKTREE\fR] [\fINEW\-NAME\fR]
+.br
 .B lazyworktree wt\-delete
 [\-\-no\-branch] [\-\-silent]
 .
@@ -154,6 +157,26 @@ Suppress all progress messages to stderr. Only the worktree path is written to s
 .B \-\-output\-selection \fIFILE\fR
 Write the created worktree path to FILE. When set, stdout output is suppressed.
 .
+.SS rename
+Rename a worktree without launching the TUI. Legacy alias: \fBwt-rename\fR.
+.
+.PP
+Renames the worktree directory. The branch is renamed only when the current worktree directory name matches the branch name.
+.
+.PP
+.B Options:
+.TP
+.B \fIWORKTREE\fR
+Worktree path, branch name, or worktree directory name to rename. If omitted, lazyworktree lists available worktrees and prints usage.
+.
+.TP
+.B \fINEW\-NAME\fR
+New worktree name. It is sanitised to lowercase letters, numbers, and hyphens. Required when \fIWORKTREE\fR is provided.
+.
+.TP
+.B \-\-silent
+Suppress all progress messages to stderr. Useful for scripting and automation.
+.
 .SS delete
 Delete a worktree without launching the TUI. Legacy alias: \fBwt-delete\fR.
 .
@@ -260,6 +283,16 @@ Delete worktree (and branch if name matches):
 Delete worktree without deleting branch:
 .br
 .B lazyworktree delete \-\-no\-branch
+.
+.PP
+Rename a worktree:
+.br
+.B lazyworktree rename feature new\-feature
+.
+.PP
+Rename by path:
+.br
+.B lazyworktree rename /path/to/worktree new\-worktree
 .
 .SS TUI Launch
 Launch the TUI (default):

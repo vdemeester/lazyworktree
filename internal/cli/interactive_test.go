@@ -230,6 +230,10 @@ func (m *mockGitServiceForInteractive) GetMainWorktreePath(context.Context) stri
 func (m *mockGitServiceForInteractive) GetWorktrees(context.Context) ([]*models.WorktreeInfo, error) {
 	return nil, nil
 }
+
+func (m *mockGitServiceForInteractive) RenameWorktree(context.Context, string, string, string, string) bool {
+	return true
+}
 func (m *mockGitServiceForInteractive) ResolveRepoName(context.Context) string { return "repo" }
 func (m *mockGitServiceForInteractive) RunCommandChecked(context.Context, []string, string, string) bool {
 	return true

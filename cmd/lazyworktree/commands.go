@@ -24,6 +24,7 @@ type (
 	createFromBranchFuncType       func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, branchName, worktreeName string, withChange, silent bool) (string, error)
 	createFromPRFuncType           func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, prNumber int, noWorkspace, silent bool) (string, error)
 	createFromIssueFuncType        func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, issueNumber int, baseBranch string, noWorkspace, silent bool) (string, error)
+	renameWorktreeFuncType         func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, worktreePath, newName string, silent bool) error
 	selectIssueInteractiveFuncType func(ctx context.Context, gitSvc *git.Service) (int, error)
 	selectPRInteractiveFuncType    func(ctx context.Context, gitSvc *git.Service) (int, error)
 )
@@ -39,6 +40,9 @@ var (
 	}
 	createFromIssueFunc createFromIssueFuncType = func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, issueNumber int, baseBranch string, noWorkspace, silent bool) (string, error) {
 		return cli.CreateFromIssue(ctx, gitSvc, cfg, issueNumber, baseBranch, noWorkspace, silent)
+	}
+	renameWorktreeFunc renameWorktreeFuncType = func(ctx context.Context, gitSvc *git.Service, cfg *config.AppConfig, worktreePath, newName string, silent bool) error {
+		return cli.RenameWorktree(ctx, gitSvc, cfg, worktreePath, newName, silent)
 	}
 	selectIssueInteractiveFunc selectIssueInteractiveFuncType = func(ctx context.Context, gitSvc *git.Service) (int, error) {
 		return cli.SelectIssueInteractiveFromStdio(ctx, gitSvc)
@@ -223,6 +227,28 @@ func deleteCommand() *appiCli.Command {
 				Name:  "no-branch",
 				Usage: "Skip branch deletion",
 			},
+			&appiCli.BoolFlag{
+				Name:  "silent",
+				Usage: "Suppress progress messages",
+			},
+		},
+	}
+}
+
+func renameCommand() *appiCli.Command {
+	return &appiCli.Command{
+		Name:      "rename",
+		Aliases:   []string{"wt-rename"},
+		Usage:     "Rename a worktree",
+		ArgsUsage: "[worktree-path-or-name] [new-name]",
+		Action: func(ctx context.Context, cmd *appiCli.Command) error {
+			if handleSubcommandCompletion(cmd) {
+				return nil
+			}
+			return handleRenameAction(ctx, cmd)
+		},
+		ShellComplete: subcommandShellComplete,
+		Flags: []appiCli.Flag{
 			&appiCli.BoolFlag{
 				Name:  "silent",
 				Usage: "Suppress progress messages",
@@ -660,6 +686,48 @@ func handleDeleteAction(ctx context.Context, cmd *appiCli.Command) error {
 	// Execute delete operation
 	deleteBranch := !noBranch
 	if err := cli.DeleteWorktree(ctx, gitSvc, cfg, worktreePath, deleteBranch, silent); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		_ = log.Close()
+		return err
+	}
+
+	_ = log.Close()
+	return nil
+}
+
+// handleRenameAction handles the rename subcommand action.
+func handleRenameAction(ctx context.Context, cmd *appiCli.Command) error {
+	cfg, err := loadCLIConfig(
+		cmd.String("config-file"),
+		cmd.String("worktree-dir"),
+		cmd.StringSlice("config"),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return err
+	}
+
+	gitSvc := newCLIGitService(cfg)
+
+	if cmd.NArg() > 2 {
+		err := fmt.Errorf("too many arguments: expected <worktree-name-or-path> <new-name>")
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		_ = log.Close()
+		return err
+	}
+
+	worktreePath := ""
+	if cmd.NArg() > 0 {
+		worktreePath = cmd.Args().Get(0)
+	}
+
+	newName := ""
+	if cmd.NArg() > 1 {
+		newName = cmd.Args().Get(1)
+	}
+
+	silent := cmd.Bool("silent")
+	if err := renameWorktreeFunc(ctx, gitSvc, cfg, worktreePath, newName, silent); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		_ = log.Close()
 		return err
