@@ -649,12 +649,19 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 	}
 	hidePRDetails := wt.PR != nil && wt.IsMain && (wt.PR.State == prStateMerged || wt.PR.State == prStateClosed)
 	if wt.PR != nil && !hidePRDetails && !m.config.DisablePR {
-		prLabelStyle := lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true) // Accent for PR prominence
-		prPrefix := "PR:"
-		if m.config.IconsEnabled() {
-			prPrefix = iconWithSpace(getIconPR()) + prPrefix
+		authorText := wt.PR.Author
+		renderStyle := lipgloss.NewStyle().Foreground(m.theme.TextFg).Bold(true)
+		if wt.PR.Author != "" {
+			if wt.PR.AuthorName != "" {
+				authorText = fmt.Sprintf("@%s", wt.PR.Author)
+			} else {
+				authorText = wt.PR.Author
+			}
+			if wt.PR.AuthorIsBot {
+				authorText = iconPrefix(UIIconBot, m.config.IconsEnabled()) + authorText
+			}
+			authorText = renderStyle.Render(authorText)
 		}
-		numStyle := lipgloss.NewStyle().Foreground(m.theme.TextFg)
 		stateColor := m.theme.SuccessFg // default to success for OPEN
 		switch wt.PR.State {
 		case prStateMerged:
@@ -662,29 +669,18 @@ func (m *Model) buildInfoContent(wt *models.WorktreeInfo) string {
 		case prStateClosed:
 			stateColor = m.theme.ErrorFg
 		}
+		prLabelStyle := lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true) // Accent for PR prominence
 		stateStyle := lipgloss.NewStyle().Foreground(stateColor)
 		prNumber := fmt.Sprintf("#%d", wt.PR.Number)
-		prNumber = osc8Hyperlink(prNumber, wt.PR.URL)
+		prNumber = renderStyle.Render(prNumber)
+		prPrefix := fmt.Sprintf("PR %s by %s [%s]", prNumber, authorText, stateStyle.Render(wt.PR.State))
+		if m.config.IconsEnabled() {
+			prPrefix = iconWithSpace(getIconPR()) + prPrefix
+		}
 		infoLines = append(infoLines, "")
 		infoLines = append(infoLines, prLabelStyle.Render(prPrefix))
-		infoLines = append(infoLines, fmt.Sprintf("  %s %s [%s]",
-			numStyle.Render(prNumber),
-			wt.PR.Title,
-			stateStyle.Render(wt.PR.State)))
+		infoLines = append(infoLines, fmt.Sprintf("  %s ", wt.PR.Title))
 		// Author line with bot indicator if applicable
-		if wt.PR.Author != "" {
-			grayStyle := lipgloss.NewStyle().Foreground(m.theme.MutedFg)
-			var authorText string
-			if wt.PR.AuthorName != "" {
-				authorText = fmt.Sprintf("%s (@%s)", wt.PR.AuthorName, wt.PR.Author)
-			} else {
-				authorText = wt.PR.Author
-			}
-			if wt.PR.AuthorIsBot {
-				authorText = iconPrefix(UIIconBot, m.config.IconsEnabled()) + authorText
-			}
-			infoLines = append(infoLines, fmt.Sprintf("  by %s", grayStyle.Render(authorText)))
-		}
 		// // URL styled with cyan for consistency
 		infoLines = append(infoLines, fmt.Sprintf("  %s", wt.PR.URL))
 	} else if wt.PR == nil && !m.config.DisablePR && wt.HasUpstream {
