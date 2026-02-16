@@ -11,6 +11,40 @@
   --accent: #d96a28;
   --shadow: 0 22px 55px rgba(15, 56, 44, 0.14);
   --radius: 20px;
+  --bg-gradient-warm: #fff5da;
+  --bg-gradient-cool: #d9efe8;
+  --grain-dot: rgba(36, 44, 40, 0.08);
+  --orb-one: #a4d8cf;
+  --orb-two: #f1c49f;
+  --chip-bg: #fff;
+  --btn-on-brand: #fff;
+  --btn-secondary-bg: rgba(255, 255, 255, 0.7);
+  --lightbox-bg: rgba(0, 0, 0, 0.82);
+  --lightbox-close: #fff;
+}
+
+[data-theme="dark"] {
+  --bg: #141a1e;
+  --bg-alt: #1a2228;
+  --text: #e0e4e0;
+  --muted: #8a9490;
+  --surface: rgba(30, 40, 38, 0.68);
+  --surface-strong: rgba(30, 40, 38, 0.86);
+  --line: rgba(200, 220, 210, 0.12);
+  --brand: #14b8a6;
+  --brand-strong: #0d9488;
+  --accent: #f59e0b;
+  --shadow: 0 22px 55px rgba(0, 0, 0, 0.3);
+  --bg-gradient-warm: #1e2a1e;
+  --bg-gradient-cool: #162028;
+  --grain-dot: rgba(200, 220, 210, 0.04);
+  --orb-one: rgba(20, 184, 166, 0.25);
+  --orb-two: rgba(245, 158, 11, 0.18);
+  --chip-bg: rgba(30, 40, 38, 0.7);
+  --btn-on-brand: #fff;
+  --btn-secondary-bg: rgba(30, 40, 38, 0.6);
+  --lightbox-bg: rgba(0, 0, 0, 0.9);
+  --lightbox-close: #e0e4e0;
 }
 
 *,
@@ -28,8 +62,8 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 20% 0%, #fff5da 0%, transparent 44%),
-    radial-gradient(circle at 92% 8%, #d9efe8 0%, transparent 36%),
+    radial-gradient(circle at 20% 0%, var(--bg-gradient-warm) 0%, transparent 44%),
+    radial-gradient(circle at 92% 8%, var(--bg-gradient-cool) 0%, transparent 36%),
     linear-gradient(165deg, var(--bg) 0%, var(--bg-alt) 100%);
   min-height: 100vh;
   overflow-x: hidden;
@@ -40,7 +74,7 @@ body {
   inset: 0;
   pointer-events: none;
   opacity: 0.22;
-  background-image: radial-gradient(rgba(36, 44, 40, 0.08) 0.45px, transparent 0.45px);
+  background-image: radial-gradient(var(--grain-dot) 0.45px, transparent 0.45px);
   background-size: 4px 4px;
   z-index: -1;
 }
@@ -57,7 +91,7 @@ body {
 .orb-one {
   width: 22rem;
   height: 22rem;
-  background: #a4d8cf;
+  background: var(--orb-one);
   top: -6rem;
   right: -6rem;
 }
@@ -65,7 +99,7 @@ body {
 .orb-two {
   width: 18rem;
   height: 18rem;
-  background: #f1c49f;
+  background: var(--orb-two);
   bottom: 2rem;
   left: -8rem;
 }
@@ -211,7 +245,7 @@ h2 {
 
 .btn-primary {
   background: linear-gradient(140deg, var(--brand), var(--brand-strong));
-  color: #fff;
+  color: var(--btn-on-brand);
 }
 
 .btn-primary:hover {
@@ -221,12 +255,12 @@ h2 {
 .btn-secondary {
   border-color: var(--line);
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--btn-secondary-bg);
 }
 
 .btn-small {
   padding: 0.5rem 0.95rem;
-  background: #fff;
+  background: var(--chip-bg);
   border-color: var(--line);
   color: var(--text);
 }
@@ -458,7 +492,7 @@ details pre {
 
 .chips span {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--chip-bg);
   border-radius: 999px;
   padding: 0.23rem 0.62rem;
   font-size: 0.79rem;
@@ -475,7 +509,7 @@ details pre {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.28rem 0.64rem;
-  background: #fff;
+  background: var(--chip-bg);
   color: var(--text);
   font-size: 0.82rem;
 }
@@ -540,7 +574,7 @@ details pre {
 }
 
 .tab-btn.active {
-  background: #fff;
+  background: var(--chip-bg);
   color: var(--text);
 }
 
@@ -639,7 +673,7 @@ details pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.82);
+  background: var(--lightbox-bg);
   cursor: zoom-out;
 }
 
@@ -669,7 +703,7 @@ details pre {
   right: 1.2rem;
   background: none;
   border: none;
-  color: #fff;
+  color: var(--lightbox-close);
   font-size: 2.4rem;
   line-height: 1;
   cursor: pointer;
@@ -679,4 +713,42 @@ details pre {
 
 .lightbox-close:hover {
   opacity: 1;
+}
+
+/* Theme toggle */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--chip-bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  border-color: var(--brand);
+}
+
+.theme-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.theme-toggle .icon-sun {
+  display: none;
+}
+
+[data-theme="dark"] .theme-toggle .icon-moon {
+  display: none;
+}
+
+[data-theme="dark"] .theme-toggle .icon-sun {
+  display: block;
 }
