@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
+	"github.com/chmouel/lazyworktree/internal/multiplexer"
 )
 
 const (
@@ -29,27 +30,20 @@ type (
 		attach      bool
 		insideTmux  bool
 	}
-	resolvedTmuxWindow struct {
-		Name    string
-		Command string
-		Cwd     string
-	}
 )
 
 func cleanupZellijLayouts(paths []string) {
-	for _, path := range paths {
-		_ = os.Remove(path) //#nosec G703 -- controlled temp file cleanup
-	}
+	multiplexer.CleanupZellijLayouts(paths)
 }
 
 func buildZellijInfoMessage(sessionName string) string {
-	quoted := shellQuote(sessionName)
+	quoted := multiplexer.ShellQuote(sessionName)
 	return fmt.Sprintf("zellij session ready.\n\nAttach with:\n\n  zellij attach %s", quoted)
 }
 
 func (m *Model) attachZellijSessionCmd(sessionName string) tea.Cmd {
 	// #nosec G204 -- zellij session name comes from user configuration.
-	c := m.commandRunner(m.ctx, "zellij", onExistsAttach, sessionName)
+	c := m.commandRunner(m.ctx, "zellij", multiplexer.OnExistsAttach, sessionName)
 	return m.execProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			return errMsg{err: err}
@@ -95,15 +89,11 @@ func (m *Model) getZellijActiveSessions() []string {
 }
 
 func sanitizeZellijSessionName(name string) string {
-	if name == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-")
-	return replacer.Replace(name)
+	return multiplexer.SanitizeZellijSessionName(name)
 }
 
 func buildTmuxInfoMessage(sessionName string, insideTmux bool) string {
-	quoted := shellQuote(sessionName)
+	quoted := multiplexer.ShellQuote(sessionName)
 	if insideTmux {
 		return fmt.Sprintf("tmux session ready.\n\nSwitch with:\n\n  tmux switch-client -t %s", quoted)
 	}
@@ -126,180 +116,23 @@ func (m *Model) attachTmuxSessionCmd(sessionName string, insideTmux bool) tea.Cm
 }
 
 func readTmuxSessionFile(path, fallback string) string {
-	// #nosec G304 -- file path is created by the current process.
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fallback
-	}
-	value := strings.TrimSpace(string(data))
-	if value == "" {
-		return fallback
-	}
-	return value
+	return multiplexer.ReadSessionFile(path, fallback)
 }
 
-func buildTmuxScript(sessionName string, tmuxCfg *config.TmuxCommand, windows []resolvedTmuxWindow, env map[string]string) string {
-	onExists := strings.ToLower(strings.TrimSpace(tmuxCfg.OnExists))
-	switch onExists {
-	case onExistsAttach, onExistsKill, onExistsNew, onExistsSwitch:
-	default:
-		onExists = onExistsSwitch
-	}
-
-	var b strings.Builder
-	b.WriteString("set -e\n")
-	fmt.Fprintf(&b, "session=%s\n", shellQuote(sessionName))
-	b.WriteString("base_session=$session\n")
-	b.WriteString("if tmux has-session -t \"$session\" 2>/dev/null; then\n")
-	switch onExists {
-	case onExistsKill:
-		b.WriteString("  tmux kill-session -t \"$session\"\n")
-	case onExistsNew:
-		b.WriteString("  i=2\n")
-		b.WriteString("  while tmux has-session -t \"${base_session}-$i\" 2>/dev/null; do i=$((i+1)); done\n")
-		b.WriteString("  session=\"${base_session}-$i\"\n")
-	default:
-		b.WriteString("  :\n")
-	}
-	b.WriteString("fi\n")
-	b.WriteString("if ! tmux has-session -t \"$session\" 2>/dev/null; then\n")
-	if len(windows) == 0 {
-		return ""
-	}
-	first := windows[0]
-	fmt.Fprintf(&b, "  tmux new-session -d -s \"$session\" -n %s -c %s -- bash -lc %s\n",
-		shellQuote(first.Name), shellQuote(first.Cwd), shellQuote(first.Command))
-
-	keys := make([]string, 0, len(env))
-	for key := range env {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		fmt.Fprintf(&b, "  tmux set-environment -t \"$session\" %s %s\n", shellQuote(key), shellQuote(env[key]))
-	}
-
-	for _, window := range windows[1:] {
-		fmt.Fprintf(&b, "  tmux new-window -t \"$session\" -n %s -c %s -- bash -lc %s\n",
-			shellQuote(window.Name), shellQuote(window.Cwd), shellQuote(window.Command))
-	}
-	b.WriteString("fi\n")
-	b.WriteString("if [ -n \"${LW_TMUX_SESSION_FILE:-}\" ]; then printf '%s' \"$session\" > \"$LW_TMUX_SESSION_FILE\"; fi\n")
-
-	if tmuxCfg.Attach {
-		if onExists == onExistsAttach {
-			b.WriteString("tmux attach -t \"$session\" || true\n")
-		} else {
-			b.WriteString("if [ -n \"$TMUX\" ]; then tmux switch-client -t \"$session\" || true; else tmux attach -t \"$session\" || true; fi\n")
-		}
-	}
-	return b.String()
+func buildTmuxScript(sessionName string, tmuxCfg *config.TmuxCommand, windows []multiplexer.ResolvedWindow, env map[string]string) string {
+	return multiplexer.BuildTmuxScript(sessionName, tmuxCfg, windows, env)
 }
 
 func buildZellijScript(sessionName string, zellijCfg *config.TmuxCommand, layoutPaths []string) string {
-	onExists := strings.ToLower(strings.TrimSpace(zellijCfg.OnExists))
-	switch onExists {
-	case onExistsAttach, onExistsKill, onExistsNew, onExistsSwitch:
-	default:
-		onExists = onExistsSwitch
-	}
-
-	var b strings.Builder
-	b.WriteString("set -e\n")
-	fmt.Fprintf(&b, "session=%s\n", shellQuote(sessionName))
-	b.WriteString("base_session=$session\n")
-	b.WriteString("session_exists() {\n")
-	b.WriteString("  zellij list-sessions --short --no-formatting 2>/dev/null | grep -Fxq \"$1\"\n")
-	b.WriteString("}\n")
-	b.WriteString("created=false\n")
-	b.WriteString("if session_exists \"$session\"; then\n")
-	switch onExists {
-	case onExistsKill:
-		b.WriteString("  zellij kill-session \"$session\"\n")
-	case onExistsNew:
-		b.WriteString("  i=2\n")
-		b.WriteString("  while session_exists \"${base_session}-$i\"; do i=$((i+1)); done\n")
-		b.WriteString("  session=\"${base_session}-$i\"\n")
-	default:
-		b.WriteString("  :\n")
-	}
-	b.WriteString("fi\n")
-	b.WriteString("if ! session_exists \"$session\"; then\n")
-	b.WriteString("  zellij attach --create-background \"$session\"\n")
-	b.WriteString("  created=true\n")
-	// Wait for session with timeout (5 seconds max)
-	b.WriteString("  tries=0\n")
-	b.WriteString("  while ! zellij list-sessions --short 2>/dev/null | grep -Fxq \"$session\"; do\n")
-	b.WriteString("    sleep 0.1\n")
-	b.WriteString("    tries=$((tries+1))\n")
-	b.WriteString("    if [ $tries -ge 50 ]; then echo \"Timeout waiting for zellij session\" >&2; exit 1; fi\n")
-	b.WriteString("  done\n")
-	b.WriteString("fi\n")
-	if len(layoutPaths) > 0 {
-		b.WriteString("if [ \"$created\" = \"true\" ]; then\n")
-		for _, layoutPath := range layoutPaths {
-			fmt.Fprintf(&b, "  ZELLIJ_SESSION_NAME=\"$session\" zellij action new-tab --layout %s\n", shellQuote(layoutPath))
-		}
-		b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action go-to-tab 1\n")
-		b.WriteString("  ZELLIJ_SESSION_NAME=\"$session\" zellij action close-tab\n")
-		b.WriteString("fi\n")
-	}
-	b.WriteString("if [ -n \"${LW_ZELLIJ_SESSION_FILE:-}\" ]; then printf '%s' \"$session\" > \"$LW_ZELLIJ_SESSION_FILE\"; fi\n")
-	return b.String()
+	return multiplexer.BuildZellijScript(sessionName, zellijCfg, layoutPaths)
 }
 
-func buildZellijTabLayout(window resolvedTmuxWindow) string {
-	var b strings.Builder
-	b.WriteString("layout {\n")
-	fmt.Fprintf(&b, "    tab name=%s {\n", kdlQuote(window.Name))
-	b.WriteString("        pane {\n")
-	if window.Cwd != "" {
-		fmt.Fprintf(&b, "            cwd %s\n", kdlQuote(window.Cwd))
-	}
-	fmt.Fprintf(&b, "            command %s\n", kdlQuote("bash"))
-	fmt.Fprintf(&b, "            args %s %s\n", kdlQuote("-lc"), kdlQuote(window.Command))
-	b.WriteString("        }\n")
-	b.WriteString("    }\n")
-	b.WriteString("}\n")
-	return b.String()
-}
-
-func writeZellijLayouts(windows []resolvedTmuxWindow) ([]string, error) {
-	paths := make([]string, 0, len(windows))
-	for _, window := range windows {
-		layoutFile, err := os.CreateTemp("", "lazyworktree-zellij-layout-")
-		if err != nil {
-			cleanupZellijLayouts(paths)
-			return nil, err
-		}
-		if _, err := layoutFile.WriteString(buildZellijTabLayout(window)); err != nil {
-			_ = layoutFile.Close()
-			_ = os.Remove(layoutFile.Name()) //#nosec G703 -- controlled temp file cleanup
-			cleanupZellijLayouts(paths)
-			return nil, err
-		}
-		if err := layoutFile.Close(); err != nil {
-			_ = os.Remove(layoutFile.Name()) //#nosec G703 -- controlled temp file cleanup
-			cleanupZellijLayouts(paths)
-			return nil, err
-		}
-		paths = append(paths, layoutFile.Name())
-	}
-	return paths, nil
-}
-
-func kdlQuote(input string) string {
-	escaped := strings.ReplaceAll(input, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-	return "\"" + escaped + "\""
+func writeZellijLayouts(windows []multiplexer.ResolvedWindow) ([]string, error) {
+	return multiplexer.WriteZellijLayouts(windows)
 }
 
 func sanitizeTmuxSessionName(name string) string {
-	if name == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer(":", "-", "/", "-", "\\", "-")
-	return replacer.Replace(name)
+	return multiplexer.SanitizeTmuxSessionName(name)
 }
 
 // getTmuxActiveSessions queries tmux for all sessions starting with the configured session prefix
@@ -338,40 +171,12 @@ func (m *Model) getTmuxActiveSessions() []string {
 	return sessions
 }
 
-func resolveTmuxWindows(windows []config.TmuxWindow, env map[string]string, defaultCwd string) ([]resolvedTmuxWindow, bool) {
-	if len(windows) == 0 {
-		return nil, false
-	}
-	resolved := make([]resolvedTmuxWindow, 0, len(windows))
-	for i, window := range windows {
-		name := strings.TrimSpace(expandWithEnv(window.Name, env))
-		if name == "" {
-			name = fmt.Sprintf("window-%d", i+1)
-		}
-		cwd := strings.TrimSpace(expandWithEnv(window.Cwd, env))
-		if cwd == "" {
-			cwd = defaultCwd
-		}
-		command := strings.TrimSpace(window.Command)
-		command = buildTmuxWindowCommand(command, env)
-		resolved = append(resolved, resolvedTmuxWindow{
-			Name:    name,
-			Command: command,
-			Cwd:     cwd,
-		})
-	}
-	return resolved, true
+func resolveTmuxWindows(windows []config.TmuxWindow, env map[string]string, defaultCwd string) ([]multiplexer.ResolvedWindow, bool) {
+	return multiplexer.ResolveTmuxWindows(windows, env, defaultCwd)
 }
 
 func buildTmuxWindowCommand(command string, env map[string]string) string {
-	prefix := exportEnvCommand(env)
-	if prefix != "" {
-		prefix += " "
-	}
-	if strings.TrimSpace(command) == "" {
-		return prefix + "exec ${SHELL:-bash}"
-	}
-	return prefix + command
+	return multiplexer.BuildTmuxWindowCommand(command, env)
 }
 
 func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.WorktreeInfo) tea.Cmd {

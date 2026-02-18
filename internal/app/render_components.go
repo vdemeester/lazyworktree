@@ -100,8 +100,6 @@ func (m *Model) renderFooter(layout layoutDims) string {
 		hints = []string{
 			m.renderKeyHint("1-3", "Pane"),
 			m.renderKeyHint("c", "Create"),
-			m.renderKeyHint("i", "Notes"),
-			m.renderKeyHint("T", "Taskboard"),
 			m.renderKeyHint("f", "Filter"),
 			m.renderKeyHint("d", "Diff"),
 			m.renderKeyHint("D", "Delete"),
@@ -204,7 +202,7 @@ func (m *Model) renderInnerBox(title, content string, width, height int) string 
 
 	style := m.baseInnerBoxStyle().Width(width)
 	if height > 0 {
-		style = style.MaxHeight(height)
+		style = style.Height(height)
 	}
 
 	innerWidth := maxInt(1, width-style.GetHorizontalFrameSize())

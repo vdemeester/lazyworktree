@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -66,23 +65,6 @@ func filterWorktreeEnvVars(environ []string) []string {
 		}
 	}
 	return filtered
-}
-
-func exportEnvCommand(env map[string]string) string {
-	if len(env) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(env))
-	for key := range env {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		parts = append(parts, fmt.Sprintf("export %s=%s;", key, shellQuote(env[key])))
-	}
-	return strings.Join(parts, " ")
 }
 
 // isEscKey checks if the key string represents an escape key.

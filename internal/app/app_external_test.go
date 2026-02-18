@@ -12,6 +12,7 @@ import (
 	appscreen "github.com/chmouel/lazyworktree/internal/app/screen"
 	"github.com/chmouel/lazyworktree/internal/config"
 	"github.com/chmouel/lazyworktree/internal/models"
+	"github.com/chmouel/lazyworktree/internal/multiplexer"
 )
 
 func TestGetTmuxActiveSessions(t *testing.T) {
@@ -286,7 +287,7 @@ func TestBuildTmuxScript(t *testing.T) {
 		name        string
 		sessionName string
 		tmuxCfg     *config.TmuxCommand
-		windows     []resolvedTmuxWindow
+		windows     []multiplexer.ResolvedWindow
 		env         map[string]string
 		checkScript func(t *testing.T, script string)
 	}{
@@ -297,7 +298,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "switch",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{},
+			windows: []multiplexer.ResolvedWindow{},
 			env:     map[string]string{},
 			checkScript: func(t *testing.T, script string) {
 				if script != "" {
@@ -312,7 +313,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "switch",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 			},
 			env: map[string]string{},
@@ -335,7 +336,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "kill",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 			},
 			env: map[string]string{},
@@ -352,7 +353,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "new",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 			},
 			env: map[string]string{},
@@ -369,7 +370,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "switch",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 				{Name: "editor", Command: "vim", Cwd: "/path"},
 			},
@@ -390,7 +391,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "switch",
 				Attach:   true,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 			},
 			env: map[string]string{},
@@ -407,7 +408,7 @@ func TestBuildTmuxScript(t *testing.T) {
 				OnExists: "switch",
 				Attach:   false,
 			},
-			windows: []resolvedTmuxWindow{
+			windows: []multiplexer.ResolvedWindow{
 				{Name: "shell", Command: "exec ${SHELL:-bash}", Cwd: "/path"},
 			},
 			env: map[string]string{"REPO_NAME": "myrepo", "WORKTREE_NAME": "feature"},
