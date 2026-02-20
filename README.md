@@ -52,7 +52,7 @@ as emacs!).
 
   ```cd $(lazyworktree)```
 
-  See below for more advanced [shell integrations](#shell-integration).
+  See [here](./shell/README.md) for more advanced shell integrations.
 
 ## Requirements
 
