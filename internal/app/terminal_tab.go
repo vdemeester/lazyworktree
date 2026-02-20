@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chmouel/lazyworktree/internal/config"
+	log "github.com/chmouel/lazyworktree/internal/log"
 	"github.com/chmouel/lazyworktree/internal/models"
 )
 
@@ -26,6 +27,10 @@ type TerminalTabLauncher interface {
 	// Launch opens a new tab with the given command.
 	// Returns the tab title on success.
 	Launch(ctx context.Context, cmd, cwd, title string, env map[string]string) (string, error)
+}
+
+func debugf(format string, args ...any) {
+	log.Printf(format, args...)
 }
 
 // KittyLauncher implements TerminalTabLauncher for Kitty terminal.
@@ -49,6 +54,7 @@ func (k *KittyLauncher) Launch(ctx context.Context, cmd, cwd, title string, env 
 	}
 	args = append(args, "--", "bash", "-lc", cmd)
 
+	debugf("kitty %s", strings.Join(args, " "))
 	c := k.commandRunner(ctx, "kitty", args...)
 	output, err := c.CombinedOutput()
 	if err != nil {
@@ -202,6 +208,32 @@ func buildTerminalTabInfoMessage(terminal, title string) string {
 	return fmt.Sprintf("Command launched in new %s tab: %s", terminal, title)
 }
 
+// writeCommandScript writes a command string to a self-deleting temp script
+// file. This is used when the command contains newlines, since terminal remote
+// control protocols (Kitty, WezTerm) may not handle multi-line positional
+// arguments correctly.
+func writeCommandScript(cmd string) (string, error) {
+	f, err := os.CreateTemp("", "lazyworktree-tab-*.sh")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp script: %w", err)
+	}
+	path := f.Name()
+	if _, err := f.WriteString(cmd); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path) //nolint:gosec
+		return "", fmt.Errorf("failed to write temp script: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path) //nolint:gosec
+		return "", fmt.Errorf("failed to close temp script: %w", err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil { //nolint:gosec // script must be executable to run in the new tab
+		_ = os.Remove(path) //nolint:gosec
+		return "", fmt.Errorf("failed to chmod temp script: %w", err)
+	}
+	return path, nil
+}
+
 func (m *Model) openTerminalTab(customCmd *config.CustomCommand, wt *models.WorktreeInfo) tea.Cmd {
 	if customCmd == nil || customCmd.Command == "" {
 		return nil
@@ -215,13 +247,34 @@ func (m *Model) openTerminalTab(customCmd *config.CustomCommand, wt *models.Work
 	}
 
 	env := m.buildCommandEnv(wt.Branch, wt.Path)
+	// Forward the current PATH so tools (tmux, zellij, etc.) available to
+	// lazyworktree are also reachable in the new tab.
+	if p := os.Getenv("PATH"); p != "" {
+		env["PATH"] = p
+	}
 	title := customCmd.Description
 	if title == "" {
 		title = filepath.Base(wt.Path)
 	}
 
+	// When the command contains newlines (e.g. generated tmux/zellij scripts),
+	// write it to a temp file so the launcher always receives a short,
+	// single-line command. Terminal remote control protocols may truncate or
+	// misparse multi-line positional arguments.
+	cmd := customCmd.Command
+	if strings.Contains(cmd, "\n") {
+		scriptPath, err := writeCommandScript(cmd)
+		if err != nil {
+			return func() tea.Msg {
+				return terminalTabReadyMsg{err: err}
+			}
+		}
+
+		cmd = fmt.Sprintf("cd %s && bash %s; rm -f %s", shellQuote(wt.Path), shellQuote(scriptPath), shellQuote(scriptPath))
+	}
+
 	return func() tea.Msg {
-		tabTitle, err := launcher.Launch(m.ctx, customCmd.Command, wt.Path, title, env)
+		tabTitle, err := launcher.Launch(m.ctx, cmd, wt.Path, title, env)
 		return terminalTabReadyMsg{
 			terminalName: launcher.Name(),
 			tabTitle:     tabTitle,

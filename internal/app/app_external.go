@@ -148,11 +148,11 @@ func (m *Model) executeCustomCommand(key string) tea.Cmd {
 	wt := m.state.data.filteredWts[m.state.data.selectedIndex]
 
 	if customCmd.Zellij != nil {
-		return m.openZellijSession(customCmd.Zellij, wt)
+		return m.openZellijSession(customCmd, wt)
 	}
 
 	if customCmd.Tmux != nil {
-		return m.openTmuxSession(customCmd.Tmux, wt)
+		return m.openTmuxSession(customCmd, wt)
 	}
 
 	if customCmd.NewTab {

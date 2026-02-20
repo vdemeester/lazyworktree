@@ -179,11 +179,11 @@ func buildTmuxWindowCommand(command string, env map[string]string) string {
 	return multiplexer.BuildTmuxWindowCommand(command, env)
 }
 
-func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.WorktreeInfo) tea.Cmd {
-	if tmuxCfg == nil {
+func (m *Model) openTmuxSession(customCmd *config.CustomCommand, wt *models.WorktreeInfo) tea.Cmd {
+	if customCmd == nil || customCmd.Tmux == nil {
 		return nil
 	}
-
+	tmuxCfg := customCmd.Tmux
 	env := m.buildCommandEnv(wt.Branch, wt.Path)
 	insideTmux := os.Getenv("TMUX") != ""
 	sessionName := expandWithEnv(tmuxCfg.SessionName, env)
@@ -197,6 +197,22 @@ func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.Worktree
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("failed to resolve tmux windows")}
 		}
+	}
+
+	// When new_tab is set, run the entire tmux script (create + attach) in a
+	// new terminal tab so the TUI is never suspended.
+	if customCmd.NewTab {
+		m.debugf("Opening tmux session %q in new terminal tab", sessionName)
+		script := buildTmuxScript(sessionName, tmuxCfg, resolved, env)
+		// New tabs can inherit TMUX vars from the originating pane. Clear them
+		// so attach mode targets the new terminal tab client instead of running
+		// switch-client logic that may affect the current tab.
+		script = "unset TMUX TMUX_PANE\n" + script
+		c := &config.CustomCommand{
+			Command:     script,
+			Description: filepath.Base(wt.Path),
+		}
+		return m.openTerminalTab(c, wt)
 	}
 
 	sessionFile, err := os.CreateTemp("", "lazyworktree-tmux-")
@@ -237,11 +253,11 @@ func (m *Model) openTmuxSession(tmuxCfg *config.TmuxCommand, wt *models.Worktree
 	})
 }
 
-func (m *Model) openZellijSession(zellijCfg *config.TmuxCommand, wt *models.WorktreeInfo) tea.Cmd {
-	if zellijCfg == nil {
+func (m *Model) openZellijSession(customCmd *config.CustomCommand, wt *models.WorktreeInfo) tea.Cmd {
+	if customCmd == nil || customCmd.Zellij == nil {
 		return nil
 	}
-
+	zellijCfg := customCmd.Zellij
 	env := m.buildCommandEnv(wt.Branch, wt.Path)
 	insideZellij := os.Getenv("ZELLIJ") != "" || os.Getenv("ZELLIJ_SESSION_NAME") != ""
 	sessionName := strings.TrimSpace(expandWithEnv(zellijCfg.SessionName, env))
@@ -262,6 +278,23 @@ func (m *Model) openZellijSession(zellijCfg *config.TmuxCommand, wt *models.Work
 		return func() tea.Msg {
 			return errMsg{err: err}
 		}
+	}
+
+	// When new_tab is set, run the entire zellij script (create + attach +
+	// layout cleanup) in a new terminal tab so the TUI is never suspended.
+	if customCmd.NewTab {
+		script := buildZellijScript(sessionName, zellijCfg, layoutPaths)
+		// Append attach so the new tab connects to the session.
+		script += fmt.Sprintf("zellij attach %s\n", multiplexer.ShellQuote(sessionName))
+		// Cleanup layout temp files inside the new tab process.
+		for _, lp := range layoutPaths {
+			script += fmt.Sprintf("rm -f %s\n", multiplexer.ShellQuote(lp))
+		}
+		c := &config.CustomCommand{
+			Command:     script,
+			Description: filepath.Base(wt.Path),
+		}
+		return m.openTerminalTab(c, wt)
 	}
 
 	sessionFile, err := os.CreateTemp("", "lazyworktree-zellij-")

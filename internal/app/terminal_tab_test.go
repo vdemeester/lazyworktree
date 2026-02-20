@@ -595,6 +595,125 @@ func TestOpenTerminalTabUsesWorktreeNameWhenNoDescription(t *testing.T) {
 	}
 }
 
+func TestWriteCommandScript(t *testing.T) {
+	script := "#!/bin/bash\necho hello\necho world\n"
+	path, err := writeCommandScript(script)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	// Verify file exists and is executable
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Errorf("expected mode 0700, got %o", info.Mode().Perm())
+	}
+
+	// Verify contents
+	content, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if string(content) != script {
+		t.Errorf("expected %q, got %q", script, string(content))
+	}
+
+	// Verify filename pattern
+	if !strings.Contains(path, "lazyworktree-tab-") {
+		t.Errorf("expected temp file name to contain 'lazyworktree-tab-', got %q", path)
+	}
+}
+
+func TestOpenTerminalTabMultiLineUsesScript(t *testing.T) {
+	t.Setenv("KITTY_WINDOW_ID", "123")
+	t.Setenv("WEZTERM_PANE", "")
+	t.Setenv("WEZTERM_UNIX_SOCKET", "")
+
+	var capturedArgs []string
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		return exec.Command("true")
+	}
+
+	wt := &models.WorktreeInfo{Path: t.TempDir(), Branch: "feature"}
+	multiLineCmd := "#!/bin/bash\necho hello\necho world\n"
+	customCmd := &config.CustomCommand{Command: multiLineCmd, Description: "Multi-line"}
+
+	cmd := m.openTerminalTab(customCmd, wt)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+
+	msg := cmd()
+	readyMsg, ok := msg.(terminalTabReadyMsg)
+	if !ok {
+		t.Fatalf("expected terminalTabReadyMsg, got %T", msg)
+	}
+	if readyMsg.err != nil {
+		t.Errorf("unexpected error: %v", readyMsg.err)
+	}
+
+	// The captured args should contain "bash" followed by a script path,
+	// not the raw multi-line command.
+	argsStr := strings.Join(capturedArgs, " ")
+	if strings.Contains(argsStr, "echo hello") {
+		t.Error("multi-line command should not appear directly in args")
+	}
+	if !strings.Contains(argsStr, "lazyworktree-tab-") {
+		t.Error("expected temp script path in args")
+	}
+	if !strings.Contains(argsStr, "rm -f") {
+		t.Error("expected cleanup rm -f in args")
+	}
+}
+
+func TestOpenTerminalTabSingleLinePassesDirectly(t *testing.T) {
+	t.Setenv("KITTY_WINDOW_ID", "123")
+	t.Setenv("WEZTERM_PANE", "")
+	t.Setenv("WEZTERM_UNIX_SOCKET", "")
+
+	var capturedArgs []string
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		return exec.Command("true")
+	}
+
+	wt := &models.WorktreeInfo{Path: t.TempDir(), Branch: "feature"}
+	customCmd := &config.CustomCommand{Command: "claude", Description: "Claude Code"}
+
+	cmd := m.openTerminalTab(customCmd, wt)
+	if cmd == nil {
+		t.Fatal("expected command to be returned")
+	}
+
+	msg := cmd()
+	readyMsg, ok := msg.(terminalTabReadyMsg)
+	if !ok {
+		t.Fatalf("expected terminalTabReadyMsg, got %T", msg)
+	}
+	if readyMsg.err != nil {
+		t.Errorf("unexpected error: %v", readyMsg.err)
+	}
+
+	// Single-line command should be passed directly, not via temp file.
+	argsStr := strings.Join(capturedArgs, " ")
+	if !strings.Contains(argsStr, "bash -lc claude") {
+		t.Errorf("expected 'bash -lc claude' in args, got %q", argsStr)
+	}
+	if strings.Contains(argsStr, "lazyworktree-tab-") {
+		t.Error("single-line command should not use temp script")
+	}
+}
+
 func TestTerminalTabReadyMsgHandling(t *testing.T) {
 	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
 	m := NewModel(cfg, "")

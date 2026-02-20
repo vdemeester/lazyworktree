@@ -599,7 +599,7 @@ custom_commands:
 | `show_help` | bool | `false` | Show in help screen (`?`) and footer |
 | `wait` | bool | `false` | Wait for keypress after completion |
 | `show_output` | bool | `false` | Show stdout/stderr in pager (ignores `wait`) |
-| `new_tab` | bool | `false` | Launch in new terminal tab (Kitty with remote control enabled, WezTerm, or iTerm) |
+| `new_tab` | bool | `false` | Launch in new terminal tab. Can be used with tmux/zellij (Kitty with remote control enabled, WezTerm, or iTerm) |
 | `tmux` | object | `null` | Configure tmux session |
 | `zellij` | object | `null` | Configure zellij session |
 

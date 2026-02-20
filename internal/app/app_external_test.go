@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -578,7 +580,7 @@ func TestOpenTmuxSession(t *testing.T) {
 	}
 
 	badCfg := &config.TmuxCommand{SessionName: "session"}
-	if msg := m.openTmuxSession(badCfg, wt)(); msg == nil {
+	if msg := m.openTmuxSession(&config.CustomCommand{Tmux: badCfg}, wt)(); msg == nil {
 		t.Fatal("expected error message for empty windows")
 	}
 
@@ -599,7 +601,7 @@ func TestOpenTmuxSession(t *testing.T) {
 		OnExists:    "switch",
 		Windows:     []config.TmuxWindow{{Name: "shell"}},
 	}
-	cmd := m.openTmuxSession(cfgGood, wt)
+	cmd := m.openTmuxSession(&config.CustomCommand{Tmux: cfgGood}, wt)
 	if cmd == nil {
 		t.Fatal("expected tmux command")
 	}
@@ -617,6 +619,111 @@ func TestOpenTmuxSession(t *testing.T) {
 	if !ready.attach {
 		t.Fatal("expected attach to be true")
 	}
+
+	// new_tab: should return terminalTabReadyMsg instead of tmuxSessionReadyMsg
+	// and must NOT invoke execProcess (which would suspend the TUI).
+	execProcessCalled := false
+	m.execProcess = func(_ *exec.Cmd, _ tea.ExecCallback) tea.Cmd {
+		execProcessCalled = true
+		return nil
+	}
+	multiWindowCfg := &config.TmuxCommand{
+		SessionName: "test-session",
+		Attach:      true,
+		OnExists:    "switch",
+		Windows: []config.TmuxWindow{
+			{Name: "editor", Command: "vim"},
+			{Name: "build", Command: "make watch"},
+			{Name: "git", Command: "gitu"},
+		},
+	}
+	newTabCmd := m.openTmuxSession(&config.CustomCommand{
+		Tmux:        multiWindowCfg,
+		NewTab:      true,
+		Description: "TMUX",
+	}, wt)
+	if newTabCmd == nil {
+		t.Fatal("expected command for new_tab tmux")
+	}
+	tabMsg := newTabCmd()
+	if _, ok := tabMsg.(terminalTabReadyMsg); !ok {
+		t.Fatalf("expected terminalTabReadyMsg for new_tab, got %T", tabMsg)
+	}
+	if execProcessCalled {
+		t.Fatal("execProcess must not be called when new_tab is set")
+	}
+}
+
+func TestOpenTmuxSessionNewTabClearsTmuxEnv(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,123,0")
+	t.Setenv("TMUX_PANE", "%1")
+	t.Setenv("KITTY_WINDOW_ID", "123")
+	t.Setenv("WEZTERM_PANE", "")
+	t.Setenv("WEZTERM_UNIX_SOCKET", "")
+
+	cfg := &config.AppConfig{WorktreeDir: t.TempDir()}
+	m := NewModel(cfg, "")
+	wt := &models.WorktreeInfo{Path: t.TempDir(), Branch: "feature"}
+
+	var kittyArgs []string
+	m.commandRunner = func(_ context.Context, name string, args ...string) *exec.Cmd {
+		if name == "kitty" {
+			kittyArgs = append([]string{}, args...)
+		}
+		return exec.Command("true")
+	}
+
+	tmuxCfg := &config.TmuxCommand{
+		SessionName: "session",
+		Attach:      true,
+		OnExists:    "switch",
+		Windows:     []config.TmuxWindow{{Name: "shell"}},
+	}
+	cmd := m.openTmuxSession(&config.CustomCommand{
+		Tmux:        tmuxCfg,
+		NewTab:      true,
+		Description: "TMUX",
+	}, wt)
+	if cmd == nil {
+		t.Fatal("expected tmux new_tab command")
+	}
+	msg := cmd()
+	ready, ok := msg.(terminalTabReadyMsg)
+	if !ok {
+		t.Fatalf("expected terminalTabReadyMsg, got %T", msg)
+	}
+	if ready.err != nil {
+		t.Fatalf("expected no launch error, got %v", ready.err)
+	}
+	if len(kittyArgs) == 0 {
+		t.Fatal("expected kitty launcher to be invoked")
+	}
+	argsStr := strings.Join(kittyArgs, " ")
+	expectedTitle := filepath.Base(wt.Path)
+	if !strings.Contains(argsStr, "--tab-title="+expectedTitle) {
+		t.Fatalf("expected tab title %q, got args %q", expectedTitle, argsStr)
+	}
+
+	launchCmd := kittyArgs[len(kittyArgs)-1]
+	var scriptPath string
+	for _, part := range strings.Split(launchCmd, "'") {
+		if strings.Contains(part, "lazyworktree-tab-") && strings.HasSuffix(part, ".sh") {
+			scriptPath = part
+			break
+		}
+	}
+	if scriptPath == "" {
+		t.Fatalf("expected script path in launch command, got %q", launchCmd)
+	}
+	defer func() { _ = os.Remove(scriptPath) }()
+
+	content, err := os.ReadFile(scriptPath) //nolint:gosec
+	if err != nil {
+		t.Fatalf("failed to read generated script: %v", err)
+	}
+	if !strings.HasPrefix(string(content), "unset TMUX TMUX_PANE\n") {
+		t.Fatalf("expected script to clear tmux env, got:\n%s", string(content))
+	}
 }
 
 func TestOpenZellijSession(t *testing.T) {
@@ -629,7 +736,7 @@ func TestOpenZellijSession(t *testing.T) {
 	}
 
 	badCfg := &config.TmuxCommand{SessionName: "session"}
-	if msg := m.openZellijSession(badCfg, wt)(); msg == nil {
+	if msg := m.openZellijSession(&config.CustomCommand{Zellij: badCfg}, wt)(); msg == nil {
 		t.Fatal("expected error message for empty windows")
 	}
 
@@ -650,7 +757,7 @@ func TestOpenZellijSession(t *testing.T) {
 		OnExists:    "switch",
 		Windows:     []config.TmuxWindow{{Name: "shell"}},
 	}
-	cmd := m.openZellijSession(cfgGood, wt)
+	cmd := m.openZellijSession(&config.CustomCommand{Zellij: cfgGood}, wt)
 	if cmd == nil {
 		t.Fatal("expected zellij command")
 	}
@@ -667,5 +774,24 @@ func TestOpenZellijSession(t *testing.T) {
 	}
 	if !ready.attach {
 		t.Fatal("expected attach to be true")
+	}
+
+	// new_tab: should return terminalTabReadyMsg instead of zellijSessionReadyMsg
+	// and must NOT invoke execProcess (which would suspend the TUI).
+	execProcessCalled := false
+	m.execProcess = func(_ *exec.Cmd, _ tea.ExecCallback) tea.Cmd {
+		execProcessCalled = true
+		return nil
+	}
+	newTabCmd := m.openZellijSession(&config.CustomCommand{Zellij: cfgGood, NewTab: true}, wt)
+	if newTabCmd == nil {
+		t.Fatal("expected command for new_tab zellij")
+	}
+	tabMsg := newTabCmd()
+	if _, ok := tabMsg.(terminalTabReadyMsg); !ok {
+		t.Fatalf("expected terminalTabReadyMsg for new_tab, got %T", tabMsg)
+	}
+	if execProcessCalled {
+		t.Fatal("execProcess must not be called when new_tab is set")
 	}
 }
