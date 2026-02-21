@@ -49,7 +49,7 @@ jobs:
 
           previous_tag="$(git tag --sort=-version:refname | awk -v tag="${TAG}" '$0 != tag { print; exit }')"
           release_date="$(date -u +%Y-%m-%d)"
-          model="gemini-3-pro-preview"
+          model="gemini-3.1-pro-preview"
           range="${TAG}"
 
           if [ -n "${previous_tag}" ]; then
